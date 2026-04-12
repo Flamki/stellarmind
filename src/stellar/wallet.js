@@ -92,14 +92,61 @@ export async function getTransactions(publicKey, limit = 10) {
       .order('desc')
       .limit(limit)
       .call();
-    return txs.records.map(tx => ({
-      hash: tx.hash,
-      ledger: tx.ledger,
-      createdAt: tx.created_at,
-      feeCharged: tx.fee_charged,
-      operationCount: tx.operation_count,
-      explorerUrl: `https://stellar.expert/explorer/testnet/tx/${tx.hash}`,
-    }));
+
+    const decorated = await Promise.all(
+      txs.records.map(async (tx) => {
+        let operations = [];
+        try {
+          const opsResp = await server.operations()
+            .forTransaction(tx.hash)
+            .order('asc')
+            .limit(10)
+            .call();
+
+          operations = opsResp.records.map((op) => {
+            const assetCode = op.asset_type === 'native'
+              ? 'XLM'
+              : (op.asset_code || op.selling_asset_code || op.buying_asset_code || null);
+
+            const amount = op.amount
+              || op.starting_balance
+              || op.send_amount
+              || op.dest_amount
+              || op.buy_amount
+              || op.source_amount
+              || null;
+
+            return {
+              id: op.id,
+              type: op.type,
+              amount,
+              asset_code: assetCode,
+              from: op.from || op.source_account || null,
+              to: op.to || op.account || op.destination || null,
+            };
+          });
+        } catch (err) {
+          console.warn(`Failed to fetch operations for tx ${tx.hash}:`, err.message);
+        }
+
+        return {
+          hash: tx.hash,
+          ledger: tx.ledger,
+          createdAt: tx.created_at,
+          created_at: tx.created_at,
+          memo: tx.memo || null,
+          memo_type: tx.memo_type || null,
+          feeCharged: tx.fee_charged,
+          operationCount: tx.operation_count,
+          operation_count: tx.operation_count,
+          successful: tx.successful,
+          operations,
+          explorerUrl: `https://stellar.expert/explorer/testnet/tx/${tx.hash}`,
+        };
+      })
+    );
+
+    return decorated;
   } catch (err) {
     console.error('Failed to fetch transactions:', err.message);
     return [];

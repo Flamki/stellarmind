@@ -165,6 +165,35 @@ It includes:
 - tx-click proof flow for judges
 - recovery steps if something breaks mid-recording
 
+### Optional: Auto-Record Website-Only Demo
+
+```bash
+npm run record:video
+```
+
+This uses Playwright video capture (website viewport only, not full desktop), runs strict preflight first, and saves a `.webm` file in `recordings/`.
+
+### Optional: Auto-Render Narrated Demo (AI voice + video)
+
+```bash
+npm run record:narrated
+```
+
+This records the website flow, generates narration from `DEMO_VOICEOVER.txt` using a neural voice, and outputs a final `.mp4` in `recordings/`.
+
+For premium natural voice (ElevenLabs), set:
+
+```bash
+set ELEVENLABS_API_KEY=your_key_here
+```
+
+Optional:
+
+```bash
+set ELEVENLABS_VOICE_ID=EXAVITQu4vr4xnSDxMaL
+set ELEVENLABS_MODEL_ID=eleven_multilingual_v2
+```
+
 ## 💎 Real Stellar Transactions
 
 > Every agent-to-agent payment is a real Stellar testnet transaction. Click to verify on Stellar Expert.

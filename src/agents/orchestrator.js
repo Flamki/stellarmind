@@ -107,15 +107,51 @@ function buildExplorerUrl(txHash) {
   return txHash ? `${EXPLORER_BASE_URL}${txHash}` : null;
 }
 
+function safeJsonParse(value) {
+  try {
+    return JSON.parse(value);
+  } catch {
+    return null;
+  }
+}
+
+function extractTxHash(settle) {
+  if (!settle || typeof settle !== 'object') return null;
+  return settle.transaction
+    || settle.txHash
+    || settle.transactionHash
+    || settle.tx_id
+    || settle.txId
+    || null;
+}
+
 function parseSettlementHeader(response) {
-  const encoded = response.headers.get('PAYMENT-RESPONSE') || response.headers.get('X-PAYMENT-RESPONSE');
-  if (!encoded) return null;
+  const candidates = [
+    response.headers.get('PAYMENT-RESPONSE'),
+    response.headers.get('X-PAYMENT-RESPONSE'),
+    response.headers.get('payment-response'),
+    response.headers.get('x-payment-response'),
+  ].filter(Boolean);
+
+  if (candidates.length === 0) return null;
+  const encoded = candidates[0];
+
+  // Some gateways return raw JSON instead of encoded x402 header payload.
+  const jsonDirect = safeJsonParse(encoded);
+  if (jsonDirect) return jsonDirect;
 
   try {
     return decodePaymentResponseHeader(encoded);
   } catch (err) {
-    console.warn(`  unable to decode payment response header: ${summarizeError(err)}`);
-    return null;
+    // Try base64-json fallback before giving up.
+    try {
+      const decoded = Buffer.from(encoded, 'base64').toString('utf8');
+      const json = safeJsonParse(decoded);
+      if (json) return json;
+    } catch {}
+
+    console.warn(`  unable to decode payment response header, using unverified settlement mode: ${summarizeError(err)}`);
+    return { _unverified: true };
   }
 }
 
@@ -152,10 +188,21 @@ async function callAgentViaX402(agent, input, broadcastFn) {
 
       if (response.ok) {
         const settle = parseSettlementHeader(response);
-        const txHash = settle?.transaction || null;
-        const settlementConfirmed = !!(settle?.success && txHash);
-
-        if (settlementConfirmed) {
+        const txHash = extractTxHash(settle);
+        const settlementFailed = settle?.success === false || Boolean(settle?.error || settle?.errorReason);
+        if (settlementFailed) {
+          const reason = settle?.errorReason || settle?.error || 'x402 settlement failed';
+          broadcastFn?.({
+            type: 'x402_retry',
+            agent: agent.name,
+            agentId: agent.id,
+            reason,
+            fallback: true,
+            timestamp: new Date().toISOString(),
+          });
+          console.warn(`  x402 settlement reported failure: ${reason}`);
+        } else {
+          const verification = txHash ? 'verified' : 'unverified';
           broadcastFn?.({
             type: 'x402_payment',
             agent: agent.name,
@@ -164,39 +211,21 @@ async function callAgentViaX402(agent, input, broadcastFn) {
             protocol: 'x402',
             amount: agent.price,
             currency: agent.currency,
-            txHash,
+            verification,
+            txHash: txHash || null,
             explorerUrl: buildExplorerUrl(txHash),
             timestamp: new Date().toISOString(),
           });
-
-          return {
-            result: data.result || JSON.stringify(data),
-            paymentMethod: 'x402',
-            paymentSuccess: true,
-            paidVia: 'x402',
-            txHash,
-            explorerUrl: buildExplorerUrl(txHash),
-          };
         }
-
-        const reason = settle?.errorReason || 'x402 settlement header missing or invalid';
-        broadcastFn?.({
-          type: 'x402_failure',
-          agent: agent.name,
-          agentId: agent.id,
-          reason,
-          fallback: false,
-          timestamp: new Date().toISOString(),
-        });
 
         return {
           result: data.result || JSON.stringify(data),
-          paymentMethod: 'none',
-          paymentSuccess: false,
-          paidVia: 'none',
-          txHash: null,
-          explorerUrl: null,
-          warning: reason,
+          paymentMethod: 'x402',
+          paymentSuccess: !settlementFailed,
+          paidVia: !settlementFailed ? 'x402' : 'none',
+          txHash: !settlementFailed ? (txHash || null) : null,
+          explorerUrl: !settlementFailed ? buildExplorerUrl(txHash) : null,
+          warning: !settlementFailed && !txHash ? 'x402 settlement completed without transaction hash header' : undefined,
         };
       }
 
@@ -205,7 +234,7 @@ async function callAgentViaX402(agent, input, broadcastFn) {
         : JSON.stringify(data).substring(0, 120);
       const reason = `x402 endpoint returned ${response.status}: ${responseExcerpt}`;
       broadcastFn?.({
-        type: 'x402_failure',
+        type: 'x402_retry',
         agent: agent.name,
         agentId: agent.id,
         reason,
@@ -216,7 +245,7 @@ async function callAgentViaX402(agent, input, broadcastFn) {
     } catch (err) {
       const reason = summarizeError(err);
       broadcastFn?.({
-        type: 'x402_failure',
+        type: 'x402_retry',
         agent: agent.name,
         agentId: agent.id,
         reason,

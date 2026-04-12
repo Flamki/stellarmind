@@ -1,0 +1,35 @@
+[[SCENE:app_load]]
+StellarMind live.
+
+[[SCENE:dashboard_intro]]
+Real world problem: AI services still cannot pay each other safely per task.
+
+[[SCENE:agent_registry]]
+Agent catalog: role, price, and quality tier.
+
+[[SCENE:api_status]]
+System health and payment readiness.
+
+[[SCENE:main_run]]
+Now we run a real task with a fifteen cent budget.
+The system plans the work, assigns specialist agents, and executes each step live.
+Every event is visible, so you can track both progress and spend in real time.
+This makes autonomous workflows usable for real operations, not just experiments.
+Teams get speed, control, and clear accountability in one flow.
+
+[[SCENE:tx_proof_result]]
+Opening proof from the result panel on Stellar Explorer.
+
+[[SCENE:budget_run]]
+Now we run a second task with a tiny two cent budget.
+This shows spend control in production conditions.
+When the limit is reached, expensive steps are skipped automatically.
+That keeps the workflow safe even under strict cost limits.
+
+[[SCENE:tx_proof_table]]
+Now from the Transactions page, I open another hash for verification.
+Again, this is real public proof, not a simulated ID.
+
+[[SCENE:close]]
+Final takeaway:
+clear pricing, controlled spending, live execution, and verified payments end to end.

@@ -403,12 +403,79 @@
     /* ═══ RESULT ═══ */
     .result-panel { display: none; }
     .result-panel.visible { display: block; animation: fadeUp 0.25s ease-out; }
+    .result-panel.running { border-color: rgba(251,191,36,0.2); box-shadow: 0 0 0 1px rgba(251,191,36,0.08) inset; }
+
+    .result-status {
+      font-size: 11px;
+      color: var(--text-secondary);
+      margin-bottom: 10px;
+      line-height: 1.5;
+    }
+
+    .result-progress {
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+      margin-bottom: 10px;
+    }
+
+    .progress-meta {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      font-size: 10.5px;
+      color: var(--text-muted);
+      font-family: 'JetBrains Mono', monospace;
+    }
+
+    .progress-track {
+      width: 100%;
+      height: 6px;
+      background: var(--bg-input);
+      border: 1px solid var(--border);
+      border-radius: 999px;
+      overflow: hidden;
+    }
+
+    .progress-fill {
+      height: 100%;
+      width: 0%;
+      background: linear-gradient(90deg, var(--accent), var(--cyan));
+      transition: width 0.35s ease;
+      border-radius: 999px;
+    }
+
+    .result-live {
+      background: var(--bg-card-alt);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-sm);
+      padding: 10px 12px;
+      margin-bottom: 10px;
+      max-height: 120px;
+      overflow-y: auto;
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+    }
+
+    .result-live:empty { display: none; }
+    .result-live::-webkit-scrollbar { width: 3px; }
+    .result-live::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.06); border-radius: 2px; }
+
+    .live-line {
+      font-size: 11px;
+      color: var(--text-secondary);
+      line-height: 1.45;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
 
     .result-out {
       background: var(--bg-card-alt); border-radius: var(--radius-sm);
       padding: 14px 16px; font-size: 12.5px; line-height: 1.7;
       color: var(--text-secondary); white-space: pre-wrap;
-      max-height: 340px; overflow-y: auto;
+      min-height: 160px; max-height: 340px; overflow-y: auto;
     }
 
     .result-out::-webkit-scrollbar { width: 3px; }
@@ -626,7 +693,7 @@
                 </div>
                 <input type="range" id="budget-slider" min="0.01" max="1.00" step="0.01" value="0.15" />
               </div>
-              <button class="btn" id="btn-run" onclick="runOrchestration()">⚡ Run Agents</button>
+              <button class="btn" id="btn-run" onclick="runOrchestration()">Run Agents</button>
             </div>
           </div>
         </div>
@@ -657,9 +724,20 @@
         </div>
 
         <div class="card result-panel" id="result-panel">
-          <div class="card-h"><h2>✅ Task Result</h2><span class="tag green" id="result-tag">Complete</span></div>
+          <div class="card-h"><h2>✅ Live Progress & Result</h2><span class="tag" id="result-tag">Idle</span></div>
           <div class="card-b">
-            <div class="result-out" id="result-out"></div>
+            <div class="result-status" id="result-status-line">Submit a task to see live execution progress and final answer.</div>
+            <div class="result-progress">
+              <div class="progress-meta">
+                <span id="progress-label">Waiting to start</span>
+                <span id="progress-percent">0%</span>
+              </div>
+              <div class="progress-track">
+                <div class="progress-fill" id="progress-fill"></div>
+              </div>
+            </div>
+            <div class="result-live" id="result-live"></div>
+            <div class="result-out" id="result-out">No run yet.</div>
             <div class="chips" id="result-chips"></div>
           </div>
         </div>
@@ -717,7 +795,162 @@
 
   <script>
     let evCnt = 0, isRunning = false;
+    let activeRun = null;
     const pageTitles = { orchestrator: 'Task Orchestrator', agents: 'Agent Registry', status: 'API Status', transactions: 'Transactions' };
+
+    function setResultTag(text, tone = '') {
+      const tag = document.getElementById('result-tag');
+      tag.textContent = text;
+      tag.className = tone ? `tag ${tone}` : 'tag';
+    }
+
+    function ensureResultPanelVisible() {
+      const p = document.getElementById('result-panel');
+      p.classList.add('visible');
+      return p;
+    }
+
+    function appendResultLog(line) {
+      const out = document.getElementById('result-out');
+      const stamp = new Date().toLocaleTimeString();
+      const next = `${out.textContent === 'No run yet.' ? '' : out.textContent}\n[${stamp}] ${line}`.trim();
+      const lines = next.split('\n');
+      out.textContent = lines.slice(-160).join('\n');
+      out.scrollTop = out.scrollHeight;
+    }
+
+    function pushLiveLine(line) {
+      const box = document.getElementById('result-live');
+      const item = document.createElement('div');
+      item.className = 'live-line';
+      item.textContent = line;
+      box.prepend(item);
+      while (box.children.length > 6) box.removeChild(box.lastChild);
+    }
+
+    function getRunProgressInfo(r = activeRun) {
+      if (!r) return { planned: 0, completed: 0, percent: 0 };
+      const planned = Math.max(Number(r.planned || 0), Number(r.completed || 0), 0);
+      const completed = Math.min(Number(r.completed || 0), planned || Number(r.completed || 0));
+      if (!planned) return { planned, completed, percent: r.running ? 5 : 100 };
+      const raw = (completed / planned) * 100;
+      const visible = r.running && completed === 0 ? 8 : raw;
+      const bounded = r.running ? Math.min(visible, 98) : 100;
+      return { planned, completed, percent: Math.max(0, Math.min(100, bounded)) };
+    }
+
+    function stopRunHeartbeat() {
+      if (!activeRun?.heartbeatTimer) return;
+      clearInterval(activeRun.heartbeatTimer);
+      activeRun.heartbeatTimer = null;
+    }
+
+    function renderLiveChips(r = activeRun) {
+      if (!r) return;
+      const elapsedMs = Date.now() - r.startedAt;
+      const elapsedSec = (elapsedMs / 1000).toFixed(1);
+      const { planned, completed, percent } = getRunProgressInfo(r);
+      const progress = planned > 0 ? `${completed}/${planned}` : `${completed}`;
+      const status = r.running ? 'Running' : 'Complete';
+      document.getElementById('result-chips').innerHTML = `
+        <div class="chip">Status: <span class="v">${status}</span></div>
+        <div class="chip">Progress: <span class="v">${progress}</span></div>
+        <div class="chip">Spent: <span class="v">${r.spent.toFixed(2)} / ${r.budget.toFixed(2)} USDC</span></div>
+        <div class="chip">Time: <span class="v">${elapsedSec}s</span></div>
+      `;
+      document.getElementById('progress-fill').style.width = `${percent.toFixed(1)}%`;
+      document.getElementById('progress-percent').textContent = `${Math.round(percent)}%`;
+      document.getElementById('progress-label').textContent = r.running
+        ? `Running · ${progress} agents complete`
+        : `Completed · ${progress} agents complete`;
+    }
+
+    function startLiveRun(task, budget) {
+      stopRunHeartbeat();
+      activeRun = {
+        task,
+        budget,
+        startedAt: Date.now(),
+        lastUpdateAt: Date.now(),
+        planned: 0,
+        completed: 0,
+        spent: 0,
+        running: true,
+        startedAgents: new Set(),
+        completedAgents: new Set(),
+        heartbeatTimer: null,
+      };
+      const panel = ensureResultPanelVisible();
+      panel.classList.add('running');
+      setResultTag('Running', 'amber');
+      document.getElementById('result-status-line').textContent = `Working on: "${task}". Live updates will appear below as each agent responds.`;
+      document.getElementById('result-live').innerHTML = '';
+      document.getElementById('result-out').textContent = 'Starting orchestrator...';
+      pushLiveLine('Orchestrator started');
+      activeRun.heartbeatTimer = setInterval(() => {
+        if (!activeRun?.running) return;
+        const idleMs = Date.now() - (activeRun.lastUpdateAt || activeRun.startedAt);
+        if (idleMs >= 8000) {
+          appendResultLog('Still processing... waiting for the next agent response.');
+          activeRun.lastUpdateAt = Date.now();
+        }
+      }, 3000);
+      renderLiveChips(activeRun);
+    }
+
+    function trackLiveEvent(ev) {
+      if (!activeRun || !activeRun.running) return;
+      activeRun.lastUpdateAt = Date.now();
+      switch (ev.type) {
+        case 'orchestrator_plan':
+          activeRun.planned = Number(ev.subtaskCount) || activeRun.planned;
+          pushLiveLine(`Plan ready: ${activeRun.planned} subtasks`);
+          appendResultLog(`Plan created: ${ev.plan || 'Multi-agent flow selected.'}`);
+          document.getElementById('result-status-line').textContent = `Plan ready. Executing ${activeRun.planned || 'multiple'} agent tasks now.`;
+          break;
+        case 'agent_call':
+          {
+            const agentKey = ev.agentId || ev.agent || 'unknown-agent';
+            if (!activeRun.startedAgents.has(agentKey)) {
+              activeRun.startedAgents.add(agentKey);
+              pushLiveLine(`${ev.agent || 'Agent'} started`);
+              appendResultLog(`Calling ${ev.agent || ev.agentId} (${ev.cost || 'n/a'} USDC)`);
+              document.getElementById('result-status-line').textContent = `${ev.agent || 'Agent'} is running now...`;
+            }
+          }
+          break;
+        case 'x402_payment':
+          appendResultLog(`x402 payment settled for ${ev.agent || 'agent'} (${ev.amount || '?'} ${ev.currency || ''})`);
+          break;
+        case 'x402_retry':
+          appendResultLog(`x402 retry for ${ev.agent || 'agent'}; fallback path engaged`);
+          break;
+        case 'agent_response':
+          {
+            const agentKey = ev.agentId || ev.agent || `agent-${activeRun.completed + 1}`;
+            if (!activeRun.completedAgents.has(agentKey)) {
+              activeRun.completedAgents.add(agentKey);
+              activeRun.completed += 1;
+              activeRun.spent += Number.parseFloat(ev.cost || '0') || 0;
+              pushLiveLine(`${ev.agent || 'Agent'} finished`);
+              appendResultLog(`${ev.agent || 'Agent'} output: ${ev.resultPreview || 'Result received.'}`);
+            }
+          }
+          break;
+        case 'budget_limit':
+          appendResultLog(`Budget limit reached: ${ev.message || `${ev.agent} skipped`}`);
+          document.getElementById('result-status-line').textContent = 'Budget limit reached for one of the planned agents.';
+          break;
+        case 'orchestrator_complete':
+          activeRun.running = false;
+          stopRunHeartbeat();
+          pushLiveLine('Run completed');
+          break;
+        default:
+          break;
+      }
+      renderLiveChips(activeRun);
+    }
 
     // ─── Page Nav ───
     function showPage(id) {
@@ -851,15 +1084,25 @@
         document.getElementById('tx-body').innerHTML = txs.map(tx => {
           const ops = tx.operations || [];
           const op = ops[0] || {};
-          const amt = op.amount ? `${parseFloat(op.amount).toFixed(2)} ${op.asset_code || 'XLM'}` : '—';
+          let amt = '—';
+          if (op.amount) {
+            const num = Number.parseFloat(op.amount);
+            amt = Number.isFinite(num) ? `${num.toFixed(2)} ${op.asset_code || 'XLM'}` : `${op.amount} ${op.asset_code || 'XLM'}`;
+          } else if (op.type === 'invoke_host_function') {
+            amt = 'contract call';
+          }
+
           const hash = tx.hash || tx.id || '';
           const url = `https://stellar.expert/explorer/testnet/tx/${hash}`;
-          const time = tx.created_at ? new Date(tx.created_at).toLocaleString() : '—';
+          const timeRaw = tx.created_at || tx.createdAt || null;
+          const time = timeRaw ? new Date(timeRaw).toLocaleString() : '—';
+          const memoValue = tx.memo_type === 'none' ? 'none' : (tx.memo || '—');
+          const opType = op.type ? op.type.replaceAll('_', ' ') : '—';
           return `<tr>
             <td><a href="${url}" target="_blank" class="tx-hash">${hash.slice(0,10)}...${hash.slice(-6)}</a></td>
-            <td>${op.type || 'payment'}</td>
+            <td>${opType}</td>
             <td><span class="tx-amount">${amt}</span></td>
-            <td><span class="tx-memo">${tx.memo || '—'}</span></td>
+            <td><span class="tx-memo">${memoValue}</span></td>
             <td><span class="tx-time">${time}</span></td>
           </tr>`;
         }).join('');
@@ -906,21 +1149,26 @@
       document.getElementById('ev-cnt').textContent = `${evCnt} Events`;
       const el = document.createElement('div');
       el.className = 'fi';
-      let ic = '📡', cl = 'agt', lb = '', sb = '';
+      let ic = '\u{1F4E1}', cl = 'agt', lb = '', sb = '';
       switch (ev.type) {
-        case 'orchestrator_start': ic='🎯'; cl='pln'; lb='Orchestrator Started'; sb=`Task: ${ev.task?.substring(0,45)}...`; break;
-        case 'orchestrator_plan': ic='📋'; cl='pln'; lb=`Plan: ${ev.plan?.substring(0,40)}`; sb=`${ev.subtaskCount} subtasks`; break;
-        case 'agent_call': ic='⚡'; cl='agt'; lb=`${ev.agent} called`; sb=`${ev.cost} USDC · ${ev.paymentFlow||'stellar'}`; highlightAgent(ev.agentId); break;
-        case 'x402_payment': ic='🔐'; cl='x4'; lb=`x402: ${ev.agent}`; sb=`${ev.amount} ${ev.currency} via x402`; break;
-        case 'agent_response': ic='✅'; cl='ok'; lb=`${ev.agent} responded`; sb=`${ev.paidVia?'['+ev.paidVia+'] ':''}${ev.resultPreview?.substring(0,40)}...`; break;
-        case 'payment': ic='💸'; cl='pay'; lb=`${ev.from} → ${ev.to}`; sb=`${ev.amount} ${ev.currency} · ${ev.method||'stellar'}`; break;
-        case 'budget_limit': ic='🛑'; cl='bgt'; lb=`Budget: ${ev.agent} skipped`; sb=`Need ${ev.cost}, ${ev.remaining} left`; break;
-        case 'orchestrator_complete': ic='🏁'; cl='ok'; lb=`Done — ${ev.totalSpent} USDC`; sb=`${ev.agentsUsed} agents · ${ev.elapsed}`; break;
+        case 'orchestrator_start': ic='\u{1F3AF}'; cl='pln'; lb='Orchestrator Started'; sb=`Task: ${ev.task?.substring(0,45)}...`; break;
+        case 'orchestrator_plan': ic='\u{1F4CB}'; cl='pln'; lb=`Plan: ${ev.plan?.substring(0,40)}`; sb=`${ev.subtaskCount} subtasks`; break;
+        case 'agent_call': ic='\u26A1'; cl='agt'; lb=`${ev.agent} called`; sb=`${ev.cost} USDC | ${ev.paymentFlow||'stellar'}`; highlightAgent(ev.agentId); break;
+        case 'x402_payment': ic='\u{1F510}'; cl='x4'; lb=`x402: ${ev.agent}`; sb=`${ev.amount} ${ev.currency} via x402${ev.verification==='unverified'?' (header pending)':''}`; break;
+        case 'x402_retry': ic='\u{1F501}'; cl='x4'; lb='x402 retry handled'; sb=`${ev.agent||'agent'} | fallback flow active`; break;
+        case 'agent_response': ic='\u2705'; cl='ok'; lb=`${ev.agent} responded`; sb=`${ev.paidVia?'['+ev.paidVia+'] ':''}${(ev.resultPreview || 'Output received').substring(0,40)}...`; break;
+        case 'payment': ic='\u{1F4B8}'; cl='pay'; lb=`${ev.from} -> ${ev.to}`; sb=`${ev.amount} ${ev.currency} | ${ev.method||'stellar'}`; break;
+        case 'budget_limit': ic='\u{1F6D1}'; cl='bgt'; lb=`Budget: ${ev.agent} skipped`; sb=`Need ${ev.cost}, ${ev.remaining} left`; break;
+        case 'orchestrator_complete': ic='\u{1F3C1}'; cl='ok'; lb=`Done - ${ev.totalSpent} USDC`; sb=`${ev.agentsUsed} agents | ${ev.elapsed}`; break;
+        case 'error': ic='\u26A0\uFE0F'; cl='bgt'; lb='Run Error'; sb=(ev.message || 'Unknown error').substring(0,60); break;
         default: lb=ev.type; sb=JSON.stringify(ev).substring(0,60);
       }
-      let lk = ev.explorerUrl ? `<a href="${ev.explorerUrl}" target="_blank" class="fi-link">TX ↗</a>` : '';
+      const at = ev.timestamp ? new Date(ev.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' }) : null;
+      if (at) sb = sb ? `${sb} | ${at}` : at;
+      const lk = ev.explorerUrl ? `<a href="${ev.explorerUrl}" target="_blank" class="fi-link">TX &nearr;</a>` : '';
       el.innerHTML = `<div class="fi-icon ${cl}">${ic}</div><div class="fi-info"><div class="fi-l">${lb}</div><div class="fi-s">${sb}</div></div>${lk}`;
       f.prepend(el);
+      trackLiveEvent(ev);
     }
 
     function highlightAgent(id) {
@@ -936,35 +1184,74 @@
       if (!task) { document.getElementById('task-input').focus(); isRunning = false; return; }
       const budget = parseFloat(bSlider.value);
       const btn = document.getElementById('btn-run');
-      btn.disabled = true; btn.innerHTML = '<span class="spinner"></span>Running...';
-      document.getElementById('result-panel').classList.remove('visible');
+      btn.disabled = true; btn.innerHTML = '<span class="spinner"></span>Running Agents...';
+      startLiveRun(task, budget);
       try {
         const r = await (await fetch('/api/orchestrate', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ task, budget }) })).json();
         showResult(r); loadWallets();
-      } catch (e) { addFeed({ type: 'error', message: e.message }); }
-      finally { isRunning = false; btn.disabled = false; btn.innerHTML = '⚡ Run Agents'; }
+      } catch (e) {
+        addFeed({ type: 'error', message: e.message });
+        if (activeRun) activeRun.running = false;
+        stopRunHeartbeat();
+        setResultTag('Error', 'amber');
+        document.getElementById('result-status-line').textContent = `Run failed: ${e.message}`;
+        renderLiveChips(activeRun);
+      }
+      finally { isRunning = false; btn.disabled = false; btn.innerHTML = 'Run Agents'; }
+    }
+
+    function normalizeFinalAnswer(text) {
+      if (!text) return 'No final answer returned.';
+      let out = String(text).trim();
+      out = out.replace(/^```[a-zA-Z]*\n?/g, '').replace(/```$/g, '');
+      out = out.replace(/^#{1,6}\s*/gm, '');
+      out = out.replace(/\n{3,}/g, '\n\n');
+      return out.trim();
     }
 
     function showResult(r) {
       const p = document.getElementById('result-panel');
       const out = document.getElementById('result-out');
       const ch = document.getElementById('result-chips');
-      let t = '';
-      if (r.results) for (const x of r.results) {
-        t += x.skipped ? `⏭️ ${x.agentId}: Skipped — ${x.reason}\n\n` : `━━━ ${x.agentName} (${x.cost} ${x.currency}) ━━━\n${x.output}\n\n`;
+      p.classList.add('visible');
+      p.classList.remove('running');
+      setResultTag('Complete', 'green');
+      stopRunHeartbeat();
+      document.getElementById('result-status-line').textContent = 'Execution complete. Final answer and per-agent outputs are shown below.';
+
+      const successful = (r.results || []).filter(x => !x.skipped);
+      const preferred = successful.find(x => x.agentId === 'summary-bot')
+        || successful.find(x => x.agentId === 'analyst-bot')
+        || successful[0];
+      const finalAnswer = normalizeFinalAnswer(preferred?.output || 'No final answer returned.');
+
+      let details = '';
+      for (const x of (r.results || [])) {
+        details += x.skipped
+          ? `\n[SKIPPED] ${x.agentId}: ${x.reason}\n`
+          : `\n--- ${x.agentName} (${x.cost} ${x.currency}) ---\n${x.output}\n`;
       }
-      out.textContent = t || 'No results';
-      const txL = (r.payments||[]).map(p => `<a href="${p.explorerUrl}" target="_blank" class="fi-link">${p.txHash?.slice(0,8)} ↗</a>`).join(' ');
+
+      out.textContent = `FINAL ANSWER\n${finalAnswer}\n\nAGENT DETAILS${details}`;
+      const txL = (r.payments||[]).map(p => `<a href="${p.explorerUrl}" target="_blank" class="fi-link">${p.txHash?.slice(0,8)} &nearr;</a>`).join(' ');
       ch.innerHTML = `
         <div class="chip">Agents: <span class="v">${r.agentsUsed||0}</span></div>
         <div class="chip">Spent: <span class="v">${r.totalSpent||'0'} USDC</span></div>
         <div class="chip">TXs: <span class="v">${r.txCount||0}</span></div>
         <div class="chip">Protocol: <span class="v">${r.paymentProtocol||'stellar'}</span></div>
-        <div class="chip">Time: <span class="v">${r.elapsed||'—'}</span></div>
-        ${r.budgetExhausted?'<div class="chip" style="color:var(--amber)">⚠️ Budget Used</div>':''}
+        <div class="chip">Time: <span class="v">${r.elapsed||'-'}</span></div>
+        ${r.budgetExhausted?'<div class="chip" style="color:var(--amber)">Budget Used</div>':''}
         ${txL?`<div class="chip" style="flex-wrap:wrap;gap:4px;">Verify: ${txL}</div>`:''}
       `;
-      p.classList.add('visible');
+
+      if (activeRun) {
+        activeRun.running = false;
+        activeRun.completed = Number(r.agentsUsed || activeRun.completed || 0);
+        activeRun.planned = Math.max(activeRun.planned || 0, Number(r.agentsUsed || 0) + Number(r.agentsSkipped || 0));
+        activeRun.spent = Number.parseFloat(r.totalSpent || activeRun.spent || 0);
+      }
+      renderLiveChips(activeRun);
+      pushLiveLine('Final answer generated');
     }
 
     document.getElementById('task-input').addEventListener('keydown', e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); runOrchestration(); }});
@@ -1007,3 +1294,4 @@
   </script>
 </body>
 </html>
+

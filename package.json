@@ -7,11 +7,21 @@
     "start": "node src/server.js",
     "demo": "node src/demo.js",
     "preflight": "node src/demo-preflight.js",
+    "record:video": "node src/record-demo-video.js",
+    "voiceover": "node src/generate-demo-voiceover.js",
+    "record:narrated": "node src/render-narrated-demo.js",
     "setup": "node src/setup-wallets.js",
     "setup:usdc": "node src/setup-usdc.js",
     "test": "node src/demo.js"
   },
-  "keywords": ["stellar", "x402", "ai-agents", "claude", "micropayments", "marketplace"],
+  "keywords": [
+    "stellar",
+    "x402",
+    "ai-agents",
+    "claude",
+    "micropayments",
+    "marketplace"
+  ],
   "author": "StellarMind Team",
   "license": "MIT",
   "description": "AI Agent Marketplace with x402 Micropayments on Stellar — Claude-powered agents that buy, sell, and earn autonomously",
@@ -25,6 +35,11 @@
     "@x402/stellar": "^2.9.0",
     "cors": "^2.8.6",
     "dotenv": "^17.4.1",
-    "express": "^5.2.1"
+    "express": "^5.2.1",
+    "puppeteer": "^19.0.0",
+    "puppeteer-screen-recorder": "^3.0.6"
+  },
+  "devDependencies": {
+    "playwright": "^1.59.1"
   }
 }

@@ -1,116 +1,53 @@
-# StellarMind Winning Demo Script (2:30 to 3:30)
+# StellarMind Winning Demo Script (2:30 to 3:00)
 
-This runbook is designed for judges, not developers. It is paced, human, and proof-first.
+This is the judge-facing runbook: problem first, evidence second, architecture close.
 
-## 1) Before You Hit Record (mandatory)
+## 1) Core Narrative (say this in plain English)
 
-Open terminal A:
+- Problem: AI agents can reason, but they cannot safely pay each other per request.
+- Approach: x402 paywalled endpoints on Stellar + Claude orchestration + strict budget guardrails.
+- Proof: clickable on-chain transaction hashes during the demo.
+
+## 2) Exact Scene Order (website-only capture)
+
+1. Orchestrator intro (10s): show task box, budget slider, wallet balances.
+2. Agent Registry (15s): show all 4 agents, model and price tiers.
+3. API Status (20s): show premium endpoint list and payment flow surface.
+4. Main run (60-80s): run task with 0.15 budget and let SSE stream events.
+5. Proof click 1 (12s): click TX from result chips and show Stellar Expert details.
+6. Budget guardrail run (35-45s): run second task with 0.02 budget.
+7. Proof click 2 (12s): open Transactions page, click first hash, show it resolves.
+8. Close (10s): return to API Status then Transactions to reinforce architecture + proof.
+
+Note:
+- The recorder now keeps proof clicks in the same browser tab (no pop-out tab switching).
+
+## 3) Voiceover Script Source
+
+- Narration text file: `DEMO_VOICEOVER.txt`
+- The automation uses this file to generate AI voice audio.
+- Edit wording there if you want your own tone before rendering.
+
+## 4) One-Command Narrated Output
 
 ```bash
-npm run dev
+npm run record:narrated
 ```
 
-Open terminal B:
+This performs:
 
-```bash
-npm run preflight
-```
+1. local server start
+2. strict preflight (`x402` + on-chain verify)
+3. website-only scripted recording
+4. AI voice generation
+5. final MP4 mux
 
-Do not record until `npm run preflight` ends with:
+Final output path is printed and also saved in `recordings/latest-narrated.txt`.
 
-```text
-READY  Demo is recording-ready for judges.
-```
+## 5) Non-Negotiable Judge Proof Checklist
 
-If preflight fails, fix the blocker first. The most common blocker is zero USDC in orchestrator wallet.
-
-## 2) Video Structure (exact shot list)
-
-### Scene 1 - Credibility in 20 seconds
-- Show terminal B `preflight` output.
-- Pause on:
-  - `x402 middleware reports enabled`
-  - `Live task settled via x402`
-  - `On-chain verified: <hash>`
-
-Voiceover line:
-"Before demoing UI, I run a strict preflight that checks live x402 settlement and verifies transaction hashes directly on Horizon."
-
-### Scene 2 - Dashboard + wallets (15 seconds)
-- Open `http://localhost:3001`.
-- Stay on `Orchestrator` page.
-- Point at wallet balances and budget slider.
-
-Voiceover line:
-"This is a live multi-agent marketplace on Stellar testnet. Payments are metered per agent call, with budget limits enforced per task."
-
-### Scene 3 - Main orchestration run (60 to 80 seconds)
-- Task input:
-  - `Research practical enterprise use cases for x402 micropayments and recommend go-to-market strategy.`
-- Budget:
-  - `0.15`
-- Click `Run Orchestration`.
-- Keep cursor still and let SSE stream events naturally.
-- Wait until result panel renders.
-
-What to highlight live:
-- `orchestrator_plan`
-- `agent_call` and `agent_response`
-- `payment` events
-- Result chips showing spend and tx count
-
-Voiceover line:
-"Claude plans the workflow, hires specialist agents, and each premium call triggers payment settlement. All events are streamed in real time."
-
-### Scene 4 - Hard proof: click transaction hashes (40 seconds)
-- In result panel, click first `TX` link.
-- In Stellar Expert tab, show:
-  - full tx hash
-  - successful status
-  - ledger / timestamp
-- Go back and open another tx link.
-- Repeat quickly.
-
-Voiceover line:
-"These are live on-chain proofs, not simulated IDs. Every hash in the UI is clickable and independently verifiable on Stellar Expert."
-
-### Scene 5 - Budget guardrail test (35 seconds)
-- Back in app, set task:
-  - `Analyze post-quantum migration strategy for fintech payment rails.`
-- Set budget:
-  - `0.02`
-- Run again.
-- Show that only low-cost agents run and expensive ones are skipped or capped by budget.
-
-Voiceover line:
-"This second run shows deterministic spend control. The orchestrator enforces budget in-loop and stops hiring when remaining funds are insufficient."
-
-### Scene 6 - API status + architecture close (20 seconds)
-- Go to `API Status` page.
-- Briefly show premium endpoint list and payment flow card.
-- End on `Transactions` page where hashes are listed and clickable.
-
-Voiceover line:
-"So this is production-shaped architecture: x402 paywalled endpoints, real-time orchestration, and on-chain verifiability end-to-end."
-
-## 3) What Judges Must See (non-negotiable)
-
-- A successful preflight run.
-- At least one task with `x402` payment protocol, not only fallback.
-- At least one clicked tx hash on Stellar Expert with successful transaction details.
-- A budget-constrained second run.
-- No dead time, no debugging on camera.
-
-## 4) Recording Notes (to sound natural, not robotic)
-
-- Speak in short lines while actions are visible.
-- Avoid saying "trust me" or "should work".
-- Say concrete facts with evidence: "Here is the hash", "Here is successful status", "Here is spend."
-- Keep energy calm and confident.
-
-## 5) Fast Recovery Plan If Something Breaks Mid-Recording
-
-1. Stop recording immediately.
-2. Run `npm run preflight`.
-3. If USDC balance is zero, fund orchestrator wallet via `https://faucet.circle.com`.
-4. Re-run preflight and only restart recording after green status.
+- `npm run preflight` reaches `READY`.
+- Main run reports real `x402` settlement events.
+- At least one transaction hash is clicked and shown on Stellar Expert.
+- Second run demonstrates budget-limited behavior.
+- No debug detours in the final submitted video.

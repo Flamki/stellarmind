@@ -65,7 +65,7 @@ async function main() {
         'agent_response': '✅',
         'payment': '💸',
         'x402_payment': '🧾',
-        'x402_failure': '⚠️',
+        'x402_retry': '⚠️',
         'budget_limit': '🛑',
         'orchestrator_complete': '🏁',
       }[event.type] || '📡';
@@ -118,3 +118,4 @@ main().catch(err => {
   console.error('Demo failed:', err);
   process.exit(1);
 });
+
