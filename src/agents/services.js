@@ -1,10 +1,21 @@
 import Anthropic from '@anthropic-ai/sdk';
 import { config } from '../config.js';
 
-const anthropic = new Anthropic({ apiKey: config.anthropicApiKey });
+let anthropic = new Anthropic({ apiKey: config.anthropicApiKey });
 
 // Track whether Claude API is available
 let claudeAvailable = true;
+
+/**
+ * Update the Anthropic API key at runtime.
+ * Allows users to plug in their own key without restarting the server.
+ */
+export function setApiKey(newKey) {
+  anthropic = new Anthropic({ apiKey: newKey });
+  config.anthropicApiKey = newKey;
+  claudeAvailable = true;
+  console.log('  🔑 Anthropic API key updated at runtime');
+}
 
 /**
  * Intelligent fallback responses — used when Claude API credits are exhausted.
