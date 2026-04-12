@@ -673,6 +673,23 @@
       <!-- ═══ PAGE: API STATUS ═══ -->
       <div class="page" id="page-status">
         <div class="status-grid" id="status-grid"></div>
+        
+        <div class="card">
+          <div class="card-h"><h2>🧠 Claude AI Configuration</h2><span class="tag" id="key-status-tag">Checking...</span></div>
+          <div class="card-b">
+            <div id="api-key-config">
+              <p class="lbl" style="margin-bottom:10px;">Configure your Anthropic API key to enable real AI responses (starts with sk-ant-). If not set, the system uses high-quality fallback agents.</p>
+              <div class="task-row">
+                <div class="task-input-w">
+                  <input type="password" id="api-key-input" class="task-input" placeholder="sk-ant-..." />
+                </div>
+                <button class="btn" onclick="saveApiKey()" id="btn-save-key">Update Key</button>
+              </div>
+              <p class="sc-sub" id="key-hint" style="margin-top:10px;">Current: Loading...</p>
+            </div>
+          </div>
+        </div>
+
         <div class="card">
           <div class="card-h"><h2>🔌 API Endpoints</h2><span class="tag">x402 Paywalled</span></div>
           <div class="card-b"><div class="endpoint-list" id="endpoint-list"></div></div>
@@ -761,11 +778,25 @@
     async function loadStatusPage() {
       try {
         const s = await (await fetch('/api/status')).json();
+        const k = await (await fetch('/api/config/apikey')).json();
+        
         document.getElementById('status-grid').innerHTML = `
           <div class="status-card"><div class="sc-icon">🟢</div><div class="sc-label">System Status</div><div class="sc-value">${s.status?.toUpperCase()}</div><div class="sc-sub">StellarMind v${s.version}</div></div>
           <div class="status-card"><div class="sc-icon">🌐</div><div class="sc-label">Network</div><div class="sc-value">${s.network}</div><div class="sc-sub">${s.facilitator}</div></div>
           <div class="status-card"><div class="sc-icon">🤖</div><div class="sc-label">Agents</div><div class="sc-value">${s.agents}</div><div class="sc-sub">Claude ${s.claudeEnabled ? '✅ Connected' : '❌ Off'}</div></div>
         `;
+
+        const tag = document.getElementById('key-status-tag');
+        const hint = document.getElementById('key-hint');
+        if (k.configured) {
+          tag.textContent = 'Active';
+          tag.className = 'tag green';
+          hint.textContent = `Current: ${k.masked}`;
+        } else {
+          tag.textContent = 'Not Configured';
+          tag.className = 'tag red';
+          hint.textContent = 'Current: No key set (using fallbacks)';
+        }
 
         const eps = [
           { m: 'GET', p: '/api/premium/research', pr: '$0.01', pw: true },
@@ -938,9 +969,40 @@
 
     document.getElementById('task-input').addEventListener('keydown', e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); runOrchestration(); }});
 
+    async function saveApiKey() {
+      const key = document.getElementById('api-key-input').value.trim();
+      const btn = document.getElementById('btn-save-key');
+      if (!key || !key.startsWith('sk-ant-')) {
+        alert('Please enter a valid Anthropic API key starting with sk-ant-');
+        return;
+      }
+      btn.disabled = true;
+      btn.textContent = 'Saving...';
+      try {
+        const res = await fetch('/api/config/apikey', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ apiKey: key })
+        });
+        const d = await res.json();
+        if (d.success) {
+          alert('API Key updated successfully! Agents will now use your key.');
+          document.getElementById('api-key-input').value = '';
+          loadStatusPage();
+        } else {
+          alert(`Error: ${d.error}`);
+        }
+      } catch (err) { alert(`Failed to save key: ${err.message}`); }
+      finally {
+        btn.disabled = false;
+        btn.textContent = 'Update Key';
+      }
+    }
+
     // ─── Init ───
-    loadAgents(); loadWallets(); connectSSE();
-    setInterval(loadWallets, 30000);
+    loadAgents();
+    loadWallets();
+    setInterval(loadWallets, 15000);
   </script>
 </body>
 </html>

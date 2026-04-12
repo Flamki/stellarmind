@@ -1,7 +1,7 @@
 import Anthropic from '@anthropic-ai/sdk';
 import { config } from '../config.js';
 
-let anthropic = new Anthropic({ apiKey: config.anthropicApiKey });
+export let anthropic = new Anthropic({ apiKey: config.anthropicApiKey });
 
 // Track whether Claude API is available
 let claudeAvailable = true;

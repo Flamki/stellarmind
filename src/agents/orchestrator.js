@@ -1,13 +1,13 @@
 import Anthropic from '@anthropic-ai/sdk';
 import { config } from '../config.js';
 import { AGENTS, getAgentById } from './registry.js';
-import { runResearch, runSummary, runAnalysis, runCode } from './services.js';
+import { runResearch, runSummary, runAnalysis, runCode, anthropic } from './services.js';
 import { getBalance, sendPayment } from '../stellar/wallet.js';
 
 import { x402Client, x402HTTPClient, wrapFetchWithPayment, decodePaymentResponseHeader } from '@x402/fetch';
 import { ExactStellarScheme, createEd25519Signer } from '@x402/stellar';
 
-const anthropic = new Anthropic({ apiKey: config.anthropicApiKey });
+// const anthropic = ... (imported from services.js)
 
 const SERVICE_MAP = {
   'research-bot': runResearch,
