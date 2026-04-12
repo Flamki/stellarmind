@@ -12,157 +12,334 @@
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
     :root {
-      --bg-primary: #0a0b0f;
-      --bg-secondary: #12131a;
-      --bg-card: #1a1b25;
-      --bg-card-hover: #22232f;
-      --bg-glass: rgba(26, 27, 37, 0.7);
-      --border: rgba(255, 255, 255, 0.06);
-      --border-focus: rgba(99, 102, 241, 0.5);
-      --text-primary: #f0f0f5;
-      --text-secondary: #8b8d9e;
-      --text-muted: #5a5c6e;
-      --accent-blue: #6366f1;
-      --accent-blue-glow: rgba(99, 102, 241, 0.25);
-      --accent-purple: #8b5cf6;
-      --accent-cyan: #06b6d4;
-      --accent-green: #10b981;
-      --accent-amber: #f59e0b;
-      --accent-red: #ef4444;
-      --accent-pink: #ec4899;
-      --gradient-primary: linear-gradient(135deg, #6366f1, #8b5cf6, #06b6d4);
-      --gradient-card: linear-gradient(145deg, rgba(99,102,241,0.08), rgba(139,92,246,0.04));
-      --shadow-lg: 0 20px 60px rgba(0, 0, 0, 0.5);
-      --shadow-glow: 0 0 40px rgba(99, 102, 241, 0.15);
-      --radius: 16px;
-      --radius-sm: 10px;
-      --transition: 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+      --bg-body: #06070b;
+      --bg-sidebar: #0c0d14;
+      --bg-main: #0f1018;
+      --bg-card: #14151f;
+      --bg-card-alt: #191a26;
+      --bg-input: #1a1b28;
+      --bg-hover: #1e1f2e;
+      --border: rgba(255, 255, 255, 0.05);
+      --border-active: rgba(99, 102, 241, 0.4);
+      --text-primary: #eeeef4;
+      --text-secondary: #8b8da0;
+      --text-muted: #505268;
+      --accent: #6366f1;
+      --accent-light: #818cf8;
+      --accent-glow: rgba(99, 102, 241, 0.2);
+      --purple: #a855f7;
+      --cyan: #22d3ee;
+      --green: #34d399;
+      --amber: #fbbf24;
+      --red: #f87171;
+      --pink: #f472b6;
+      --gradient: linear-gradient(135deg, #6366f1 0%, #8b5cf6 50%, #a855f7 100%);
+      --gradient-subtle: linear-gradient(135deg, rgba(99,102,241,0.1), rgba(168,85,247,0.05));
+      --shadow: 0 1px 3px rgba(0,0,0,0.4);
+      --shadow-lg: 0 8px 32px rgba(0,0,0,0.5);
+      --shadow-glow: 0 0 24px rgba(99,102,241,0.12);
+      --radius: 12px;
+      --radius-sm: 8px;
+      --radius-xs: 6px;
+      --sidebar-width: 260px;
+      --transition: 0.2s ease;
     }
 
     body {
       font-family: 'Inter', -apple-system, sans-serif;
-      background: var(--bg-primary);
+      background: var(--bg-body);
       color: var(--text-primary);
       min-height: 100vh;
-      overflow-x: hidden;
-    }
-
-    /* Animated background */
-    body::before {
-      content: '';
-      position: fixed;
-      top: -50%;
-      left: -50%;
-      width: 200%;
-      height: 200%;
-      background:
-        radial-gradient(ellipse at 20% 50%, rgba(99,102,241,0.08) 0%, transparent 50%),
-        radial-gradient(ellipse at 80% 20%, rgba(139,92,246,0.06) 0%, transparent 50%),
-        radial-gradient(ellipse at 50% 80%, rgba(6,182,212,0.05) 0%, transparent 50%);
-      animation: bgShift 20s ease-in-out infinite;
-      z-index: 0;
-      pointer-events: none;
-    }
-
-    @keyframes bgShift {
-      0%, 100% { transform: translate(0, 0) rotate(0deg); }
-      33% { transform: translate(-2%, 1%) rotate(1deg); }
-      66% { transform: translate(1%, -1%) rotate(-0.5deg); }
-    }
-
-    /* ─── HEADER ─── */
-    header {
-      position: relative;
-      z-index: 10;
-      padding: 20px 32px;
       display: flex;
-      justify-content: space-between;
-      align-items: center;
-      border-bottom: 1px solid var(--border);
-      backdrop-filter: blur(20px);
-      background: rgba(10, 11, 15, 0.8);
+      overflow: hidden;
     }
 
-    .logo {
+    /* ─── SIDEBAR ─────────────────────────────── */
+    .sidebar {
+      width: var(--sidebar-width);
+      height: 100vh;
+      background: var(--bg-sidebar);
+      border-right: 1px solid var(--border);
+      display: flex;
+      flex-direction: column;
+      flex-shrink: 0;
+      position: relative;
+      z-index: 20;
+    }
+
+    .sidebar-header {
+      padding: 24px 20px 20px;
+      border-bottom: 1px solid var(--border);
+    }
+
+    .sidebar-logo {
       display: flex;
       align-items: center;
       gap: 12px;
+      text-decoration: none;
     }
 
-    .logo-icon {
-      width: 40px;
-      height: 40px;
-      background: var(--gradient-primary);
-      border-radius: 12px;
+    .logo-mark {
+      width: 36px;
+      height: 36px;
+      background: var(--gradient);
+      border-radius: 10px;
       display: flex;
       align-items: center;
       justify-content: center;
-      font-size: 20px;
-      box-shadow: var(--shadow-glow);
+      font-size: 18px;
+      box-shadow: 0 0 20px rgba(99,102,241,0.3);
     }
 
-    .logo h1 {
-      font-size: 22px;
+    .logo-text h1 {
+      font-size: 18px;
       font-weight: 800;
-      background: var(--gradient-primary);
+      background: var(--gradient);
       -webkit-background-clip: text;
       -webkit-text-fill-color: transparent;
       background-clip: text;
-      letter-spacing: -0.5px;
+      letter-spacing: -0.3px;
     }
 
-    .logo-subtitle {
-      font-size: 11px;
+    .logo-text span {
+      font-size: 10px;
       color: var(--text-muted);
       font-weight: 500;
-      letter-spacing: 1px;
+      letter-spacing: 0.8px;
       text-transform: uppercase;
     }
 
-    .header-status {
+    .sidebar-nav {
+      flex: 1;
+      padding: 16px 12px;
       display: flex;
-      gap: 16px;
-      align-items: center;
+      flex-direction: column;
+      gap: 2px;
     }
 
-    .status-dot {
+    .nav-section-label {
+      font-size: 10px;
+      font-weight: 600;
+      color: var(--text-muted);
+      text-transform: uppercase;
+      letter-spacing: 1px;
+      padding: 12px 12px 6px;
+    }
+
+    .nav-item {
       display: flex;
       align-items: center;
-      gap: 6px;
-      font-size: 12px;
-      font-weight: 500;
+      gap: 10px;
+      padding: 10px 12px;
+      border-radius: var(--radius-sm);
       color: var(--text-secondary);
+      font-size: 13px;
+      font-weight: 500;
+      cursor: pointer;
+      transition: var(--transition);
+      text-decoration: none;
+      border: 1px solid transparent;
     }
 
-    .status-dot::before {
-      content: '';
-      width: 8px;
-      height: 8px;
+    .nav-item:hover {
+      background: var(--bg-hover);
+      color: var(--text-primary);
+    }
+
+    .nav-item.active {
+      background: var(--accent-glow);
+      color: var(--accent-light);
+      border-color: rgba(99,102,241,0.15);
+    }
+
+    .nav-item .icon {
+      font-size: 16px;
+      width: 20px;
+      text-align: center;
+    }
+
+    .nav-item .badge-sm {
+      margin-left: auto;
+      font-size: 10px;
+      font-weight: 600;
+      padding: 2px 6px;
+      border-radius: 10px;
+      background: rgba(99,102,241,0.15);
+      color: var(--accent-light);
+    }
+
+    /* Sidebar agent list */
+    .sidebar-agents {
+      padding: 0 12px 16px;
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+    }
+
+    .sidebar-agent {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      padding: 8px 12px;
+      border-radius: var(--radius-sm);
+      transition: var(--transition);
+    }
+
+    .sidebar-agent:hover {
+      background: var(--bg-hover);
+    }
+
+    .agent-dot {
+      width: 7px; height: 7px;
       border-radius: 50%;
-      background: var(--accent-green);
-      box-shadow: 0 0 8px var(--accent-green);
-      animation: pulse 2s ease-in-out infinite;
+      background: var(--green);
+      box-shadow: 0 0 6px var(--green);
+      flex-shrink: 0;
     }
 
-    @keyframes pulse {
-      0%, 100% { opacity: 1; }
-      50% { opacity: 0.5; }
+    .agent-dot.active { animation: dotPulse 1.5s ease infinite; }
+
+    @keyframes dotPulse {
+      0%, 100% { box-shadow: 0 0 6px var(--green); }
+      50% { box-shadow: 0 0 12px var(--green), 0 0 20px rgba(52,211,153,0.3); }
     }
 
-    /* ─── MAIN GRID ─── */
-    .dashboard {
-      position: relative;
-      z-index: 5;
-      display: grid;
-      grid-template-columns: 1fr 1fr;
-      grid-template-rows: auto auto auto;
+    .sidebar-agent-info {
+      flex: 1;
+      min-width: 0;
+    }
+
+    .sidebar-agent-name {
+      font-size: 12px;
+      font-weight: 600;
+      color: var(--text-primary);
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    .sidebar-agent-price {
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 10px;
+      color: var(--green);
+      font-weight: 500;
+    }
+
+    /* Sidebar wallets */
+    .sidebar-footer {
+      padding: 16px 12px;
+      border-top: 1px solid var(--border);
+    }
+
+    .wallet-mini {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 8px 12px;
+      border-radius: var(--radius-xs);
+      margin-bottom: 4px;
+    }
+
+    .wallet-mini-label {
+      font-size: 11px;
+      color: var(--text-muted);
+      font-weight: 500;
+    }
+
+    .wallet-mini-balance {
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 11px;
+      color: var(--cyan);
+      font-weight: 500;
+    }
+
+    .sidebar-status {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding: 10px 12px;
+      margin-top: 8px;
+    }
+
+    .status-indicator {
+      width: 6px; height: 6px;
+      border-radius: 50%;
+      background: var(--green);
+      box-shadow: 0 0 8px var(--green);
+    }
+
+    .status-text {
+      font-size: 11px;
+      color: var(--text-secondary);
+      font-weight: 500;
+    }
+
+    /* ─── MAIN CONTENT ────────────────────────── */
+    .main-content {
+      flex: 1;
+      height: 100vh;
+      overflow-y: auto;
+      overflow-x: hidden;
+      background: var(--bg-main);
+    }
+
+    .main-content::-webkit-scrollbar { width: 6px; }
+    .main-content::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
+    .main-content::-webkit-scrollbar-track { background: transparent; }
+
+    /* Top bar */
+    .topbar {
+      position: sticky;
+      top: 0;
+      z-index: 15;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 16px 28px;
+      background: rgba(15, 16, 24, 0.85);
+      backdrop-filter: blur(16px);
+      border-bottom: 1px solid var(--border);
+    }
+
+    .topbar-title {
+      font-size: 16px;
+      font-weight: 700;
+      letter-spacing: -0.3px;
+    }
+
+    .topbar-badges {
+      display: flex;
+      gap: 8px;
+    }
+
+    .topbar-badge {
+      display: flex;
+      align-items: center;
+      gap: 5px;
+      padding: 5px 10px;
+      border-radius: 20px;
+      font-size: 11px;
+      font-weight: 500;
+      background: rgba(52, 211, 153, 0.08);
+      color: var(--green);
+      border: 1px solid rgba(52, 211, 153, 0.12);
+    }
+
+    .topbar-badge .dot {
+      width: 5px; height: 5px;
+      border-radius: 50%;
+      background: currentColor;
+    }
+
+    /* Content area */
+    .content-area {
+      padding: 24px 28px;
+      display: flex;
+      flex-direction: column;
       gap: 20px;
-      padding: 24px 32px;
-      max-width: 1440px;
-      margin: 0 auto;
     }
 
-    /* ─── CARDS ─── */
+    /* ─── CARDS ─────────────────────────────── */
     .card {
       background: var(--bg-card);
       border: 1px solid var(--border);
@@ -172,21 +349,19 @@
     }
 
     .card:hover {
-      border-color: rgba(99, 102, 241, 0.2);
-      box-shadow: var(--shadow-glow);
+      border-color: rgba(99,102,241,0.12);
     }
 
-    .card-header {
-      padding: 18px 22px;
-      border-bottom: 1px solid var(--border);
+    .card-head {
       display: flex;
-      justify-content: space-between;
       align-items: center;
-      background: var(--gradient-card);
+      justify-content: space-between;
+      padding: 14px 20px;
+      border-bottom: 1px solid var(--border);
     }
 
-    .card-header h2 {
-      font-size: 15px;
+    .card-head h2 {
+      font-size: 13px;
       font-weight: 700;
       display: flex;
       align-items: center;
@@ -194,146 +369,49 @@
       letter-spacing: -0.2px;
     }
 
-    .card-header .badge {
-      font-size: 10px;
+    .card-head .tag {
+      font-size: 9px;
       font-weight: 600;
       padding: 3px 8px;
       border-radius: 20px;
-      background: rgba(99, 102, 241, 0.15);
-      color: var(--accent-blue);
-      letter-spacing: 0.5px;
       text-transform: uppercase;
+      letter-spacing: 0.5px;
+      background: rgba(99,102,241,0.1);
+      color: var(--accent-light);
     }
 
     .card-body {
-      padding: 18px 22px;
+      padding: 16px 20px;
     }
 
-    /* ─── AGENT CARDS ─── */
-    .agent-grid {
-      display: grid;
-      grid-template-columns: 1fr 1fr;
-      gap: 12px;
-    }
+    /* ─── TASK INPUT ────────────────────────── */
+    .task-card .card-body { padding: 20px; }
 
-    .agent-card {
-      background: var(--bg-secondary);
-      border: 1px solid var(--border);
-      border-radius: var(--radius-sm);
-      padding: 16px;
-      transition: var(--transition);
-      position: relative;
-      overflow: hidden;
-    }
-
-    .agent-card::before {
-      content: '';
-      position: absolute;
-      top: 0;
-      left: 0;
-      right: 0;
-      height: 3px;
-      background: var(--gradient-primary);
-      opacity: 0;
-      transition: var(--transition);
-    }
-
-    .agent-card:hover::before, .agent-card.active::before {
-      opacity: 1;
-    }
-
-    .agent-card:hover {
-      border-color: rgba(99, 102, 241, 0.3);
-      transform: translateY(-2px);
-      box-shadow: 0 8px 30px rgba(0, 0, 0, 0.3);
-    }
-
-    .agent-card.active {
-      border-color: var(--accent-blue);
-      box-shadow: 0 0 20px var(--accent-blue-glow);
-      animation: agentPulse 1s ease-in-out;
-    }
-
-    @keyframes agentPulse {
-      0% { box-shadow: 0 0 0 rgba(99, 102, 241, 0); }
-      50% { box-shadow: 0 0 30px rgba(99, 102, 241, 0.4); }
-      100% { box-shadow: 0 0 20px var(--accent-blue-glow); }
-    }
-
-    .agent-name {
-      font-size: 14px;
-      font-weight: 700;
-      margin-bottom: 6px;
-    }
-
-    .agent-capability {
-      font-size: 12px;
-      color: var(--text-secondary);
-      line-height: 1.5;
-      margin-bottom: 10px;
-    }
-
-    .agent-meta {
+    .task-row {
       display: flex;
-      justify-content: space-between;
-      align-items: center;
+      gap: 16px;
+      align-items: flex-end;
     }
 
-    .agent-price {
-      font-family: 'JetBrains Mono', monospace;
-      font-size: 13px;
-      font-weight: 600;
-      color: var(--accent-green);
-    }
-
-    .agent-model {
-      font-size: 10px;
-      color: var(--text-muted);
-      padding: 2px 8px;
-      background: rgba(139, 92, 246, 0.1);
-      border-radius: 4px;
-      font-weight: 500;
-    }
-
-    .agent-status-indicator {
-      position: absolute;
-      top: 12px;
-      right: 12px;
-      width: 8px;
-      height: 8px;
-      border-radius: 50%;
-      background: var(--accent-green);
-      box-shadow: 0 0 6px var(--accent-green);
-    }
-
-    /* ─── TASK INPUT ─── */
-    .task-section { grid-column: 1 / -1; }
-
-    .task-input-area {
-      display: grid;
-      grid-template-columns: 1fr auto;
-      gap: 14px;
-      align-items: end;
-    }
-
-    .input-group {
+    .task-input-wrap {
+      flex: 1;
       display: flex;
       flex-direction: column;
       gap: 6px;
     }
 
-    .input-group label {
-      font-size: 12px;
+    .task-input-wrap label {
+      font-size: 11px;
       font-weight: 600;
-      color: var(--text-secondary);
       text-transform: uppercase;
       letter-spacing: 0.5px;
+      color: var(--text-muted);
     }
 
     .task-input {
       width: 100%;
-      padding: 14px 18px;
-      background: var(--bg-secondary);
+      padding: 12px 16px;
+      background: var(--bg-input);
       border: 1px solid var(--border);
       border-radius: var(--radius-sm);
       color: var(--text-primary);
@@ -344,140 +422,217 @@
     }
 
     .task-input:focus {
-      border-color: var(--border-focus);
-      box-shadow: 0 0 20px var(--accent-blue-glow);
+      border-color: var(--border-active);
+      box-shadow: 0 0 0 3px var(--accent-glow);
     }
 
-    .task-input::placeholder {
-      color: var(--text-muted);
-    }
+    .task-input::placeholder { color: var(--text-muted); }
 
-    /* Budget slider */
-    .budget-control {
+    .budget-wrap {
       display: flex;
       flex-direction: column;
-      gap: 8px;
+      gap: 6px;
+      min-width: 140px;
     }
 
-    .budget-display {
+    .budget-header {
       display: flex;
       justify-content: space-between;
-      align-items: center;
+      align-items: baseline;
+    }
+
+    .budget-header label {
+      font-size: 11px;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      color: var(--text-muted);
     }
 
     .budget-value {
       font-family: 'JetBrains Mono', monospace;
-      font-size: 20px;
+      font-size: 15px;
       font-weight: 700;
-      background: var(--gradient-primary);
+      background: var(--gradient);
       -webkit-background-clip: text;
       -webkit-text-fill-color: transparent;
       background-clip: text;
     }
 
-    .budget-label {
-      font-size: 11px;
-      color: var(--text-muted);
-      font-weight: 500;
-      text-transform: uppercase;
-      letter-spacing: 0.5px;
-    }
-
     input[type="range"] {
       -webkit-appearance: none;
       width: 100%;
-      height: 6px;
-      background: var(--bg-secondary);
-      border-radius: 3px;
+      height: 4px;
+      background: var(--bg-input);
+      border-radius: 2px;
       outline: none;
       cursor: pointer;
     }
 
     input[type="range"]::-webkit-slider-thumb {
       -webkit-appearance: none;
-      width: 22px;
-      height: 22px;
+      width: 18px;
+      height: 18px;
       border-radius: 50%;
-      background: var(--gradient-primary);
+      background: var(--gradient);
       cursor: pointer;
-      box-shadow: 0 0 12px var(--accent-blue-glow);
-      transition: var(--transition);
+      box-shadow: 0 0 10px var(--accent-glow);
     }
 
-    input[type="range"]::-webkit-slider-thumb:hover {
-      transform: scale(1.15);
-      box-shadow: 0 0 20px var(--accent-blue-glow);
-    }
-
-    /* Run button */
     .btn-run {
-      padding: 14px 32px;
-      background: var(--gradient-primary);
+      padding: 12px 28px;
+      background: var(--gradient);
       color: white;
       border: none;
       border-radius: var(--radius-sm);
       font-family: 'Inter', sans-serif;
-      font-size: 14px;
+      font-size: 13px;
       font-weight: 700;
       cursor: pointer;
       transition: var(--transition);
       white-space: nowrap;
-      letter-spacing: 0.3px;
+      letter-spacing: 0.2px;
       position: relative;
       overflow: hidden;
     }
 
-    .btn-run::before {
+    .btn-run::after {
       content: '';
       position: absolute;
-      top: 0;
-      left: -100%;
-      width: 100%;
-      height: 100%;
-      background: linear-gradient(90deg, transparent, rgba(255,255,255,0.15), transparent);
+      top: 0; left: -100%; width: 100%; height: 100%;
+      background: linear-gradient(90deg, transparent, rgba(255,255,255,0.12), transparent);
       transition: 0.5s;
     }
 
-    .btn-run:hover::before {
-      left: 100%;
+    .btn-run:hover::after { left: 100%; }
+    .btn-run:hover { transform: translateY(-1px); box-shadow: 0 6px 24px rgba(99,102,241,0.35); }
+    .btn-run:active { transform: translateY(0); }
+    .btn-run:disabled { opacity: 0.4; cursor: not-allowed; transform: none; }
+
+    .spinner {
+      display: inline-block; width: 14px; height: 14px;
+      border: 2px solid rgba(255,255,255,0.3);
+      border-top-color: white; border-radius: 50%;
+      animation: spin 0.5s linear infinite;
+      margin-right: 6px;
     }
 
-    .btn-run:hover {
-      transform: translateY(-2px);
-      box-shadow: 0 8px 30px rgba(99, 102, 241, 0.4);
+    @keyframes spin { to { transform: rotate(360deg); } }
+
+    /* ─── TWO COLUMN LAYOUT ───────────────── */
+    .grid-2 {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 20px;
     }
 
-    .btn-run:active {
-      transform: translateY(0);
+    .grid-full {
+      grid-column: 1 / -1;
     }
 
-    .btn-run:disabled {
-      opacity: 0.5;
-      cursor: not-allowed;
-      transform: none;
+    /* ─── LIVE FEED ────────────────────────── */
+    .feed {
+      max-height: 380px;
+      overflow-y: auto;
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
     }
 
-    .btn-run.loading {
-      pointer-events: none;
+    .feed::-webkit-scrollbar { width: 4px; }
+    .feed::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.08); border-radius: 2px; }
+
+    .feed-item {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      padding: 10px 14px;
+      background: var(--bg-card-alt);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-sm);
+      animation: feedIn 0.25s ease-out;
     }
 
-    /* ─── WALLET BALANCES ─── */
-    .wallet-grid {
+    @keyframes feedIn {
+      from { opacity: 0; transform: translateY(-6px); }
+      to { opacity: 1; transform: translateY(0); }
+    }
+
+    .feed-icon {
+      width: 30px; height: 30px;
+      border-radius: var(--radius-xs);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 13px;
+      flex-shrink: 0;
+    }
+
+    .feed-icon.payment { background: rgba(52,211,153,0.12); }
+    .feed-icon.agent { background: rgba(99,102,241,0.12); }
+    .feed-icon.plan { background: rgba(251,191,36,0.12); }
+    .feed-icon.budget { background: rgba(248,113,113,0.12); }
+    .feed-icon.complete { background: rgba(34,211,238,0.12); }
+    .feed-icon.x402 { background: rgba(168,85,247,0.12); }
+
+    .feed-info { flex: 1; min-width: 0; }
+
+    .feed-label {
+      font-size: 12px;
+      font-weight: 600;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    .feed-sub {
+      font-size: 11px;
+      color: var(--text-muted);
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    .feed-link {
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 10px;
+      color: var(--accent-light);
+      text-decoration: none;
+      padding: 3px 8px;
+      border-radius: 4px;
+      background: rgba(99,102,241,0.08);
+      transition: var(--transition);
+      white-space: nowrap;
+    }
+
+    .feed-link:hover { background: rgba(99,102,241,0.2); color: white; }
+
+    .empty-feed {
+      text-align: center;
+      padding: 40px 20px;
+      color: var(--text-muted);
+    }
+
+    .empty-feed .ef-icon { font-size: 28px; margin-bottom: 10px; opacity: 0.4; }
+    .empty-feed p { font-size: 12px; line-height: 1.6; }
+
+    /* ─── WALLET CARDS ───────────────────────── */
+    .wallet-row {
       display: grid;
       grid-template-columns: 1fr 1fr 1fr;
-      gap: 12px;
+      gap: 10px;
     }
 
-    .wallet-item {
-      background: var(--bg-secondary);
+    .wallet-card {
+      background: var(--bg-card-alt);
       border: 1px solid var(--border);
       border-radius: var(--radius-sm);
       padding: 14px 16px;
       text-align: center;
     }
 
-    .wallet-label {
-      font-size: 10px;
+    .wallet-card-label {
+      font-size: 9px;
       font-weight: 600;
       color: var(--text-muted);
       text-transform: uppercase;
@@ -485,315 +640,245 @@
       margin-bottom: 8px;
     }
 
-    .wallet-balance {
+    .wallet-card-balance {
       font-family: 'JetBrains Mono', monospace;
-      font-size: 16px;
+      font-size: 15px;
       font-weight: 700;
-      color: var(--accent-cyan);
+      color: var(--cyan);
     }
 
-    .wallet-address {
+    .wallet-card-addr {
       font-family: 'JetBrains Mono', monospace;
-      font-size: 10px;
+      font-size: 9px;
       color: var(--text-muted);
       margin-top: 6px;
       word-break: break-all;
     }
 
-    /* ─── LIVE TX FEED ─── */
-    .tx-feed {
-      max-height: 350px;
-      overflow-y: auto;
-      display: flex;
-      flex-direction: column;
-      gap: 8px;
-    }
+    /* ─── RESULT PANEL ───────────────────────── */
+    .result-panel { display: none; }
+    .result-panel.visible { display: block; animation: feedIn 0.3s ease-out; }
 
-    .tx-feed::-webkit-scrollbar {
-      width: 4px;
-    }
-
-    .tx-feed::-webkit-scrollbar-thumb {
-      background: var(--border);
-      border-radius: 2px;
-    }
-
-    .tx-item {
-      display: flex;
-      align-items: center;
-      gap: 12px;
-      padding: 12px 14px;
-      background: var(--bg-secondary);
-      border: 1px solid var(--border);
+    .result-output {
+      background: var(--bg-card-alt);
       border-radius: var(--radius-sm);
-      animation: slideIn 0.3s ease-out;
-      transition: var(--transition);
-    }
-
-    .tx-item:hover {
-      border-color: rgba(99, 102, 241, 0.2);
-    }
-
-    @keyframes slideIn {
-      from { opacity: 0; transform: translateY(-8px); }
-      to { opacity: 1; transform: translateY(0); }
-    }
-
-    .tx-icon {
-      width: 32px;
-      height: 32px;
-      border-radius: 8px;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      font-size: 14px;
-      flex-shrink: 0;
-    }
-
-    .tx-icon.payment { background: rgba(16, 185, 129, 0.15); }
-    .tx-icon.agent { background: rgba(99, 102, 241, 0.15); }
-    .tx-icon.plan { background: rgba(245, 158, 11, 0.15); }
-    .tx-icon.budget { background: rgba(239, 68, 68, 0.15); }
-    .tx-icon.complete { background: rgba(6, 182, 212, 0.15); }
-
-    .tx-details {
-      flex: 1;
-      min-width: 0;
-    }
-
-    .tx-label {
+      padding: 16px 18px;
       font-size: 13px;
-      font-weight: 600;
-      margin-bottom: 2px;
-      white-space: nowrap;
-      overflow: hidden;
-      text-overflow: ellipsis;
-    }
-
-    .tx-sub {
-      font-size: 11px;
-      color: var(--text-muted);
-    }
-
-    .tx-link {
-      font-family: 'JetBrains Mono', monospace;
-      font-size: 10px;
-      color: var(--accent-blue);
-      text-decoration: none;
-      padding: 4px 8px;
-      border-radius: 4px;
-      background: rgba(99, 102, 241, 0.1);
-      transition: var(--transition);
-      white-space: nowrap;
-    }
-
-    .tx-link:hover {
-      background: rgba(99, 102, 241, 0.25);
-      color: white;
-    }
-
-    /* ─── RESULT PANEL ─── */
-    .result-panel {
-      grid-column: 1 / -1;
-      display: none;
-    }
-
-    .result-panel.visible {
-      display: block;
-      animation: slideIn 0.4s ease-out;
-    }
-
-    .result-content {
-      background: var(--bg-secondary);
-      border-radius: var(--radius-sm);
-      padding: 20px;
-      font-size: 14px;
       line-height: 1.7;
       color: var(--text-secondary);
       white-space: pre-wrap;
-      max-height: 400px;
+      max-height: 360px;
       overflow-y: auto;
     }
 
-    .result-stats {
+    .result-output::-webkit-scrollbar { width: 4px; }
+    .result-output::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.08); border-radius: 2px; }
+
+    .result-chips {
       display: flex;
-      gap: 20px;
-      margin-top: 14px;
+      gap: 8px;
+      margin-top: 12px;
       flex-wrap: wrap;
     }
 
-    .stat-chip {
+    .chip {
       display: flex;
       align-items: center;
-      gap: 6px;
-      padding: 8px 14px;
-      background: var(--bg-secondary);
+      gap: 5px;
+      padding: 6px 12px;
+      background: var(--bg-card-alt);
       border: 1px solid var(--border);
       border-radius: 20px;
-      font-size: 12px;
+      font-size: 11px;
       font-weight: 600;
     }
 
-    .stat-chip .stat-value {
+    .chip .val {
       font-family: 'JetBrains Mono', monospace;
-      color: var(--accent-cyan);
+      color: var(--cyan);
     }
 
-    /* ─── EMPTY STATE ─── */
-    .empty-state {
-      text-align: center;
-      padding: 32px;
-      color: var(--text-muted);
+    /* ─── AGENT CARD (in active area) ────────── */
+    .agent-card-active {
+      border-color: var(--accent) !important;
+      box-shadow: 0 0 16px var(--accent-glow);
     }
 
-    .empty-state .icon {
-      font-size: 32px;
-      margin-bottom: 12px;
-      opacity: 0.5;
+    .agent-card-active .agent-dot {
+      background: var(--accent-light);
+      box-shadow: 0 0 8px var(--accent-light);
     }
 
-    .empty-state p {
-      font-size: 13px;
+    /* ─── RESPONSIVE ─────────────────────────── */
+    @media (max-width: 1024px) {
+      .sidebar { width: 220px; }
+      .grid-2 { grid-template-columns: 1fr; }
     }
 
-    /* ─── RESPONSIVE ─── */
-    @media (max-width: 900px) {
-      .dashboard { grid-template-columns: 1fr; padding: 16px; }
-      .agent-grid { grid-template-columns: 1fr; }
-      .wallet-grid { grid-template-columns: 1fr; }
-      .task-input-area { grid-template-columns: 1fr; }
-      header { padding: 16px; flex-direction: column; gap: 12px; }
-    }
-
-    /* ─── LOADING SPINNER ─── */
-    .spinner {
-      display: inline-block;
-      width: 16px;
-      height: 16px;
-      border: 2px solid rgba(255,255,255,0.3);
-      border-top-color: white;
-      border-radius: 50%;
-      animation: spin 0.6s linear infinite;
-      margin-right: 8px;
-    }
-
-    @keyframes spin {
-      to { transform: rotate(360deg); }
+    @media (max-width: 768px) {
+      body { flex-direction: column; }
+      .sidebar { width: 100%; height: auto; flex-direction: row; overflow-x: auto; }
+      .sidebar-nav, .sidebar-agents, .sidebar-footer { display: none; }
+      .main-content { height: auto; overflow: visible; }
+      .content-area { padding: 16px; }
+      .task-row { flex-direction: column; }
+      .wallet-row { grid-template-columns: 1fr; }
     }
   </style>
 </head>
 <body>
-  <header>
-    <div class="logo">
-      <div class="logo-icon">🧠</div>
-      <div>
-        <h1>StellarMind</h1>
-        <div class="logo-subtitle">AI Agent Marketplace · x402 Micropayments</div>
+  <!-- SIDEBAR -->
+  <aside class="sidebar">
+    <div class="sidebar-header">
+      <div class="sidebar-logo">
+        <div class="logo-mark">🧠</div>
+        <div class="logo-text">
+          <h1>StellarMind</h1>
+          <span>x402 Micropayments</span>
+        </div>
       </div>
     </div>
-    <div class="header-status">
-      <div class="status-dot" id="status-network">Stellar Testnet</div>
-      <div class="status-dot" id="status-claude">Claude AI</div>
-    </div>
-  </header>
 
-  <main class="dashboard">
-    <!-- Task Input Section -->
-    <section class="card task-section" id="task-section">
-      <div class="card-header">
-        <h2>🎯 Task Orchestrator</h2>
-        <span class="badge">Claude-Powered</span>
+    <nav class="sidebar-nav">
+      <div class="nav-section-label">Navigation</div>
+      <a class="nav-item active" href="#" onclick="return false;">
+        <span class="icon">🎯</span> Orchestrator
+      </a>
+      <a class="nav-item" href="/api/agents" target="_blank">
+        <span class="icon">🤖</span> Agent Registry
+        <span class="badge-sm" id="nav-agent-count">4</span>
+      </a>
+      <a class="nav-item" href="/api/status" target="_blank">
+        <span class="icon">📊</span> API Status
+      </a>
+      <a class="nav-item" href="/api/wallet/transactions" target="_blank">
+        <span class="icon">🔗</span> Transactions
+      </a>
+
+      <div class="nav-section-label">Agents</div>
+    </nav>
+
+    <div class="sidebar-agents" id="sidebar-agents">
+      <!-- populated by JS -->
+    </div>
+
+    <div class="sidebar-footer">
+      <div class="nav-section-label" style="padding:0 12px 8px;">Wallets</div>
+      <div class="wallet-mini">
+        <span class="wallet-mini-label">Server</span>
+        <span class="wallet-mini-balance" id="mini-bal-server">—</span>
       </div>
-      <div class="card-body">
-        <div class="task-input-area">
-          <div class="input-group" style="flex:1">
-            <label for="task-input">What should the agents work on?</label>
-            <input type="text" id="task-input" class="task-input" placeholder="e.g. Research AI payments on Stellar and provide strategic analysis..." />
-          </div>
-          <div class="input-group">
-            <div class="budget-control">
-              <div class="budget-display">
-                <span class="budget-label">Agent Budget</span>
+      <div class="wallet-mini">
+        <span class="wallet-mini-label">Orchestrator</span>
+        <span class="wallet-mini-balance" id="mini-bal-orchestrator">—</span>
+      </div>
+      <div class="wallet-mini">
+        <span class="wallet-mini-label">Buyer</span>
+        <span class="wallet-mini-balance" id="mini-bal-buyer">—</span>
+      </div>
+
+      <div class="sidebar-status">
+        <span class="status-indicator"></span>
+        <span class="status-text" id="sidebar-status-text">Stellar Testnet · Online</span>
+      </div>
+    </div>
+  </aside>
+
+  <!-- MAIN CONTENT -->
+  <div class="main-content">
+    <div class="topbar">
+      <div class="topbar-title">Task Orchestrator</div>
+      <div class="topbar-badges">
+        <div class="topbar-badge"><span class="dot"></span> Stellar Testnet</div>
+        <div class="topbar-badge"><span class="dot"></span> Claude AI</div>
+        <div class="topbar-badge"><span class="dot"></span> x402 Active</div>
+      </div>
+    </div>
+
+    <div class="content-area">
+      <!-- Task Input -->
+      <div class="card task-card">
+        <div class="card-head">
+          <h2>🎯 Submit Task</h2>
+          <span class="tag">Claude-Powered</span>
+        </div>
+        <div class="card-body">
+          <div class="task-row">
+            <div class="task-input-wrap">
+              <label for="task-input">What should the agents work on?</label>
+              <input type="text" id="task-input" class="task-input" placeholder="e.g. Research AI payments on Stellar and provide strategic analysis..." />
+            </div>
+            <div class="budget-wrap">
+              <div class="budget-header">
+                <label>Budget</label>
                 <span class="budget-value" id="budget-display">0.15 USDC</span>
               </div>
               <input type="range" id="budget-slider" min="0.01" max="1.00" step="0.01" value="0.15" />
             </div>
-          </div>
-          <button class="btn-run" id="btn-run" onclick="runOrchestration()">
-            ⚡ Run Agents
-          </button>
-        </div>
-      </div>
-    </section>
-
-    <!-- Agent Registry -->
-    <section class="card" id="agent-registry">
-      <div class="card-header">
-        <h2>🤖 Agent Registry</h2>
-        <span class="badge" id="agent-count">4 Agents</span>
-      </div>
-      <div class="card-body">
-        <div class="agent-grid" id="agent-grid">
-          <!-- Populated by JS -->
-        </div>
-      </div>
-    </section>
-
-    <!-- Wallet Balances -->
-    <section class="card" id="wallet-section">
-      <div class="card-header">
-        <h2>💰 Wallet Balances</h2>
-        <span class="badge" id="wallet-badge">Live</span>
-      </div>
-      <div class="card-body">
-        <div class="wallet-grid" id="wallet-grid">
-          <div class="wallet-item">
-            <div class="wallet-label">Server</div>
-            <div class="wallet-balance" id="balance-server">—</div>
-            <div class="wallet-address" id="addr-server">loading...</div>
-          </div>
-          <div class="wallet-item">
-            <div class="wallet-label">Orchestrator</div>
-            <div class="wallet-balance" id="balance-orchestrator">—</div>
-            <div class="wallet-address" id="addr-orchestrator">loading...</div>
-          </div>
-          <div class="wallet-item">
-            <div class="wallet-label">Buyer</div>
-            <div class="wallet-balance" id="balance-buyer">—</div>
-            <div class="wallet-address" id="addr-buyer">loading...</div>
+            <button class="btn-run" id="btn-run" onclick="runOrchestration()">⚡ Run Agents</button>
           </div>
         </div>
       </div>
-    </section>
 
-    <!-- Live Transaction Feed -->
-    <section class="card" id="tx-feed-section" style="grid-column: 1 / -1;">
-      <div class="card-header">
-        <h2>📡 Live Activity Feed</h2>
-        <span class="badge" id="event-count">0 Events</span>
-      </div>
-      <div class="card-body">
-        <div class="tx-feed" id="tx-feed">
-          <div class="empty-state" id="feed-empty">
-            <div class="icon">📡</div>
-            <p>Waiting for agent activity...<br/>Submit a task above to see real-time events</p>
+      <!-- Two column: Wallets + Feed -->
+      <div class="grid-2">
+        <!-- Wallet Balances -->
+        <div class="card">
+          <div class="card-head">
+            <h2>💰 Wallet Balances</h2>
+            <span class="tag" id="wallet-badge">Live</span>
+          </div>
+          <div class="card-body">
+            <div class="wallet-row" id="wallet-grid">
+              <div class="wallet-card">
+                <div class="wallet-card-label">Server</div>
+                <div class="wallet-card-balance" id="balance-server">—</div>
+                <div class="wallet-card-addr" id="addr-server">loading...</div>
+              </div>
+              <div class="wallet-card">
+                <div class="wallet-card-label">Orchestrator</div>
+                <div class="wallet-card-balance" id="balance-orchestrator">—</div>
+                <div class="wallet-card-addr" id="addr-orchestrator">loading...</div>
+              </div>
+              <div class="wallet-card">
+                <div class="wallet-card-label">Buyer</div>
+                <div class="wallet-card-balance" id="balance-buyer">—</div>
+                <div class="wallet-card-addr" id="addr-buyer">loading...</div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Live Feed -->
+        <div class="card">
+          <div class="card-head">
+            <h2>📡 Live Activity Feed</h2>
+            <span class="tag" id="event-count">0 Events</span>
+          </div>
+          <div class="card-body" style="padding: 12px 16px;">
+            <div class="feed" id="tx-feed">
+              <div class="empty-feed" id="feed-empty">
+                <div class="ef-icon">📡</div>
+                <p>Waiting for agent activity...<br/>Submit a task to see real-time events</p>
+              </div>
+            </div>
           </div>
         </div>
       </div>
-    </section>
 
-    <!-- Result Panel -->
-    <section class="card result-panel" id="result-panel">
-      <div class="card-header">
-        <h2>✅ Task Result</h2>
-        <span class="badge" id="result-badge">Complete</span>
+      <!-- Result Panel -->
+      <div class="card result-panel grid-full" id="result-panel">
+        <div class="card-head">
+          <h2>✅ Task Result</h2>
+          <span class="tag" id="result-badge">Complete</span>
+        </div>
+        <div class="card-body">
+          <div class="result-output" id="result-content"></div>
+          <div class="result-chips" id="result-stats"></div>
+        </div>
       </div>
-      <div class="card-body">
-        <div class="result-content" id="result-content"></div>
-        <div class="result-stats" id="result-stats"></div>
-      </div>
-    </section>
-  </main>
+    </div>
+  </div>
 
   <script>
     // ─── State ───
@@ -812,19 +897,18 @@
       try {
         const res = await fetch('/api/agents');
         const agents = await res.json();
-        const grid = document.getElementById('agent-grid');
-        grid.innerHTML = agents.map(a => `
-          <div class="agent-card" id="agent-${a.id}" data-agent-id="${a.id}">
-            <div class="agent-status-indicator"></div>
-            <div class="agent-name">${a.name}</div>
-            <div class="agent-capability">${a.capability}</div>
-            <div class="agent-meta">
-              <span class="agent-price">${a.price} ${a.currency}</span>
-              <span class="agent-model">${a.model.split('-').slice(0,2).join(' ')}</span>
+        document.getElementById('nav-agent-count').textContent = agents.length;
+
+        const sidebar = document.getElementById('sidebar-agents');
+        sidebar.innerHTML = agents.map(a => `
+          <div class="sidebar-agent" id="agent-${a.id}">
+            <span class="agent-dot"></span>
+            <div class="sidebar-agent-info">
+              <div class="sidebar-agent-name">${a.name}</div>
+              <div class="sidebar-agent-price">${a.price} USDC</div>
             </div>
           </div>
         `).join('');
-        document.getElementById('agent-count').textContent = `${agents.length} Agents`;
       } catch (err) {
         console.error('Failed to load agents:', err);
       }
@@ -836,20 +920,24 @@
         const res = await fetch('/api/wallet/balances');
         const wallets = await res.json();
 
-        for (const [role, data] of Object.entries(wallets)) {
-          const balEl = document.getElementById(`balance-${role}`);
-          const addrEl = document.getElementById(`addr-${role}`);
+        for (const [key, data] of Object.entries(wallets)) {
+          const balEl = document.getElementById(`balance-${key}`);
+          const addrEl = document.getElementById(`addr-${key}`);
+          const miniEl = document.getElementById(`mini-bal-${key}`);
+
           if (balEl && data.balances) {
-            const xlm = data.balances.find(b => b.asset === 'XLM');
             const usdc = data.balances.find(b => b.asset === 'USDC');
-            if (usdc) {
+            const xlm = data.balances.find(b => b.asset === 'XLM');
+            if (usdc && parseFloat(usdc.balance) > 0) {
               balEl.textContent = `${parseFloat(usdc.balance).toFixed(2)} USDC`;
+              if (miniEl) miniEl.textContent = `${parseFloat(usdc.balance).toFixed(2)} USDC`;
             } else if (xlm) {
               balEl.textContent = `${parseFloat(xlm.balance).toFixed(2)} XLM`;
+              if (miniEl) miniEl.textContent = `${parseFloat(xlm.balance).toFixed(1)} XLM`;
             }
           }
           if (addrEl && data.address) {
-            addrEl.textContent = `${data.address.slice(0, 8)}...${data.address.slice(-4)}`;
+            addrEl.textContent = `${data.address.slice(0, 6)}...${data.address.slice(-4)}`;
           }
         }
       } catch (err) {
@@ -860,7 +948,6 @@
     // ─── SSE Event Stream ───
     function connectSSE() {
       const es = new EventSource('/api/events');
-
       es.onmessage = (e) => {
         try {
           const event = JSON.parse(e.data);
@@ -870,9 +957,8 @@
           console.error('SSE parse error:', err);
         }
       };
-
       es.onerror = () => {
-        console.warn('SSE connection lost, reconnecting...');
+        console.warn('SSE reconnecting...');
         setTimeout(connectSSE, 3000);
       };
     }
@@ -886,7 +972,7 @@
       document.getElementById('event-count').textContent = `${eventCount} Events`;
 
       const item = document.createElement('div');
-      item.className = 'tx-item';
+      item.className = 'feed-item';
 
       let icon = '📡', iconClass = 'agent', label = '', sub = '';
 
@@ -894,28 +980,28 @@
         case 'orchestrator_start':
           icon = '🎯'; iconClass = 'plan';
           label = 'Orchestrator Started';
-          sub = `Task: ${event.task?.substring(0, 60)}...`;
+          sub = `Task: ${event.task?.substring(0, 50)}...`;
           break;
         case 'orchestrator_plan':
           icon = '📋'; iconClass = 'plan';
-          label = `Plan: ${event.plan?.substring(0, 50)}`;
+          label = `Plan: ${event.plan?.substring(0, 45)}`;
           sub = `${event.subtaskCount} subtasks planned`;
           break;
         case 'agent_call':
           icon = '⚡'; iconClass = 'agent';
           label = `${event.agent} called`;
-          sub = `Cost: ${event.cost} USDC | ${event.paymentFlow || 'stellar'}`;
+          sub = `Cost: ${event.cost} USDC · ${event.paymentFlow || 'stellar'}`;
           highlightAgent(event.agentId);
           break;
         case 'x402_payment':
-          icon = '🔐'; iconClass = 'payment';
+          icon = '🔐'; iconClass = 'x402';
           label = `x402: ${event.agent} — 402→sign→settle→200`;
-          sub = `${event.amount} ${event.currency} via ${event.protocol} on ${event.network}`;
+          sub = `${event.amount} ${event.currency} via ${event.protocol}`;
           break;
         case 'agent_response':
           icon = '✅'; iconClass = 'complete';
           label = `${event.agent} responded`;
-          sub = `${event.paidVia ? '[' + event.paidVia + '] ' : ''}${event.resultPreview?.substring(0, 50)}...`;
+          sub = `${event.paidVia ? '[' + event.paidVia + '] ' : ''}${event.resultPreview?.substring(0, 45)}...`;
           break;
         case 'payment':
           icon = '💸'; iconClass = 'payment';
@@ -925,28 +1011,28 @@
         case 'budget_limit':
           icon = '🛑'; iconClass = 'budget';
           label = `Budget limit: ${event.agent} skipped`;
-          sub = `Need ${event.cost} USDC, only ${event.remaining} remaining`;
+          sub = `Need ${event.cost}, only ${event.remaining} remaining`;
           break;
         case 'orchestrator_complete':
           icon = '🏁'; iconClass = 'complete';
-          label = `Task Complete — ${event.totalSpent} USDC spent`;
-          sub = `${event.agentsUsed} agents, ${event.elapsed}, protocol: ${event.paymentProtocol || 'stellar'}`;
+          label = `Complete — ${event.totalSpent} USDC spent`;
+          sub = `${event.agentsUsed} agents · ${event.elapsed} · ${event.paymentProtocol || 'stellar'}`;
           break;
         default:
           label = event.type;
-          sub = JSON.stringify(event).substring(0, 80);
+          sub = JSON.stringify(event).substring(0, 70);
       }
 
       let linkHtml = '';
       if (event.explorerUrl) {
-        linkHtml = `<a href="${event.explorerUrl}" target="_blank" class="tx-link">View TX ↗</a>`;
+        linkHtml = `<a href="${event.explorerUrl}" target="_blank" class="feed-link">TX ↗</a>`;
       }
 
       item.innerHTML = `
-        <div class="tx-icon ${iconClass}">${icon}</div>
-        <div class="tx-details">
-          <div class="tx-label">${label}</div>
-          <div class="tx-sub">${sub}</div>
+        <div class="feed-icon ${iconClass}">${icon}</div>
+        <div class="feed-info">
+          <div class="feed-label">${label}</div>
+          <div class="feed-sub">${sub}</div>
         </div>
         ${linkHtml}
       `;
@@ -957,33 +1043,33 @@
     function highlightAgent(agentId) {
       const card = document.getElementById(`agent-${agentId}`);
       if (card) {
-        card.classList.add('active');
-        setTimeout(() => card.classList.remove('active'), 3000);
+        card.querySelector('.agent-dot')?.classList.add('active');
+        card.classList.add('agent-card-active');
+        setTimeout(() => {
+          card.classList.remove('agent-card-active');
+          card.querySelector('.agent-dot')?.classList.remove('active');
+        }, 3000);
       }
     }
 
     // ─── Run Orchestration ───
     async function runOrchestration() {
       if (isRunning) return;
+      isRunning = true;
 
-      const taskInput = document.getElementById('task-input');
-      const task = taskInput.value.trim();
+      const task = document.getElementById('task-input').value.trim();
       if (!task) {
-        taskInput.focus();
-        taskInput.style.borderColor = 'var(--accent-red)';
-        setTimeout(() => taskInput.style.borderColor = '', 2000);
+        document.getElementById('task-input').focus();
+        isRunning = false;
         return;
       }
 
       const budget = parseFloat(budgetSlider.value);
       const btn = document.getElementById('btn-run');
-
-      isRunning = true;
       btn.disabled = true;
-      btn.innerHTML = '<span class="spinner"></span> Running...';
+      btn.innerHTML = '<span class="spinner"></span>Running...';
       btn.classList.add('loading');
 
-      // Hide previous result
       document.getElementById('result-panel').classList.remove('visible');
 
       try {
@@ -992,11 +1078,8 @@
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ task, budget }),
         });
-
         const result = await res.json();
         showResult(result);
-
-        // Refresh wallet balances
         loadWallets();
       } catch (err) {
         console.error('Orchestration failed:', err);
@@ -1014,36 +1097,34 @@
       const content = document.getElementById('result-content');
       const stats = document.getElementById('result-stats');
 
-      // Build result text from agent outputs
       let text = '';
       if (result.results) {
         for (const r of result.results) {
           if (r.skipped) {
-            text += `⏭️ ${r.agentId}: SKIPPED — ${r.reason}\n\n`;
+            text += `⏭️ ${r.agentId}: Skipped — ${r.reason}\n\n`;
           } else {
-            text += `${r.agentName} (${r.model})\n${r.output}\n\n`;
+            text += `━━━ ${r.agentName} (${r.cost} ${r.currency}) ━━━\n`;
+            text += `${r.output}\n\n`;
           }
         }
       }
-
       content.textContent = text || 'No results';
 
-      // Build stats
       const txLinks = (result.payments || []).map(p =>
-        `<a href="${p.explorerUrl}" target="_blank" class="tx-link" style="margin-right:4px;">TX ${p.txHash?.slice(0,8)} ↗</a>`
+        `<a href="${p.explorerUrl}" target="_blank" class="feed-link" style="margin-right:4px;">TX ${p.txHash?.slice(0,8)} ↗</a>`
       ).join('');
 
       stats.innerHTML = `
-        <div class="stat-chip">Agents: <span class="stat-value">${result.agentsUsed || 0}</span></div>
-        <div class="stat-chip">Spent: <span class="stat-value">${result.totalSpent || '0'} USDC</span></div>
-        <div class="stat-chip">TXs: <span class="stat-value">${result.txCount || 0}</span></div>
-        <div class="stat-chip">Protocol: <span class="stat-value">${result.paymentProtocol || 'stellar'}</span></div>
-        <div class="stat-chip">Time: <span class="stat-value">${result.elapsed || '—'}</span></div>
-        ${result.budgetExhausted ? '<div class="stat-chip" style="color:var(--accent-amber)">⚠️ Budget Exhausted</div>' : ''}
+        <div class="chip">Agents: <span class="val">${result.agentsUsed || 0}</span></div>
+        <div class="chip">Spent: <span class="val">${result.totalSpent || '0'} USDC</span></div>
+        <div class="chip">TXs: <span class="val">${result.txCount || 0}</span></div>
+        <div class="chip">Protocol: <span class="val">${result.paymentProtocol || 'stellar'}</span></div>
+        <div class="chip">Time: <span class="val">${result.elapsed || '—'}</span></div>
+        ${result.budgetExhausted ? '<div class="chip" style="color:var(--amber)">⚠️ Budget Exhausted</div>' : ''}
       `;
 
       if (txLinks) {
-        stats.innerHTML += `<div class="stat-chip" style="flex-wrap:wrap;gap:4px;">Verify: ${txLinks}</div>`;
+        stats.innerHTML += `<div class="chip" style="flex-wrap:wrap;gap:4px;">Verify: ${txLinks}</div>`;
       }
 
       panel.classList.add('visible');
@@ -1061,8 +1142,6 @@
     loadAgents();
     loadWallets();
     connectSSE();
-
-    // Refresh balances periodically
     setInterval(loadWallets, 30000);
   </script>
 </body>
