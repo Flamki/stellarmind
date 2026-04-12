@@ -58,16 +58,17 @@
           └─────────────────────┘
 ```
 
-### x402 Payment Flow
+### x402 Payment Flow (Orchestrator → Paywalled Agents)
 
 ```
-Client ──GET /api/premium/research──▶ Server
-Client ◀──402 Payment Required──── Server
-         {price: "$0.01", network: "stellar:testnet"}
+Orchestrator ──GET /api/premium/research──▶ Server (x402 middleware)
+Orchestrator ◀──402 Payment Required──────  Server
+              {price: "$0.01", network: "stellar:testnet", payTo: "GBYN..."}
 
-Client ──Signs Stellar tx, retries with X-PAYMENT header──▶ Server
-         Facilitator verifies + settles on-chain
-Client ◀──200 OK + Claude response──── Server
+wrapFetchWithPayment auto-signs Stellar USDC tx via ExactStellarScheme
+Orchestrator ──Retries with X-PAYMENT header──▶ Server
+              Facilitator verifies + settles USDC on-chain (~5s)
+Orchestrator ◀──200 OK + Claude response──────  Server
 ```
 
 ## 🚀 Quick Start
@@ -101,11 +102,21 @@ Edit `.env` and add your Anthropic API key:
 ANTHROPIC_API_KEY=sk-ant-your-key-here
 ```
 
-### 4. (Optional) Get Testnet USDC
+### 4. Setup USDC for x402 Payments
 
-For full x402 USDC payments:
-1. Create a USDC trustline at [lab.stellar.org/account/fund](https://lab.stellar.org/account/fund)
-2. Get testnet USDC from [faucet.circle.com](https://faucet.circle.com) (select Stellar Testnet)
+The x402 protocol uses USDC for micropayments. Run the automated setup:
+
+```bash
+npm run setup:usdc   # Adds USDC trustlines to all wallets
+```
+
+Then get free testnet USDC from Circle:
+1. Go to [faucet.circle.com](https://faucet.circle.com)
+2. Select **Stellar Testnet**
+3. Paste your orchestrator address (from `.env`: `ORCHESTRATOR_STELLAR_ADDRESS`)
+4. Request USDC — you'll receive 10 testnet USDC
+
+> **Note:** Without USDC, the system automatically falls back to XLM direct payments on Stellar testnet. Both produce real, verifiable on-chain transactions.
 
 ### 5. Start the Server
 
