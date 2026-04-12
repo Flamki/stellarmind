@@ -1,0 +1,27 @@
+{
+  "name": "stellarmind",
+  "version": "1.0.0",
+  "main": "src/server.js",
+  "scripts": {
+    "dev": "node src/server.js",
+    "start": "node src/server.js",
+    "demo": "node src/demo.js",
+    "setup": "node src/setup-wallets.js"
+  },
+  "keywords": ["stellar", "x402", "ai-agents", "claude", "micropayments", "marketplace"],
+  "author": "StellarMind Team",
+  "license": "MIT",
+  "description": "AI Agent Marketplace with x402 Micropayments on Stellar — Claude-powered agents that buy, sell, and earn autonomously",
+  "type": "module",
+  "dependencies": {
+    "@anthropic-ai/sdk": "^0.88.0",
+    "@stellar/stellar-sdk": "^15.0.1",
+    "@x402/core": "^2.9.0",
+    "@x402/express": "^2.9.0",
+    "@x402/fetch": "^2.9.0",
+    "@x402/stellar": "^2.9.0",
+    "cors": "^2.8.6",
+    "dotenv": "^17.4.1",
+    "express": "^5.2.1"
+  }
+}
