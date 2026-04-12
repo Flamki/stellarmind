@@ -5,7 +5,7 @@ import path from 'node:path';
 
 import { config } from './config.js';
 import { AGENTS, discoverAgents, getAgentById } from './agents/registry.js';
-import { runResearch, runSummary, runAnalysis, runCode } from './agents/services.js';
+import { runResearch, runSummary, runAnalysis, runCode, setApiKey } from './agents/services.js';
 import { orchestrate } from './agents/orchestrator.js';
 import { getBalance, getTransactions, sendPayment } from './stellar/wallet.js';
 
@@ -292,6 +292,24 @@ app.get('/api/status', (req, res) => {
     },
     claudeEnabled: !!config.anthropicApiKey,
   });
+});
+
+// ─── API Key Configuration ───────────────────────────────────
+app.get('/api/config/apikey', (req, res) => {
+  const key = config.anthropicApiKey || '';
+  res.json({
+    configured: !!key,
+    masked: key ? `sk-ant-...${key.slice(-6)}` : null,
+  });
+});
+
+app.post('/api/config/apikey', (req, res) => {
+  const { apiKey } = req.body;
+  if (!apiKey || !apiKey.startsWith('sk-ant-')) {
+    return res.status(400).json({ error: 'Invalid API key. Must start with sk-ant-' });
+  }
+  setApiKey(apiKey);
+  res.json({ success: true, masked: `sk-ant-...${apiKey.slice(-6)}` });
 });
 
 // ─── Serve Dashboard ─────────────────────────────────────────
