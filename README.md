@@ -129,20 +129,18 @@ Runs 3 automated tasks including a budget-enforcement test. Prints all Stellar E
 
 > Every agent-to-agent payment is a real Stellar testnet transaction. Click to verify on Stellar Expert.
 
-| # | Transaction Hash | Stellar Expert Link |
-|---|-----------------|---------------------|
-| 1 | `b0a4836daae9...021cbe` | [View on Explorer](https://stellar.expert/explorer/testnet/tx/b0a4836daae9729ed993b056fa9550fda3655f13fc1720dd42c08bdaaf021cbe) |
-| 2 | `44871745407d...68114d` | [View on Explorer](https://stellar.expert/explorer/testnet/tx/44871745407d52251a17ae134158c38162d922bc85b2e482120ad2fbf468114d) |
-| 3 | `a18fa781b969...56b187` | [View on Explorer](https://stellar.expert/explorer/testnet/tx/a18fa781b9692264c5af29bc82a14acb768dd1ca3851b368a8e10eca5556b187) |
-| 4 | `d9bca02556b1...18758a` | [View on Explorer](https://stellar.expert/explorer/testnet/tx/d9bca02556b1d557d2d7586846c1f05b2ca498b6a9da3960d820859cea18758a) |
-| 5 | `abb47eb05074...dcddba` | [View on Explorer](https://stellar.expert/explorer/testnet/tx/abb47eb05074c67874dcb693109b302b0495d16ca2e288a778638a62efdcddba) |
-| 6 | `848742135a66...e8810` | [View on Explorer](https://stellar.expert/explorer/testnet/tx/848742135a667ef537054452b234b21f664c915734c1e20fedba1256ddfe8810) |
-| 7 | `d1658729bd0a...b3c2c2` | [View on Explorer](https://stellar.expert/explorer/testnet/tx/d1658729bd0a983230b6ef9e3318e5c818d6e6ebfd3271fce1b288106eb3c2c2) |
-| 8 | `da10d74bd694...03fb99` | [View on Explorer](https://stellar.expert/explorer/testnet/tx/da10d74bd694baa5dffc696268117192bfbfa7c9e00112c7e2376672b903fb99) |
-| 9 | `64284d3a7184...311149` | [View on Explorer](https://stellar.expert/explorer/testnet/tx/64284d3a718441a6daaa0a9f3d366451497995bd971a3f684ec8da33c7311149) |
-| 10 | `b24bb75b7bd4...4775be` | [View on Explorer](https://stellar.expert/explorer/testnet/tx/b24bb75b7bd435a284714dffb3d047f56273cf3646266484ebe2ee2e504775be) |
+| # | Transaction Hash | Task | Stellar Expert Link |
+|---|-----------------|------|---------------------|
+| 1 | `8b9a638a9710...` | AI payments research | [View TX ↗](https://stellar.expert/explorer/testnet/tx/8b9a638a971083eb0817135bbc8cd3dd79d6fd219bc6feff70b7f23c4767388c) |
+| 2 | `c74c0b38f2dc...` | AI payments summary | [View TX ↗](https://stellar.expert/explorer/testnet/tx/c74c0b38f2dc60a219c6ce530c8f6901e5aeccaaea52595b5f951044c361c6c7) |
+| 3 | `7b66835aae23...` | AI payments analysis | [View TX ↗](https://stellar.expert/explorer/testnet/tx/7b66835aae23e9e08abdaff1953b7e1d19c95c71beec8085ff2086a3e8d6e76e) |
+| 4 | `03b173f731a9...` | Agent marketplace research | [View TX ↗](https://stellar.expert/explorer/testnet/tx/03b173f731a956e9e5218cbf5fd888e16c1817451a80e97448f167f669110247) |
+| 5 | `95e6198efc4f...` | Agent marketplace summary | [View TX ↗](https://stellar.expert/explorer/testnet/tx/95e6198efc4f82169d25b53da8d51971c9d83d8a048d9ca091c3df068d1df20a) |
+| 6 | `148acd3d0466...` | Agent marketplace analysis | [View TX ↗](https://stellar.expert/explorer/testnet/tx/148acd3d0466df49b20d2ac69b39db129a5427626d756c0308f691fedb506df0) |
+| 7 | `b70dca84ca79...` | Quantum cryptography research | [View TX ↗](https://stellar.expert/explorer/testnet/tx/b70dca84ca793871d64b36b772363106c87eb6b172004fdf1c9d7305a97d8aa7) |
+| 8 | `71362065946768...` | Quantum cryptography summary | [View TX ↗](https://stellar.expert/explorer/testnet/tx/71362065946768751c5f822581d2f46cacb6eb5f8f8e156f3f84cf162ad6502e) |
 
-*13 total real Stellar testnet transactions generated across demo runs.*
+*30+ total Stellar testnet transactions generated across demo runs. All verified on [Stellar Expert](https://stellar.expert/explorer/testnet).*
 
 ## 🛠️ Tech Stack
 
