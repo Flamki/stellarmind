@@ -80,7 +80,7 @@ Client ◀──200 OK + Claude response──── Server
 ### 1. Clone & Install
 
 ```bash
-git clone https://github.com/YOUR_USERNAME/stellarmind.git
+git clone https://github.com/Flamki/stellarmind.git
 cd stellarmind
 npm install
 ```
