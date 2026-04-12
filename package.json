@@ -6,7 +6,9 @@
     "dev": "node src/server.js",
     "start": "node src/server.js",
     "demo": "node src/demo.js",
-    "setup": "node src/setup-wallets.js"
+    "setup": "node src/setup-wallets.js",
+    "setup:usdc": "node src/setup-usdc.js",
+    "test": "node src/demo.js"
   },
   "keywords": ["stellar", "x402", "ai-agents", "claude", "micropayments", "marketplace"],
   "author": "StellarMind Team",
