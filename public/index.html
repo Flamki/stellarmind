@@ -4,7 +4,7 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>StellarMind — AI Agent Marketplace</title>
-  <meta name="description" content="A marketplace where Claude-powered AI agents autonomously discover, pay for, and sell services — every transaction settled on Stellar via x402." />
+  <meta name="description" content="Claude-powered AI agents that autonomously discover, pay for, and sell services — every transaction settled on Stellar via x402." />
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet" />
@@ -34,15 +34,13 @@
       --red: #f87171;
       --pink: #f472b6;
       --gradient: linear-gradient(135deg, #6366f1 0%, #8b5cf6 50%, #a855f7 100%);
-      --gradient-subtle: linear-gradient(135deg, rgba(99,102,241,0.1), rgba(168,85,247,0.05));
-      --shadow: 0 1px 3px rgba(0,0,0,0.4);
-      --shadow-lg: 0 8px 32px rgba(0,0,0,0.5);
+      --gradient-subtle: linear-gradient(135deg, rgba(99,102,241,0.08), rgba(168,85,247,0.04));
       --shadow-glow: 0 0 24px rgba(99,102,241,0.12);
       --radius: 12px;
       --radius-sm: 8px;
       --radius-xs: 6px;
-      --sidebar-width: 260px;
-      --transition: 0.2s ease;
+      --sidebar-w: 250px;
+      --tr: 0.2s ease;
     }
 
     body {
@@ -54,1094 +52,894 @@
       overflow: hidden;
     }
 
-    /* ─── SIDEBAR ─────────────────────────────── */
+    /* ═══ SIDEBAR ═══ */
     .sidebar {
-      width: var(--sidebar-width);
+      width: var(--sidebar-w);
       height: 100vh;
       background: var(--bg-sidebar);
       border-right: 1px solid var(--border);
       display: flex;
       flex-direction: column;
       flex-shrink: 0;
-      position: relative;
       z-index: 20;
     }
 
-    .sidebar-header {
-      padding: 24px 20px 20px;
+    .sb-header {
+      padding: 22px 18px 18px;
       border-bottom: 1px solid var(--border);
     }
 
-    .sidebar-logo {
-      display: flex;
-      align-items: center;
-      gap: 12px;
-      text-decoration: none;
+    .sb-logo {
+      display: flex; align-items: center; gap: 10px;
     }
 
-    .logo-mark {
-      width: 36px;
-      height: 36px;
+    .sb-logo-icon {
+      width: 34px; height: 34px;
       background: var(--gradient);
-      border-radius: 10px;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      font-size: 18px;
-      box-shadow: 0 0 20px rgba(99,102,241,0.3);
+      border-radius: 9px;
+      display: flex; align-items: center; justify-content: center;
+      font-size: 17px;
+      box-shadow: 0 0 18px rgba(99,102,241,0.3);
     }
 
-    .logo-text h1 {
-      font-size: 18px;
-      font-weight: 800;
+    .sb-logo-text h1 {
+      font-size: 17px; font-weight: 800;
       background: var(--gradient);
-      -webkit-background-clip: text;
-      -webkit-text-fill-color: transparent;
-      background-clip: text;
-      letter-spacing: -0.3px;
+      -webkit-background-clip: text; -webkit-text-fill-color: transparent;
+      background-clip: text; letter-spacing: -0.3px;
     }
 
-    .logo-text span {
-      font-size: 10px;
-      color: var(--text-muted);
-      font-weight: 500;
-      letter-spacing: 0.8px;
-      text-transform: uppercase;
+    .sb-logo-text span {
+      font-size: 9px; color: var(--text-muted);
+      font-weight: 500; letter-spacing: 0.8px; text-transform: uppercase;
     }
 
-    .sidebar-nav {
-      flex: 1;
-      padding: 16px 12px;
-      display: flex;
-      flex-direction: column;
-      gap: 2px;
+    .sb-nav {
+      flex: 1; padding: 14px 10px; overflow-y: auto;
+      display: flex; flex-direction: column; gap: 2px;
     }
 
-    .nav-section-label {
-      font-size: 10px;
-      font-weight: 600;
-      color: var(--text-muted);
-      text-transform: uppercase;
-      letter-spacing: 1px;
-      padding: 12px 12px 6px;
+    .sb-nav::-webkit-scrollbar { width: 3px; }
+    .sb-nav::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.06); border-radius: 2px; }
+
+    .sb-label {
+      font-size: 9px; font-weight: 700; color: var(--text-muted);
+      text-transform: uppercase; letter-spacing: 1.2px;
+      padding: 14px 10px 5px;
     }
 
-    .nav-item {
-      display: flex;
-      align-items: center;
-      gap: 10px;
-      padding: 10px 12px;
-      border-radius: var(--radius-sm);
-      color: var(--text-secondary);
-      font-size: 13px;
-      font-weight: 500;
-      cursor: pointer;
-      transition: var(--transition);
-      text-decoration: none;
-      border: 1px solid transparent;
+    .sb-item {
+      display: flex; align-items: center; gap: 9px;
+      padding: 9px 10px; border-radius: var(--radius-xs);
+      color: var(--text-secondary); font-size: 12.5px; font-weight: 500;
+      cursor: pointer; transition: var(--tr);
+      border: 1px solid transparent; user-select: none;
     }
 
-    .nav-item:hover {
-      background: var(--bg-hover);
-      color: var(--text-primary);
-    }
+    .sb-item:hover { background: var(--bg-hover); color: var(--text-primary); }
 
-    .nav-item.active {
-      background: var(--accent-glow);
-      color: var(--accent-light);
-      border-color: rgba(99,102,241,0.15);
-    }
-
-    .nav-item .icon {
-      font-size: 16px;
-      width: 20px;
-      text-align: center;
-    }
-
-    .nav-item .badge-sm {
-      margin-left: auto;
-      font-size: 10px;
-      font-weight: 600;
-      padding: 2px 6px;
-      border-radius: 10px;
-      background: rgba(99,102,241,0.15);
-      color: var(--accent-light);
-    }
-
-    /* Sidebar agent list */
-    .sidebar-agents {
-      padding: 0 12px 16px;
-      display: flex;
-      flex-direction: column;
-      gap: 6px;
-    }
-
-    .sidebar-agent {
-      display: flex;
-      align-items: center;
-      gap: 10px;
-      padding: 8px 12px;
-      border-radius: var(--radius-sm);
-      transition: var(--transition);
-    }
-
-    .sidebar-agent:hover {
-      background: var(--bg-hover);
-    }
-
-    .agent-dot {
-      width: 7px; height: 7px;
-      border-radius: 50%;
-      background: var(--green);
-      box-shadow: 0 0 6px var(--green);
-      flex-shrink: 0;
-    }
-
-    .agent-dot.active { animation: dotPulse 1.5s ease infinite; }
-
-    @keyframes dotPulse {
-      0%, 100% { box-shadow: 0 0 6px var(--green); }
-      50% { box-shadow: 0 0 12px var(--green), 0 0 20px rgba(52,211,153,0.3); }
-    }
-
-    .sidebar-agent-info {
-      flex: 1;
-      min-width: 0;
-    }
-
-    .sidebar-agent-name {
-      font-size: 12px;
-      font-weight: 600;
-      color: var(--text-primary);
-      white-space: nowrap;
-      overflow: hidden;
-      text-overflow: ellipsis;
-    }
-
-    .sidebar-agent-price {
-      font-family: 'JetBrains Mono', monospace;
-      font-size: 10px;
-      color: var(--green);
-      font-weight: 500;
-    }
-
-    /* Sidebar wallets */
-    .sidebar-footer {
-      padding: 16px 12px;
-      border-top: 1px solid var(--border);
-    }
-
-    .wallet-mini {
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-      padding: 8px 12px;
-      border-radius: var(--radius-xs);
-      margin-bottom: 4px;
-    }
-
-    .wallet-mini-label {
-      font-size: 11px;
-      color: var(--text-muted);
-      font-weight: 500;
-    }
-
-    .wallet-mini-balance {
-      font-family: 'JetBrains Mono', monospace;
-      font-size: 11px;
-      color: var(--cyan);
-      font-weight: 500;
-    }
-
-    .sidebar-status {
-      display: flex;
-      align-items: center;
-      gap: 8px;
-      padding: 10px 12px;
-      margin-top: 8px;
-    }
-
-    .status-indicator {
-      width: 6px; height: 6px;
-      border-radius: 50%;
-      background: var(--green);
-      box-shadow: 0 0 8px var(--green);
-    }
-
-    .status-text {
-      font-size: 11px;
-      color: var(--text-secondary);
-      font-weight: 500;
-    }
-
-    /* ─── MAIN CONTENT ────────────────────────── */
-    .main-content {
-      flex: 1;
-      height: 100vh;
-      overflow-y: auto;
-      overflow-x: hidden;
-      background: var(--bg-main);
-    }
-
-    .main-content::-webkit-scrollbar { width: 6px; }
-    .main-content::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
-    .main-content::-webkit-scrollbar-track { background: transparent; }
-
-    /* Top bar */
-    .topbar {
-      position: sticky;
-      top: 0;
-      z-index: 15;
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-      padding: 16px 28px;
-      background: rgba(15, 16, 24, 0.85);
-      backdrop-filter: blur(16px);
-      border-bottom: 1px solid var(--border);
-    }
-
-    .topbar-title {
-      font-size: 16px;
-      font-weight: 700;
-      letter-spacing: -0.3px;
-    }
-
-    .topbar-badges {
-      display: flex;
-      gap: 8px;
-    }
-
-    .topbar-badge {
-      display: flex;
-      align-items: center;
-      gap: 5px;
-      padding: 5px 10px;
-      border-radius: 20px;
-      font-size: 11px;
-      font-weight: 500;
-      background: rgba(52, 211, 153, 0.08);
-      color: var(--green);
-      border: 1px solid rgba(52, 211, 153, 0.12);
-    }
-
-    .topbar-badge .dot {
-      width: 5px; height: 5px;
-      border-radius: 50%;
-      background: currentColor;
-    }
-
-    /* Content area */
-    .content-area {
-      padding: 24px 28px;
-      display: flex;
-      flex-direction: column;
-      gap: 20px;
-    }
-
-    /* ─── CARDS ─────────────────────────────── */
-    .card {
-      background: var(--bg-card);
-      border: 1px solid var(--border);
-      border-radius: var(--radius);
-      overflow: hidden;
-      transition: var(--transition);
-    }
-
-    .card:hover {
+    .sb-item.active {
+      background: var(--accent-glow); color: var(--accent-light);
       border-color: rgba(99,102,241,0.12);
     }
 
-    .card-head {
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-      padding: 14px 20px;
+    .sb-item .i { font-size: 15px; width: 18px; text-align: center; }
+
+    .sb-item .cnt {
+      margin-left: auto; font-size: 9px; font-weight: 700;
+      padding: 2px 6px; border-radius: 10px;
+      background: rgba(99,102,241,0.12); color: var(--accent-light);
+    }
+
+    /* Sidebar agent list */
+    .sb-agents { padding: 0 10px 8px; display: flex; flex-direction: column; gap: 3px; }
+
+    .sb-agent {
+      display: flex; align-items: center; gap: 9px;
+      padding: 7px 10px; border-radius: var(--radius-xs);
+      transition: var(--tr); cursor: default;
+    }
+
+    .sb-agent:hover { background: var(--bg-hover); }
+
+    .dot-on {
+      width: 6px; height: 6px; border-radius: 50%;
+      background: var(--green); box-shadow: 0 0 6px var(--green);
+      flex-shrink: 0;
+    }
+
+    .dot-on.pulse { animation: dp 1.5s ease infinite; }
+
+    @keyframes dp {
+      0%,100% { box-shadow: 0 0 6px var(--green); }
+      50% { box-shadow: 0 0 14px var(--green); }
+    }
+
+    .sb-agent-info { flex: 1; min-width: 0; }
+
+    .sb-agent-name {
+      font-size: 11.5px; font-weight: 600; color: var(--text-primary);
+      white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+    }
+
+    .sb-agent-price {
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 9.5px; color: var(--green); font-weight: 500;
+    }
+
+    /* Sidebar footer */
+    .sb-footer {
+      padding: 12px 10px; border-top: 1px solid var(--border);
+    }
+
+    .sb-wallet-row {
+      display: flex; align-items: center; justify-content: space-between;
+      padding: 5px 10px;
+    }
+
+    .sb-wl { font-size: 10px; color: var(--text-muted); font-weight: 500; }
+
+    .sb-wv {
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 10px; color: var(--cyan); font-weight: 500;
+    }
+
+    .sb-status {
+      display: flex; align-items: center; gap: 7px;
+      padding: 8px 10px; margin-top: 6px;
+    }
+
+    .sb-status-dot { width: 5px; height: 5px; border-radius: 50%; background: var(--green); box-shadow: 0 0 6px var(--green); }
+
+    .sb-status-text { font-size: 10px; color: var(--text-secondary); font-weight: 500; }
+
+    /* ═══ MAIN ═══ */
+    .main {
+      flex: 1; height: 100vh; overflow-y: auto; overflow-x: hidden;
+      background: var(--bg-main);
+    }
+
+    .main::-webkit-scrollbar { width: 5px; }
+    .main::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.06); border-radius: 3px; }
+
+    .topbar {
+      position: sticky; top: 0; z-index: 15;
+      display: flex; align-items: center; justify-content: space-between;
+      padding: 14px 24px;
+      background: rgba(15,16,24,0.88); backdrop-filter: blur(14px);
       border-bottom: 1px solid var(--border);
     }
 
-    .card-head h2 {
-      font-size: 13px;
-      font-weight: 700;
-      display: flex;
-      align-items: center;
-      gap: 8px;
-      letter-spacing: -0.2px;
+    .topbar-title { font-size: 15px; font-weight: 700; letter-spacing: -0.2px; }
+
+    .topbar-pills { display: flex; gap: 6px; }
+
+    .pill {
+      display: flex; align-items: center; gap: 4px;
+      padding: 4px 9px; border-radius: 20px;
+      font-size: 10px; font-weight: 500;
+      background: rgba(52,211,153,0.07); color: var(--green);
+      border: 1px solid rgba(52,211,153,0.1);
     }
 
-    .card-head .tag {
-      font-size: 9px;
-      font-weight: 600;
-      padding: 3px 8px;
-      border-radius: 20px;
-      text-transform: uppercase;
-      letter-spacing: 0.5px;
-      background: rgba(99,102,241,0.1);
-      color: var(--accent-light);
+    .pill .pd { width: 4px; height: 4px; border-radius: 50%; background: currentColor; }
+
+    .content { padding: 20px 24px; display: flex; flex-direction: column; gap: 18px; }
+
+    /* Pages */
+    .page { display: none; }
+    .page.active { display: flex; flex-direction: column; gap: 18px; }
+
+    /* ═══ CARDS ═══ */
+    .card {
+      background: var(--bg-card); border: 1px solid var(--border);
+      border-radius: var(--radius); overflow: hidden; transition: var(--tr);
     }
 
-    .card-body {
-      padding: 16px 20px;
+    .card:hover { border-color: rgba(99,102,241,0.1); }
+
+    .card-h {
+      display: flex; align-items: center; justify-content: space-between;
+      padding: 12px 18px; border-bottom: 1px solid var(--border);
     }
 
-    /* ─── TASK INPUT ────────────────────────── */
-    .task-card .card-body { padding: 20px; }
-
-    .task-row {
-      display: flex;
-      gap: 16px;
-      align-items: flex-end;
+    .card-h h2 {
+      font-size: 12.5px; font-weight: 700;
+      display: flex; align-items: center; gap: 7px; letter-spacing: -0.15px;
     }
 
-    .task-input-wrap {
-      flex: 1;
-      display: flex;
-      flex-direction: column;
-      gap: 6px;
+    .tag {
+      font-size: 8.5px; font-weight: 700; padding: 2.5px 7px;
+      border-radius: 20px; text-transform: uppercase; letter-spacing: 0.5px;
+      background: rgba(99,102,241,0.1); color: var(--accent-light);
     }
 
-    .task-input-wrap label {
-      font-size: 11px;
-      font-weight: 600;
-      text-transform: uppercase;
-      letter-spacing: 0.5px;
-      color: var(--text-muted);
+    .tag.green { background: rgba(52,211,153,0.1); color: var(--green); }
+    .tag.amber { background: rgba(251,191,36,0.1); color: var(--amber); }
+    .tag.purple { background: rgba(168,85,247,0.1); color: var(--purple); }
+
+    .card-b { padding: 14px 18px; }
+
+    /* ═══ TASK INPUT ═══ */
+    .task-row { display: flex; gap: 14px; align-items: flex-end; }
+
+    .task-input-w { flex: 1; display: flex; flex-direction: column; gap: 5px; }
+
+    .lbl {
+      font-size: 10px; font-weight: 600; text-transform: uppercase;
+      letter-spacing: 0.5px; color: var(--text-muted);
     }
 
     .task-input {
-      width: 100%;
-      padding: 12px 16px;
-      background: var(--bg-input);
-      border: 1px solid var(--border);
-      border-radius: var(--radius-sm);
-      color: var(--text-primary);
-      font-family: 'Inter', sans-serif;
-      font-size: 14px;
-      transition: var(--transition);
-      outline: none;
+      width: 100%; padding: 11px 14px;
+      background: var(--bg-input); border: 1px solid var(--border);
+      border-radius: var(--radius-sm); color: var(--text-primary);
+      font-family: 'Inter', sans-serif; font-size: 13px;
+      transition: var(--tr); outline: none;
     }
 
-    .task-input:focus {
-      border-color: var(--border-active);
-      box-shadow: 0 0 0 3px var(--accent-glow);
-    }
-
+    .task-input:focus { border-color: var(--border-active); box-shadow: 0 0 0 3px var(--accent-glow); }
     .task-input::placeholder { color: var(--text-muted); }
 
-    .budget-wrap {
-      display: flex;
-      flex-direction: column;
-      gap: 6px;
-      min-width: 140px;
-    }
+    .budget-w { display: flex; flex-direction: column; gap: 5px; min-width: 130px; }
 
-    .budget-header {
-      display: flex;
-      justify-content: space-between;
-      align-items: baseline;
-    }
+    .budget-row { display: flex; justify-content: space-between; align-items: baseline; }
 
-    .budget-header label {
-      font-size: 11px;
-      font-weight: 600;
-      text-transform: uppercase;
-      letter-spacing: 0.5px;
-      color: var(--text-muted);
-    }
-
-    .budget-value {
-      font-family: 'JetBrains Mono', monospace;
-      font-size: 15px;
-      font-weight: 700;
-      background: var(--gradient);
-      -webkit-background-clip: text;
-      -webkit-text-fill-color: transparent;
-      background-clip: text;
+    .budget-val {
+      font-family: 'JetBrains Mono', monospace; font-size: 14px; font-weight: 700;
+      background: var(--gradient); -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent; background-clip: text;
     }
 
     input[type="range"] {
-      -webkit-appearance: none;
-      width: 100%;
-      height: 4px;
-      background: var(--bg-input);
-      border-radius: 2px;
-      outline: none;
-      cursor: pointer;
+      -webkit-appearance: none; width: 100%; height: 4px;
+      background: var(--bg-input); border-radius: 2px; outline: none; cursor: pointer;
     }
 
     input[type="range"]::-webkit-slider-thumb {
-      -webkit-appearance: none;
-      width: 18px;
-      height: 18px;
-      border-radius: 50%;
-      background: var(--gradient);
-      cursor: pointer;
-      box-shadow: 0 0 10px var(--accent-glow);
+      -webkit-appearance: none; width: 16px; height: 16px; border-radius: 50%;
+      background: var(--gradient); cursor: pointer;
+      box-shadow: 0 0 8px var(--accent-glow);
     }
 
-    .btn-run {
-      padding: 12px 28px;
-      background: var(--gradient);
-      color: white;
-      border: none;
-      border-radius: var(--radius-sm);
-      font-family: 'Inter', sans-serif;
-      font-size: 13px;
-      font-weight: 700;
-      cursor: pointer;
-      transition: var(--transition);
-      white-space: nowrap;
-      letter-spacing: 0.2px;
-      position: relative;
-      overflow: hidden;
+    .btn {
+      padding: 11px 24px; background: var(--gradient); color: white; border: none;
+      border-radius: var(--radius-sm); font-family: 'Inter', sans-serif;
+      font-size: 12.5px; font-weight: 700; cursor: pointer;
+      transition: var(--tr); white-space: nowrap; position: relative; overflow: hidden;
     }
 
-    .btn-run::after {
-      content: '';
-      position: absolute;
-      top: 0; left: -100%; width: 100%; height: 100%;
-      background: linear-gradient(90deg, transparent, rgba(255,255,255,0.12), transparent);
+    .btn::after {
+      content: ''; position: absolute; top: 0; left: -100%; width: 100%; height: 100%;
+      background: linear-gradient(90deg, transparent, rgba(255,255,255,0.1), transparent);
       transition: 0.5s;
     }
 
-    .btn-run:hover::after { left: 100%; }
-    .btn-run:hover { transform: translateY(-1px); box-shadow: 0 6px 24px rgba(99,102,241,0.35); }
-    .btn-run:active { transform: translateY(0); }
-    .btn-run:disabled { opacity: 0.4; cursor: not-allowed; transform: none; }
+    .btn:hover::after { left: 100%; }
+    .btn:hover { transform: translateY(-1px); box-shadow: 0 5px 20px rgba(99,102,241,0.3); }
+    .btn:disabled { opacity: 0.35; cursor: not-allowed; transform: none; }
 
     .spinner {
-      display: inline-block; width: 14px; height: 14px;
-      border: 2px solid rgba(255,255,255,0.3);
-      border-top-color: white; border-radius: 50%;
-      animation: spin 0.5s linear infinite;
-      margin-right: 6px;
+      display: inline-block; width: 12px; height: 12px;
+      border: 2px solid rgba(255,255,255,0.3); border-top-color: white;
+      border-radius: 50%; animation: spin 0.5s linear infinite; margin-right: 5px;
     }
 
     @keyframes spin { to { transform: rotate(360deg); } }
 
-    /* ─── TWO COLUMN LAYOUT ───────────────── */
-    .grid-2 {
-      display: grid;
-      grid-template-columns: 1fr 1fr;
-      gap: 20px;
+    /* ═══ GRID LAYOUTS ═══ */
+    .g2 { display: grid; grid-template-columns: 1fr 1fr; gap: 18px; }
+    .g3 { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; }
+    .g4 { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; }
+
+    /* ═══ WALLET CARDS ═══ */
+    .wc {
+      background: var(--bg-card-alt); border: 1px solid var(--border);
+      border-radius: var(--radius-sm); padding: 14px; text-align: center;
     }
 
-    .grid-full {
-      grid-column: 1 / -1;
+    .wc-label {
+      font-size: 8.5px; font-weight: 700; color: var(--text-muted);
+      text-transform: uppercase; letter-spacing: 1px; margin-bottom: 7px;
     }
 
-    /* ─── LIVE FEED ────────────────────────── */
-    .feed {
-      max-height: 380px;
-      overflow-y: auto;
-      display: flex;
-      flex-direction: column;
-      gap: 6px;
-    }
-
-    .feed::-webkit-scrollbar { width: 4px; }
-    .feed::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.08); border-radius: 2px; }
-
-    .feed-item {
-      display: flex;
-      align-items: center;
-      gap: 10px;
-      padding: 10px 14px;
-      background: var(--bg-card-alt);
-      border: 1px solid var(--border);
-      border-radius: var(--radius-sm);
-      animation: feedIn 0.25s ease-out;
-    }
-
-    @keyframes feedIn {
-      from { opacity: 0; transform: translateY(-6px); }
-      to { opacity: 1; transform: translateY(0); }
-    }
-
-    .feed-icon {
-      width: 30px; height: 30px;
-      border-radius: var(--radius-xs);
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      font-size: 13px;
-      flex-shrink: 0;
-    }
-
-    .feed-icon.payment { background: rgba(52,211,153,0.12); }
-    .feed-icon.agent { background: rgba(99,102,241,0.12); }
-    .feed-icon.plan { background: rgba(251,191,36,0.12); }
-    .feed-icon.budget { background: rgba(248,113,113,0.12); }
-    .feed-icon.complete { background: rgba(34,211,238,0.12); }
-    .feed-icon.x402 { background: rgba(168,85,247,0.12); }
-
-    .feed-info { flex: 1; min-width: 0; }
-
-    .feed-label {
-      font-size: 12px;
-      font-weight: 600;
-      white-space: nowrap;
-      overflow: hidden;
-      text-overflow: ellipsis;
-    }
-
-    .feed-sub {
-      font-size: 11px;
-      color: var(--text-muted);
-      white-space: nowrap;
-      overflow: hidden;
-      text-overflow: ellipsis;
-    }
-
-    .feed-link {
+    .wc-bal {
       font-family: 'JetBrains Mono', monospace;
-      font-size: 10px;
-      color: var(--accent-light);
-      text-decoration: none;
-      padding: 3px 8px;
-      border-radius: 4px;
-      background: rgba(99,102,241,0.08);
-      transition: var(--transition);
-      white-space: nowrap;
+      font-size: 14px; font-weight: 700; color: var(--cyan);
     }
 
-    .feed-link:hover { background: rgba(99,102,241,0.2); color: white; }
-
-    .empty-feed {
-      text-align: center;
-      padding: 40px 20px;
-      color: var(--text-muted);
-    }
-
-    .empty-feed .ef-icon { font-size: 28px; margin-bottom: 10px; opacity: 0.4; }
-    .empty-feed p { font-size: 12px; line-height: 1.6; }
-
-    /* ─── WALLET CARDS ───────────────────────── */
-    .wallet-row {
-      display: grid;
-      grid-template-columns: 1fr 1fr 1fr;
-      gap: 10px;
-    }
-
-    .wallet-card {
-      background: var(--bg-card-alt);
-      border: 1px solid var(--border);
-      border-radius: var(--radius-sm);
-      padding: 14px 16px;
-      text-align: center;
-    }
-
-    .wallet-card-label {
-      font-size: 9px;
-      font-weight: 600;
-      color: var(--text-muted);
-      text-transform: uppercase;
-      letter-spacing: 1px;
-      margin-bottom: 8px;
-    }
-
-    .wallet-card-balance {
+    .wc-addr {
       font-family: 'JetBrains Mono', monospace;
-      font-size: 15px;
-      font-weight: 700;
-      color: var(--cyan);
+      font-size: 8.5px; color: var(--text-muted); margin-top: 5px; word-break: break-all;
     }
 
-    .wallet-card-addr {
-      font-family: 'JetBrains Mono', monospace;
-      font-size: 9px;
-      color: var(--text-muted);
-      margin-top: 6px;
-      word-break: break-all;
+    /* ═══ FEED ═══ */
+    .feed { max-height: 370px; overflow-y: auto; display: flex; flex-direction: column; gap: 5px; }
+    .feed::-webkit-scrollbar { width: 3px; }
+    .feed::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.06); border-radius: 2px; }
+
+    .fi {
+      display: flex; align-items: center; gap: 9px;
+      padding: 9px 12px; background: var(--bg-card-alt);
+      border: 1px solid var(--border); border-radius: var(--radius-sm);
+      animation: fadeUp 0.2s ease-out;
     }
 
-    /* ─── RESULT PANEL ───────────────────────── */
+    @keyframes fadeUp { from { opacity: 0; transform: translateY(-4px); } to { opacity: 1; transform: translateY(0); } }
+
+    .fi-icon {
+      width: 28px; height: 28px; border-radius: var(--radius-xs);
+      display: flex; align-items: center; justify-content: center;
+      font-size: 12px; flex-shrink: 0;
+    }
+
+    .fi-icon.pay { background: rgba(52,211,153,0.1); }
+    .fi-icon.agt { background: rgba(99,102,241,0.1); }
+    .fi-icon.pln { background: rgba(251,191,36,0.1); }
+    .fi-icon.bgt { background: rgba(248,113,113,0.1); }
+    .fi-icon.ok  { background: rgba(34,211,238,0.1); }
+    .fi-icon.x4  { background: rgba(168,85,247,0.1); }
+
+    .fi-info { flex: 1; min-width: 0; }
+    .fi-l { font-size: 11.5px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .fi-s { font-size: 10px; color: var(--text-muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+
+    .fi-link {
+      font-family: 'JetBrains Mono', monospace; font-size: 9px;
+      color: var(--accent-light); text-decoration: none;
+      padding: 3px 7px; border-radius: 4px;
+      background: rgba(99,102,241,0.07); transition: var(--tr); white-space: nowrap;
+    }
+
+    .fi-link:hover { background: rgba(99,102,241,0.18); color: white; }
+
+    .empty-state {
+      text-align: center; padding: 36px 16px; color: var(--text-muted);
+    }
+
+    .empty-state .es-icon { font-size: 26px; margin-bottom: 8px; opacity: 0.35; }
+    .empty-state p { font-size: 11.5px; line-height: 1.6; }
+
+    /* ═══ RESULT ═══ */
     .result-panel { display: none; }
-    .result-panel.visible { display: block; animation: feedIn 0.3s ease-out; }
+    .result-panel.visible { display: block; animation: fadeUp 0.25s ease-out; }
 
-    .result-output {
-      background: var(--bg-card-alt);
-      border-radius: var(--radius-sm);
-      padding: 16px 18px;
-      font-size: 13px;
-      line-height: 1.7;
-      color: var(--text-secondary);
-      white-space: pre-wrap;
-      max-height: 360px;
-      overflow-y: auto;
+    .result-out {
+      background: var(--bg-card-alt); border-radius: var(--radius-sm);
+      padding: 14px 16px; font-size: 12.5px; line-height: 1.7;
+      color: var(--text-secondary); white-space: pre-wrap;
+      max-height: 340px; overflow-y: auto;
     }
 
-    .result-output::-webkit-scrollbar { width: 4px; }
-    .result-output::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.08); border-radius: 2px; }
+    .result-out::-webkit-scrollbar { width: 3px; }
+    .result-out::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.06); border-radius: 2px; }
 
-    .result-chips {
-      display: flex;
-      gap: 8px;
-      margin-top: 12px;
-      flex-wrap: wrap;
-    }
+    .chips { display: flex; gap: 7px; margin-top: 10px; flex-wrap: wrap; }
 
     .chip {
-      display: flex;
-      align-items: center;
-      gap: 5px;
-      padding: 6px 12px;
-      background: var(--bg-card-alt);
+      display: flex; align-items: center; gap: 4px;
+      padding: 5px 10px; background: var(--bg-card-alt);
+      border: 1px solid var(--border); border-radius: 20px;
+      font-size: 10.5px; font-weight: 600;
+    }
+
+    .chip .v { font-family: 'JetBrains Mono', monospace; color: var(--cyan); }
+
+    /* ═══ AGENT REGISTRY PAGE ═══ */
+    .agent-cards { display: grid; grid-template-columns: repeat(2, 1fr); gap: 14px; }
+
+    .ac {
+      background: var(--bg-card); border: 1px solid var(--border);
+      border-radius: var(--radius); padding: 20px; position: relative;
+      transition: var(--tr); overflow: hidden;
+    }
+
+    .ac::before {
+      content: ''; position: absolute; top: 0; left: 0; right: 0; height: 3px;
+      background: var(--gradient); opacity: 0; transition: var(--tr);
+    }
+
+    .ac:hover { border-color: rgba(99,102,241,0.2); transform: translateY(-2px); box-shadow: 0 6px 24px rgba(0,0,0,0.3); }
+    .ac:hover::before { opacity: 1; }
+
+    .ac-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 12px; }
+    .ac-name { font-size: 15px; font-weight: 700; }
+
+    .ac-status {
+      display: flex; align-items: center; gap: 5px;
+      font-size: 10px; font-weight: 600; color: var(--green);
+    }
+
+    .ac-desc { font-size: 12px; color: var(--text-secondary); line-height: 1.6; margin-bottom: 14px; }
+
+    .ac-meta { display: flex; gap: 8px; flex-wrap: wrap; }
+
+    .ac-tag {
+      font-size: 10px; font-weight: 600; padding: 4px 10px;
+      border-radius: 20px; background: var(--bg-card-alt);
       border: 1px solid var(--border);
-      border-radius: 20px;
-      font-size: 11px;
-      font-weight: 600;
     }
 
-    .chip .val {
-      font-family: 'JetBrains Mono', monospace;
-      color: var(--cyan);
+    .ac-tag.price { color: var(--green); border-color: rgba(52,211,153,0.15); background: rgba(52,211,153,0.06); }
+    .ac-tag.model { color: var(--purple); border-color: rgba(168,85,247,0.15); background: rgba(168,85,247,0.06); }
+    .ac-tag.endpoint { color: var(--cyan); border-color: rgba(34,211,238,0.15); background: rgba(34,211,238,0.06); }
+
+    /* ═══ API STATUS PAGE ═══ */
+    .status-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 14px; }
+
+    .status-card {
+      background: var(--bg-card); border: 1px solid var(--border);
+      border-radius: var(--radius); padding: 18px; text-align: center;
     }
 
-    /* ─── AGENT CARD (in active area) ────────── */
-    .agent-card-active {
-      border-color: var(--accent) !important;
-      box-shadow: 0 0 16px var(--accent-glow);
+    .sc-icon { font-size: 28px; margin-bottom: 10px; }
+    .sc-label { font-size: 10px; font-weight: 700; color: var(--text-muted); text-transform: uppercase; letter-spacing: 1px; margin-bottom: 6px; }
+    .sc-value { font-family: 'JetBrains Mono', monospace; font-size: 15px; font-weight: 700; color: var(--text-primary); }
+    .sc-sub { font-size: 10px; color: var(--text-muted); margin-top: 4px; }
+
+    .endpoint-list { display: flex; flex-direction: column; gap: 6px; }
+
+    .ep-item {
+      display: flex; align-items: center; justify-content: space-between;
+      padding: 10px 14px; background: var(--bg-card-alt);
+      border: 1px solid var(--border); border-radius: var(--radius-sm);
     }
 
-    .agent-card-active .agent-dot {
-      background: var(--accent-light);
-      box-shadow: 0 0 8px var(--accent-light);
+    .ep-method {
+      font-family: 'JetBrains Mono', monospace; font-size: 10px;
+      font-weight: 700; padding: 3px 8px; border-radius: 4px;
     }
 
-    /* ─── RESPONSIVE ─────────────────────────── */
+    .ep-method.get { background: rgba(52,211,153,0.1); color: var(--green); }
+    .ep-method.post { background: rgba(99,102,241,0.1); color: var(--accent-light); }
+
+    .ep-path { font-family: 'JetBrains Mono', monospace; font-size: 11.5px; color: var(--text-primary); font-weight: 500; flex: 1; margin-left: 10px; }
+    .ep-price { font-family: 'JetBrains Mono', monospace; font-size: 10px; color: var(--amber); font-weight: 600; }
+    .ep-free { font-size: 10px; color: var(--text-muted); font-weight: 500; }
+
+    /* ═══ TX PAGE ═══ */
+    .tx-table {
+      width: 100%; border-collapse: collapse;
+    }
+
+    .tx-table th {
+      text-align: left; padding: 10px 14px;
+      font-size: 9.5px; font-weight: 700; color: var(--text-muted);
+      text-transform: uppercase; letter-spacing: 1px;
+      border-bottom: 1px solid var(--border);
+    }
+
+    .tx-table td {
+      padding: 10px 14px; font-size: 12px;
+      border-bottom: 1px solid var(--border);
+      color: var(--text-secondary);
+    }
+
+    .tx-table tr:hover td { background: rgba(99,102,241,0.03); }
+
+    .tx-hash {
+      font-family: 'JetBrains Mono', monospace; font-size: 11px;
+      color: var(--accent-light); text-decoration: none;
+    }
+
+    .tx-hash:hover { color: white; text-decoration: underline; }
+
+    .tx-amount {
+      font-family: 'JetBrains Mono', monospace; font-size: 11px;
+      color: var(--green); font-weight: 600;
+    }
+
+    .tx-memo { font-size: 10.5px; color: var(--text-muted); font-style: italic; }
+
+    .tx-time { font-size: 10.5px; color: var(--text-muted); }
+
+    /* ═══ RESPONSIVE ═══ */
     @media (max-width: 1024px) {
-      .sidebar { width: 220px; }
-      .grid-2 { grid-template-columns: 1fr; }
+      .sidebar { width: 210px; }
+      .g2 { grid-template-columns: 1fr; }
+      .agent-cards { grid-template-columns: 1fr; }
+      .status-grid { grid-template-columns: 1fr 1fr; }
     }
 
     @media (max-width: 768px) {
       body { flex-direction: column; }
-      .sidebar { width: 100%; height: auto; flex-direction: row; overflow-x: auto; }
-      .sidebar-nav, .sidebar-agents, .sidebar-footer { display: none; }
-      .main-content { height: auto; overflow: visible; }
-      .content-area { padding: 16px; }
-      .task-row { flex-direction: column; }
-      .wallet-row { grid-template-columns: 1fr; }
+      .sidebar { width: 100%; height: auto; }
+      .sb-nav, .sb-agents, .sb-footer { display: none; }
+      .main { height: auto; overflow: visible; }
+      .g3, .g4 { grid-template-columns: 1fr 1fr; }
     }
   </style>
 </head>
 <body>
-  <!-- SIDEBAR -->
+  <!-- ═══ SIDEBAR ═══ -->
   <aside class="sidebar">
-    <div class="sidebar-header">
-      <div class="sidebar-logo">
-        <div class="logo-mark">🧠</div>
-        <div class="logo-text">
+    <div class="sb-header">
+      <div class="sb-logo">
+        <div class="sb-logo-icon">🧠</div>
+        <div class="sb-logo-text">
           <h1>StellarMind</h1>
           <span>x402 Micropayments</span>
         </div>
       </div>
     </div>
 
-    <nav class="sidebar-nav">
-      <div class="nav-section-label">Navigation</div>
-      <a class="nav-item active" href="#" onclick="return false;">
-        <span class="icon">🎯</span> Orchestrator
-      </a>
-      <a class="nav-item" href="/api/agents" target="_blank">
-        <span class="icon">🤖</span> Agent Registry
-        <span class="badge-sm" id="nav-agent-count">4</span>
-      </a>
-      <a class="nav-item" href="/api/status" target="_blank">
-        <span class="icon">📊</span> API Status
-      </a>
-      <a class="nav-item" href="/api/wallet/transactions" target="_blank">
-        <span class="icon">🔗</span> Transactions
-      </a>
+    <nav class="sb-nav">
+      <div class="sb-label">Platform</div>
+      <div class="sb-item active" onclick="showPage('orchestrator')" data-page="orchestrator">
+        <span class="i">🎯</span> Orchestrator
+      </div>
+      <div class="sb-item" onclick="showPage('agents')" data-page="agents">
+        <span class="i">🤖</span> Agent Registry
+        <span class="cnt" id="nav-cnt">4</span>
+      </div>
+      <div class="sb-item" onclick="showPage('status')" data-page="status">
+        <span class="i">📊</span> API Status
+      </div>
+      <div class="sb-item" onclick="showPage('transactions')" data-page="transactions">
+        <span class="i">🔗</span> Transactions
+        <span class="cnt" id="tx-cnt">—</span>
+      </div>
 
-      <div class="nav-section-label">Agents</div>
+      <div class="sb-label">Agents</div>
     </nav>
 
-    <div class="sidebar-agents" id="sidebar-agents">
-      <!-- populated by JS -->
-    </div>
+    <div class="sb-agents" id="sb-agents"></div>
 
-    <div class="sidebar-footer">
-      <div class="nav-section-label" style="padding:0 12px 8px;">Wallets</div>
-      <div class="wallet-mini">
-        <span class="wallet-mini-label">Server</span>
-        <span class="wallet-mini-balance" id="mini-bal-server">—</span>
-      </div>
-      <div class="wallet-mini">
-        <span class="wallet-mini-label">Orchestrator</span>
-        <span class="wallet-mini-balance" id="mini-bal-orchestrator">—</span>
-      </div>
-      <div class="wallet-mini">
-        <span class="wallet-mini-label">Buyer</span>
-        <span class="wallet-mini-balance" id="mini-bal-buyer">—</span>
-      </div>
-
-      <div class="sidebar-status">
-        <span class="status-indicator"></span>
-        <span class="status-text" id="sidebar-status-text">Stellar Testnet · Online</span>
+    <div class="sb-footer">
+      <div class="sb-label" style="padding:0 10px 6px;">Wallets</div>
+      <div class="sb-wallet-row"><span class="sb-wl">Server</span><span class="sb-wv" id="mbal-server">—</span></div>
+      <div class="sb-wallet-row"><span class="sb-wl">Orchestrator</span><span class="sb-wv" id="mbal-orch">—</span></div>
+      <div class="sb-wallet-row"><span class="sb-wl">Buyer</span><span class="sb-wv" id="mbal-buyer">—</span></div>
+      <div class="sb-status">
+        <span class="sb-status-dot"></span>
+        <span class="sb-status-text">Stellar Testnet · Online</span>
       </div>
     </div>
   </aside>
 
-  <!-- MAIN CONTENT -->
-  <div class="main-content">
+  <!-- ═══ MAIN CONTENT ═══ -->
+  <div class="main">
     <div class="topbar">
-      <div class="topbar-title">Task Orchestrator</div>
-      <div class="topbar-badges">
-        <div class="topbar-badge"><span class="dot"></span> Stellar Testnet</div>
-        <div class="topbar-badge"><span class="dot"></span> Claude AI</div>
-        <div class="topbar-badge"><span class="dot"></span> x402 Active</div>
+      <div class="topbar-title" id="topbar-title">Task Orchestrator</div>
+      <div class="topbar-pills">
+        <div class="pill"><span class="pd"></span> Stellar Testnet</div>
+        <div class="pill"><span class="pd"></span> Claude AI</div>
+        <div class="pill"><span class="pd"></span> x402 Active</div>
       </div>
     </div>
 
-    <div class="content-area">
-      <!-- Task Input -->
-      <div class="card task-card">
-        <div class="card-head">
-          <h2>🎯 Submit Task</h2>
-          <span class="tag">Claude-Powered</span>
-        </div>
-        <div class="card-body">
-          <div class="task-row">
-            <div class="task-input-wrap">
-              <label for="task-input">What should the agents work on?</label>
-              <input type="text" id="task-input" class="task-input" placeholder="e.g. Research AI payments on Stellar and provide strategic analysis..." />
-            </div>
-            <div class="budget-wrap">
-              <div class="budget-header">
-                <label>Budget</label>
-                <span class="budget-value" id="budget-display">0.15 USDC</span>
+    <div class="content">
+      <!-- ═══ PAGE: ORCHESTRATOR ═══ -->
+      <div class="page active" id="page-orchestrator">
+        <div class="card">
+          <div class="card-h"><h2>🎯 Submit Task</h2><span class="tag">Claude-Powered</span></div>
+          <div class="card-b">
+            <div class="task-row">
+              <div class="task-input-w">
+                <label class="lbl" for="task-input">What should the agents work on?</label>
+                <input type="text" id="task-input" class="task-input" placeholder="e.g. Research AI payments on Stellar and provide strategic analysis..." />
               </div>
-              <input type="range" id="budget-slider" min="0.01" max="1.00" step="0.01" value="0.15" />
+              <div class="budget-w">
+                <div class="budget-row">
+                  <span class="lbl">Budget</span>
+                  <span class="budget-val" id="budget-display">0.15 USDC</span>
+                </div>
+                <input type="range" id="budget-slider" min="0.01" max="1.00" step="0.01" value="0.15" />
+              </div>
+              <button class="btn" id="btn-run" onclick="runOrchestration()">⚡ Run Agents</button>
             </div>
-            <button class="btn-run" id="btn-run" onclick="runOrchestration()">⚡ Run Agents</button>
+          </div>
+        </div>
+
+        <div class="g2">
+          <div class="card">
+            <div class="card-h"><h2>💰 Wallet Balances</h2><span class="tag green">Live</span></div>
+            <div class="card-b">
+              <div class="g3">
+                <div class="wc"><div class="wc-label">Server</div><div class="wc-bal" id="bal-server">—</div><div class="wc-addr" id="addr-server">...</div></div>
+                <div class="wc"><div class="wc-label">Orchestrator</div><div class="wc-bal" id="bal-orch">—</div><div class="wc-addr" id="addr-orch">...</div></div>
+                <div class="wc"><div class="wc-label">Buyer</div><div class="wc-bal" id="bal-buyer">—</div><div class="wc-addr" id="addr-buyer">...</div></div>
+              </div>
+            </div>
+          </div>
+
+          <div class="card">
+            <div class="card-h"><h2>📡 Live Activity Feed</h2><span class="tag" id="ev-cnt">0 Events</span></div>
+            <div class="card-b" style="padding: 10px 14px;">
+              <div class="feed" id="feed">
+                <div class="empty-state" id="feed-empty">
+                  <div class="es-icon">📡</div>
+                  <p>Waiting for agent activity...<br/>Submit a task to see real-time events</p>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div class="card result-panel" id="result-panel">
+          <div class="card-h"><h2>✅ Task Result</h2><span class="tag green" id="result-tag">Complete</span></div>
+          <div class="card-b">
+            <div class="result-out" id="result-out"></div>
+            <div class="chips" id="result-chips"></div>
           </div>
         </div>
       </div>
 
-      <!-- Two column: Wallets + Feed -->
-      <div class="grid-2">
-        <!-- Wallet Balances -->
-        <div class="card">
-          <div class="card-head">
-            <h2>💰 Wallet Balances</h2>
-            <span class="tag" id="wallet-badge">Live</span>
-          </div>
-          <div class="card-body">
-            <div class="wallet-row" id="wallet-grid">
-              <div class="wallet-card">
-                <div class="wallet-card-label">Server</div>
-                <div class="wallet-card-balance" id="balance-server">—</div>
-                <div class="wallet-card-addr" id="addr-server">loading...</div>
-              </div>
-              <div class="wallet-card">
-                <div class="wallet-card-label">Orchestrator</div>
-                <div class="wallet-card-balance" id="balance-orchestrator">—</div>
-                <div class="wallet-card-addr" id="addr-orchestrator">loading...</div>
-              </div>
-              <div class="wallet-card">
-                <div class="wallet-card-label">Buyer</div>
-                <div class="wallet-card-balance" id="balance-buyer">—</div>
-                <div class="wallet-card-addr" id="addr-buyer">loading...</div>
-              </div>
-            </div>
-          </div>
-        </div>
+      <!-- ═══ PAGE: AGENT REGISTRY ═══ -->
+      <div class="page" id="page-agents">
+        <div class="agent-cards" id="agent-cards"></div>
+      </div>
 
-        <!-- Live Feed -->
+      <!-- ═══ PAGE: API STATUS ═══ -->
+      <div class="page" id="page-status">
+        <div class="status-grid" id="status-grid"></div>
         <div class="card">
-          <div class="card-head">
-            <h2>📡 Live Activity Feed</h2>
-            <span class="tag" id="event-count">0 Events</span>
-          </div>
-          <div class="card-body" style="padding: 12px 16px;">
-            <div class="feed" id="tx-feed">
-              <div class="empty-feed" id="feed-empty">
-                <div class="ef-icon">📡</div>
-                <p>Waiting for agent activity...<br/>Submit a task to see real-time events</p>
-              </div>
-            </div>
-          </div>
+          <div class="card-h"><h2>🔌 API Endpoints</h2><span class="tag">x402 Paywalled</span></div>
+          <div class="card-b"><div class="endpoint-list" id="endpoint-list"></div></div>
+        </div>
+        <div class="card">
+          <div class="card-h"><h2>🔐 x402 Payment Protocol</h2><span class="tag purple">Architecture</span></div>
+          <div class="card-b" id="x402-info"></div>
         </div>
       </div>
 
-      <!-- Result Panel -->
-      <div class="card result-panel grid-full" id="result-panel">
-        <div class="card-head">
-          <h2>✅ Task Result</h2>
-          <span class="tag" id="result-badge">Complete</span>
-        </div>
-        <div class="card-body">
-          <div class="result-output" id="result-content"></div>
-          <div class="result-chips" id="result-stats"></div>
+      <!-- ═══ PAGE: TRANSACTIONS ═══ -->
+      <div class="page" id="page-transactions">
+        <div class="card">
+          <div class="card-h"><h2>🔗 Stellar Testnet Transactions</h2><span class="tag green" id="tx-total">Loading...</span></div>
+          <div class="card-b" style="padding: 0;">
+            <table class="tx-table" id="tx-table">
+              <thead><tr><th>Hash</th><th>Type</th><th>Amount</th><th>Memo</th><th>Time</th></tr></thead>
+              <tbody id="tx-body"><tr><td colspan="5" style="text-align:center;padding:32px;color:var(--text-muted);">Loading transactions...</td></tr></tbody>
+            </table>
+          </div>
         </div>
       </div>
     </div>
   </div>
 
   <script>
-    // ─── State ───
-    let eventCount = 0;
-    let isRunning = false;
+    let evCnt = 0, isRunning = false;
+    const pageTitles = { orchestrator: 'Task Orchestrator', agents: 'Agent Registry', status: 'API Status', transactions: 'Transactions' };
+
+    // ─── Page Nav ───
+    function showPage(id) {
+      document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
+      document.getElementById(`page-${id}`).classList.add('active');
+      document.querySelectorAll('.sb-item').forEach(i => i.classList.remove('active'));
+      document.querySelector(`.sb-item[data-page="${id}"]`).classList.add('active');
+      document.getElementById('topbar-title').textContent = pageTitles[id] || id;
+      if (id === 'agents') loadAgentPage();
+      if (id === 'status') loadStatusPage();
+      if (id === 'transactions') loadTxPage();
+    }
 
     // ─── Budget Slider ───
-    const budgetSlider = document.getElementById('budget-slider');
-    const budgetDisplay = document.getElementById('budget-display');
-    budgetSlider.addEventListener('input', () => {
-      budgetDisplay.textContent = `${parseFloat(budgetSlider.value).toFixed(2)} USDC`;
-    });
+    const bSlider = document.getElementById('budget-slider');
+    const bDisp = document.getElementById('budget-display');
+    bSlider.addEventListener('input', () => { bDisp.textContent = `${parseFloat(bSlider.value).toFixed(2)} USDC`; });
 
-    // ─── Load Agents ───
+    // ─── Load Agents (sidebar) ───
     async function loadAgents() {
       try {
-        const res = await fetch('/api/agents');
-        const agents = await res.json();
-        document.getElementById('nav-agent-count').textContent = agents.length;
-
-        const sidebar = document.getElementById('sidebar-agents');
-        sidebar.innerHTML = agents.map(a => `
-          <div class="sidebar-agent" id="agent-${a.id}">
-            <span class="agent-dot"></span>
-            <div class="sidebar-agent-info">
-              <div class="sidebar-agent-name">${a.name}</div>
-              <div class="sidebar-agent-price">${a.price} USDC</div>
+        const agents = await (await fetch('/api/agents')).json();
+        document.getElementById('nav-cnt').textContent = agents.length;
+        document.getElementById('sb-agents').innerHTML = agents.map(a => `
+          <div class="sb-agent" id="agent-${a.id}">
+            <span class="dot-on"></span>
+            <div class="sb-agent-info">
+              <div class="sb-agent-name">${a.name}</div>
+              <div class="sb-agent-price">${a.price} USDC</div>
             </div>
           </div>
         `).join('');
-      } catch (err) {
-        console.error('Failed to load agents:', err);
-      }
+      } catch {}
+    }
+
+    // ─── Load Agent Registry Page ───
+    async function loadAgentPage() {
+      try {
+        const agents = await (await fetch('/api/agents')).json();
+        document.getElementById('agent-cards').innerHTML = agents.map(a => `
+          <div class="ac">
+            <div class="ac-head">
+              <div class="ac-name">${a.name}</div>
+              <div class="ac-status"><span class="dot-on"></span> Online</div>
+            </div>
+            <div class="ac-desc">${a.description || a.capability}</div>
+            <div class="ac-meta">
+              <span class="ac-tag price">💰 ${a.price} ${a.currency}</span>
+              <span class="ac-tag model">🤖 ${a.model}</span>
+              <span class="ac-tag endpoint">🔌 ${a.endpoint}</span>
+            </div>
+          </div>
+        `).join('');
+      } catch {}
+    }
+
+    // ─── Load API Status Page ───
+    async function loadStatusPage() {
+      try {
+        const s = await (await fetch('/api/status')).json();
+        document.getElementById('status-grid').innerHTML = `
+          <div class="status-card"><div class="sc-icon">🟢</div><div class="sc-label">System Status</div><div class="sc-value">${s.status?.toUpperCase()}</div><div class="sc-sub">StellarMind v${s.version}</div></div>
+          <div class="status-card"><div class="sc-icon">🌐</div><div class="sc-label">Network</div><div class="sc-value">${s.network}</div><div class="sc-sub">${s.facilitator}</div></div>
+          <div class="status-card"><div class="sc-icon">🤖</div><div class="sc-label">Agents</div><div class="sc-value">${s.agents}</div><div class="sc-sub">Claude ${s.claudeEnabled ? '✅ Connected' : '❌ Off'}</div></div>
+        `;
+
+        const eps = [
+          { m: 'GET', p: '/api/premium/research', pr: '$0.01', pw: true },
+          { m: 'GET', p: '/api/premium/summarize', pr: '$0.01', pw: true },
+          { m: 'GET', p: '/api/premium/analyze', pr: '$0.05', pw: true },
+          { m: 'GET', p: '/api/premium/code', pr: '$0.03', pw: true },
+          { m: 'POST', p: '/api/orchestrate', pr: '', pw: false },
+          { m: 'GET', p: '/api/agents', pr: '', pw: false },
+          { m: 'GET', p: '/api/wallet/balances', pr: '', pw: false },
+          { m: 'GET', p: '/api/wallet/transactions', pr: '', pw: false },
+          { m: 'GET', p: '/api/status', pr: '', pw: false },
+          { m: 'GET', p: '/api/events', pr: '', pw: false },
+        ];
+
+        document.getElementById('endpoint-list').innerHTML = eps.map(e => `
+          <div class="ep-item">
+            <span class="ep-method ${e.m.toLowerCase()}">${e.m}</span>
+            <span class="ep-path">${e.p}</span>
+            ${e.pw ? `<span class="ep-price">🔒 ${e.pr}</span>` : '<span class="ep-free">Free</span>'}
+          </div>
+        `).join('');
+
+        const x4 = s.x402 || {};
+        document.getElementById('x402-info').innerHTML = `
+          <div style="font-size:12px;color:var(--text-secondary);line-height:1.8;">
+            <p style="margin-bottom:10px;"><strong style="color:var(--text-primary);">Middleware:</strong> ${x4.middleware || 'N/A'}</p>
+            <p style="margin-bottom:10px;"><strong style="color:var(--text-primary);">Client:</strong> ${x4.client || 'N/A'}</p>
+            <p style="margin-bottom:10px;"><strong style="color:var(--text-primary);">Flow:</strong></p>
+            <div style="background:var(--bg-card-alt);padding:12px 16px;border-radius:var(--radius-sm);font-family:'JetBrains Mono',monospace;font-size:11px;line-height:1.8;color:var(--accent-light);">
+              1. Orchestrator → GET /api/premium/* → Server<br/>
+              2. Server returns <span style="color:var(--amber);">402 Payment Required</span> (price, network, payTo)<br/>
+              3. <span style="color:var(--purple);">wrapFetchWithPayment</span> auto-signs Stellar USDC tx<br/>
+              4. Retries with <span style="color:var(--green);">X-PAYMENT</span> header<br/>
+              5. Facilitator verifies → settles on-chain (~5s)<br/>
+              6. Server returns <span style="color:var(--green);">200 OK</span> + Claude response
+            </div>
+          </div>
+        `;
+      } catch {}
+    }
+
+    // ─── Load Transactions Page ───
+    async function loadTxPage() {
+      try {
+        const txs = await (await fetch('/api/wallet/transactions')).json();
+        document.getElementById('tx-cnt').textContent = txs.length;
+        document.getElementById('tx-total').textContent = `${txs.length} Transactions`;
+        if (!txs.length) {
+          document.getElementById('tx-body').innerHTML = '<tr><td colspan="5" style="text-align:center;padding:32px;color:var(--text-muted);">No transactions yet. Run the orchestrator first!</td></tr>';
+          return;
+        }
+        document.getElementById('tx-body').innerHTML = txs.map(tx => {
+          const ops = tx.operations || [];
+          const op = ops[0] || {};
+          const amt = op.amount ? `${parseFloat(op.amount).toFixed(2)} ${op.asset_code || 'XLM'}` : '—';
+          const hash = tx.hash || tx.id || '';
+          const url = `https://stellar.expert/explorer/testnet/tx/${hash}`;
+          const time = tx.created_at ? new Date(tx.created_at).toLocaleString() : '—';
+          return `<tr>
+            <td><a href="${url}" target="_blank" class="tx-hash">${hash.slice(0,10)}...${hash.slice(-6)}</a></td>
+            <td>${op.type || 'payment'}</td>
+            <td><span class="tx-amount">${amt}</span></td>
+            <td><span class="tx-memo">${tx.memo || '—'}</span></td>
+            <td><span class="tx-time">${time}</span></td>
+          </tr>`;
+        }).join('');
+      } catch { document.getElementById('tx-body').innerHTML = '<tr><td colspan="5" style="text-align:center;padding:32px;color:var(--text-muted);">Failed to load transactions.</td></tr>'; }
     }
 
     // ─── Load Wallets ───
     async function loadWallets() {
       try {
-        const res = await fetch('/api/wallet/balances');
-        const wallets = await res.json();
-
-        for (const [key, data] of Object.entries(wallets)) {
-          const balEl = document.getElementById(`balance-${key}`);
-          const addrEl = document.getElementById(`addr-${key}`);
-          const miniEl = document.getElementById(`mini-bal-${key}`);
-
-          if (balEl && data.balances) {
-            const usdc = data.balances.find(b => b.asset === 'USDC');
-            const xlm = data.balances.find(b => b.asset === 'XLM');
-            if (usdc && parseFloat(usdc.balance) > 0) {
-              balEl.textContent = `${parseFloat(usdc.balance).toFixed(2)} USDC`;
-              if (miniEl) miniEl.textContent = `${parseFloat(usdc.balance).toFixed(2)} USDC`;
-            } else if (xlm) {
-              balEl.textContent = `${parseFloat(xlm.balance).toFixed(2)} XLM`;
-              if (miniEl) miniEl.textContent = `${parseFloat(xlm.balance).toFixed(1)} XLM`;
+        const w = await (await fetch('/api/wallet/balances')).json();
+        for (const [k, d] of Object.entries(w)) {
+          const bk = k === 'orchestrator' ? 'orch' : k;
+          const balEl = document.getElementById(`bal-${bk}`);
+          const addrEl = document.getElementById(`addr-${bk}`);
+          const mEl = document.getElementById(`mbal-${bk}`);
+          if (balEl && d.balances) {
+            const u = d.balances.find(b => b.asset === 'USDC');
+            const x = d.balances.find(b => b.asset === 'XLM');
+            if (u && parseFloat(u.balance) > 0) {
+              balEl.textContent = `${parseFloat(u.balance).toFixed(2)} USDC`;
+              if (mEl) mEl.textContent = `${parseFloat(u.balance).toFixed(1)} USDC`;
+            } else if (x) {
+              balEl.textContent = `${parseFloat(x.balance).toFixed(2)} XLM`;
+              if (mEl) mEl.textContent = `${parseFloat(x.balance).toFixed(0)} XLM`;
             }
           }
-          if (addrEl && data.address) {
-            addrEl.textContent = `${data.address.slice(0, 6)}...${data.address.slice(-4)}`;
-          }
+          if (addrEl && d.address) addrEl.textContent = `${d.address.slice(0,6)}...${d.address.slice(-4)}`;
         }
-      } catch (err) {
-        console.error('Failed to load wallets:', err);
-      }
+      } catch {}
     }
 
-    // ─── SSE Event Stream ───
+    // ─── SSE ───
     function connectSSE() {
       const es = new EventSource('/api/events');
-      es.onmessage = (e) => {
-        try {
-          const event = JSON.parse(e.data);
-          if (event.type === 'connected') return;
-          addEventToFeed(event);
-        } catch (err) {
-          console.error('SSE parse error:', err);
-        }
-      };
-      es.onerror = () => {
-        console.warn('SSE reconnecting...');
-        setTimeout(connectSSE, 3000);
-      };
+      es.onmessage = (e) => { try { const ev = JSON.parse(e.data); if (ev.type !== 'connected') addFeed(ev); } catch {} };
+      es.onerror = () => setTimeout(connectSSE, 3000);
     }
 
-    function addEventToFeed(event) {
-      const feed = document.getElementById('tx-feed');
-      const empty = document.getElementById('feed-empty');
-      if (empty) empty.style.display = 'none';
-
-      eventCount++;
-      document.getElementById('event-count').textContent = `${eventCount} Events`;
-
-      const item = document.createElement('div');
-      item.className = 'feed-item';
-
-      let icon = '📡', iconClass = 'agent', label = '', sub = '';
-
-      switch (event.type) {
-        case 'orchestrator_start':
-          icon = '🎯'; iconClass = 'plan';
-          label = 'Orchestrator Started';
-          sub = `Task: ${event.task?.substring(0, 50)}...`;
-          break;
-        case 'orchestrator_plan':
-          icon = '📋'; iconClass = 'plan';
-          label = `Plan: ${event.plan?.substring(0, 45)}`;
-          sub = `${event.subtaskCount} subtasks planned`;
-          break;
-        case 'agent_call':
-          icon = '⚡'; iconClass = 'agent';
-          label = `${event.agent} called`;
-          sub = `Cost: ${event.cost} USDC · ${event.paymentFlow || 'stellar'}`;
-          highlightAgent(event.agentId);
-          break;
-        case 'x402_payment':
-          icon = '🔐'; iconClass = 'x402';
-          label = `x402: ${event.agent} — 402→sign→settle→200`;
-          sub = `${event.amount} ${event.currency} via ${event.protocol}`;
-          break;
-        case 'agent_response':
-          icon = '✅'; iconClass = 'complete';
-          label = `${event.agent} responded`;
-          sub = `${event.paidVia ? '[' + event.paidVia + '] ' : ''}${event.resultPreview?.substring(0, 45)}...`;
-          break;
-        case 'payment':
-          icon = '💸'; iconClass = 'payment';
-          label = `${event.from} → ${event.to}`;
-          sub = `${event.amount} ${event.currency} via ${event.method || 'stellar'}`;
-          break;
-        case 'budget_limit':
-          icon = '🛑'; iconClass = 'budget';
-          label = `Budget limit: ${event.agent} skipped`;
-          sub = `Need ${event.cost}, only ${event.remaining} remaining`;
-          break;
-        case 'orchestrator_complete':
-          icon = '🏁'; iconClass = 'complete';
-          label = `Complete — ${event.totalSpent} USDC spent`;
-          sub = `${event.agentsUsed} agents · ${event.elapsed} · ${event.paymentProtocol || 'stellar'}`;
-          break;
-        default:
-          label = event.type;
-          sub = JSON.stringify(event).substring(0, 70);
+    function addFeed(ev) {
+      const f = document.getElementById('feed');
+      const em = document.getElementById('feed-empty');
+      if (em) em.style.display = 'none';
+      evCnt++;
+      document.getElementById('ev-cnt').textContent = `${evCnt} Events`;
+      const el = document.createElement('div');
+      el.className = 'fi';
+      let ic = '📡', cl = 'agt', lb = '', sb = '';
+      switch (ev.type) {
+        case 'orchestrator_start': ic='🎯'; cl='pln'; lb='Orchestrator Started'; sb=`Task: ${ev.task?.substring(0,45)}...`; break;
+        case 'orchestrator_plan': ic='📋'; cl='pln'; lb=`Plan: ${ev.plan?.substring(0,40)}`; sb=`${ev.subtaskCount} subtasks`; break;
+        case 'agent_call': ic='⚡'; cl='agt'; lb=`${ev.agent} called`; sb=`${ev.cost} USDC · ${ev.paymentFlow||'stellar'}`; highlightAgent(ev.agentId); break;
+        case 'x402_payment': ic='🔐'; cl='x4'; lb=`x402: ${ev.agent}`; sb=`${ev.amount} ${ev.currency} via x402`; break;
+        case 'agent_response': ic='✅'; cl='ok'; lb=`${ev.agent} responded`; sb=`${ev.paidVia?'['+ev.paidVia+'] ':''}${ev.resultPreview?.substring(0,40)}...`; break;
+        case 'payment': ic='💸'; cl='pay'; lb=`${ev.from} → ${ev.to}`; sb=`${ev.amount} ${ev.currency} · ${ev.method||'stellar'}`; break;
+        case 'budget_limit': ic='🛑'; cl='bgt'; lb=`Budget: ${ev.agent} skipped`; sb=`Need ${ev.cost}, ${ev.remaining} left`; break;
+        case 'orchestrator_complete': ic='🏁'; cl='ok'; lb=`Done — ${ev.totalSpent} USDC`; sb=`${ev.agentsUsed} agents · ${ev.elapsed}`; break;
+        default: lb=ev.type; sb=JSON.stringify(ev).substring(0,60);
       }
-
-      let linkHtml = '';
-      if (event.explorerUrl) {
-        linkHtml = `<a href="${event.explorerUrl}" target="_blank" class="feed-link">TX ↗</a>`;
-      }
-
-      item.innerHTML = `
-        <div class="feed-icon ${iconClass}">${icon}</div>
-        <div class="feed-info">
-          <div class="feed-label">${label}</div>
-          <div class="feed-sub">${sub}</div>
-        </div>
-        ${linkHtml}
-      `;
-
-      feed.prepend(item);
+      let lk = ev.explorerUrl ? `<a href="${ev.explorerUrl}" target="_blank" class="fi-link">TX ↗</a>` : '';
+      el.innerHTML = `<div class="fi-icon ${cl}">${ic}</div><div class="fi-info"><div class="fi-l">${lb}</div><div class="fi-s">${sb}</div></div>${lk}`;
+      f.prepend(el);
     }
 
-    function highlightAgent(agentId) {
-      const card = document.getElementById(`agent-${agentId}`);
-      if (card) {
-        card.querySelector('.agent-dot')?.classList.add('active');
-        card.classList.add('agent-card-active');
-        setTimeout(() => {
-          card.classList.remove('agent-card-active');
-          card.querySelector('.agent-dot')?.classList.remove('active');
-        }, 3000);
-      }
+    function highlightAgent(id) {
+      const c = document.getElementById(`agent-${id}`);
+      if (c) { c.querySelector('.dot-on')?.classList.add('pulse'); setTimeout(() => c.querySelector('.dot-on')?.classList.remove('pulse'), 3000); }
     }
 
-    // ─── Run Orchestration ───
+    // ─── Orchestrate ───
     async function runOrchestration() {
       if (isRunning) return;
       isRunning = true;
-
       const task = document.getElementById('task-input').value.trim();
-      if (!task) {
-        document.getElementById('task-input').focus();
-        isRunning = false;
-        return;
-      }
-
-      const budget = parseFloat(budgetSlider.value);
+      if (!task) { document.getElementById('task-input').focus(); isRunning = false; return; }
+      const budget = parseFloat(bSlider.value);
       const btn = document.getElementById('btn-run');
-      btn.disabled = true;
-      btn.innerHTML = '<span class="spinner"></span>Running...';
-      btn.classList.add('loading');
-
+      btn.disabled = true; btn.innerHTML = '<span class="spinner"></span>Running...';
       document.getElementById('result-panel').classList.remove('visible');
-
       try {
-        const res = await fetch('/api/orchestrate', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ task, budget }),
-        });
-        const result = await res.json();
-        showResult(result);
-        loadWallets();
-      } catch (err) {
-        console.error('Orchestration failed:', err);
-        addEventToFeed({ type: 'error', message: err.message });
-      } finally {
-        isRunning = false;
-        btn.disabled = false;
-        btn.innerHTML = '⚡ Run Agents';
-        btn.classList.remove('loading');
-      }
+        const r = await (await fetch('/api/orchestrate', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ task, budget }) })).json();
+        showResult(r); loadWallets();
+      } catch (e) { addFeed({ type: 'error', message: e.message }); }
+      finally { isRunning = false; btn.disabled = false; btn.innerHTML = '⚡ Run Agents'; }
     }
 
-    function showResult(result) {
-      const panel = document.getElementById('result-panel');
-      const content = document.getElementById('result-content');
-      const stats = document.getElementById('result-stats');
-
-      let text = '';
-      if (result.results) {
-        for (const r of result.results) {
-          if (r.skipped) {
-            text += `⏭️ ${r.agentId}: Skipped — ${r.reason}\n\n`;
-          } else {
-            text += `━━━ ${r.agentName} (${r.cost} ${r.currency}) ━━━\n`;
-            text += `${r.output}\n\n`;
-          }
-        }
+    function showResult(r) {
+      const p = document.getElementById('result-panel');
+      const out = document.getElementById('result-out');
+      const ch = document.getElementById('result-chips');
+      let t = '';
+      if (r.results) for (const x of r.results) {
+        t += x.skipped ? `⏭️ ${x.agentId}: Skipped — ${x.reason}\n\n` : `━━━ ${x.agentName} (${x.cost} ${x.currency}) ━━━\n${x.output}\n\n`;
       }
-      content.textContent = text || 'No results';
-
-      const txLinks = (result.payments || []).map(p =>
-        `<a href="${p.explorerUrl}" target="_blank" class="feed-link" style="margin-right:4px;">TX ${p.txHash?.slice(0,8)} ↗</a>`
-      ).join('');
-
-      stats.innerHTML = `
-        <div class="chip">Agents: <span class="val">${result.agentsUsed || 0}</span></div>
-        <div class="chip">Spent: <span class="val">${result.totalSpent || '0'} USDC</span></div>
-        <div class="chip">TXs: <span class="val">${result.txCount || 0}</span></div>
-        <div class="chip">Protocol: <span class="val">${result.paymentProtocol || 'stellar'}</span></div>
-        <div class="chip">Time: <span class="val">${result.elapsed || '—'}</span></div>
-        ${result.budgetExhausted ? '<div class="chip" style="color:var(--amber)">⚠️ Budget Exhausted</div>' : ''}
+      out.textContent = t || 'No results';
+      const txL = (r.payments||[]).map(p => `<a href="${p.explorerUrl}" target="_blank" class="fi-link">${p.txHash?.slice(0,8)} ↗</a>`).join(' ');
+      ch.innerHTML = `
+        <div class="chip">Agents: <span class="v">${r.agentsUsed||0}</span></div>
+        <div class="chip">Spent: <span class="v">${r.totalSpent||'0'} USDC</span></div>
+        <div class="chip">TXs: <span class="v">${r.txCount||0}</span></div>
+        <div class="chip">Protocol: <span class="v">${r.paymentProtocol||'stellar'}</span></div>
+        <div class="chip">Time: <span class="v">${r.elapsed||'—'}</span></div>
+        ${r.budgetExhausted?'<div class="chip" style="color:var(--amber)">⚠️ Budget Used</div>':''}
+        ${txL?`<div class="chip" style="flex-wrap:wrap;gap:4px;">Verify: ${txL}</div>`:''}
       `;
-
-      if (txLinks) {
-        stats.innerHTML += `<div class="chip" style="flex-wrap:wrap;gap:4px;">Verify: ${txLinks}</div>`;
-      }
-
-      panel.classList.add('visible');
+      p.classList.add('visible');
     }
 
-    // ─── Keyboard shortcut ───
-    document.getElementById('task-input').addEventListener('keydown', (e) => {
-      if (e.key === 'Enter' && !e.shiftKey) {
-        e.preventDefault();
-        runOrchestration();
-      }
-    });
+    document.getElementById('task-input').addEventListener('keydown', e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); runOrchestration(); }});
 
     // ─── Init ───
-    loadAgents();
-    loadWallets();
-    connectSSE();
+    loadAgents(); loadWallets(); connectSSE();
     setInterval(loadWallets, 30000);
   </script>
 </body>
