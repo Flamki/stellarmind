@@ -268,6 +268,7 @@ export async function orchestrate(task, budget, broadcastFn) {
   let x402PaymentCount = 0;
   let xlmFallbackCount = 0;
   let unpaidCount = 0;
+  let accumulatedContext = '';
 
   broadcastFn?.({
     type: 'orchestrator_start',
@@ -361,17 +362,28 @@ Respond ONLY with valid JSON (no markdown, no code fences):
       continue;
     }
 
+    let activeInput = subtask.input;
+    if (accumulatedContext) {
+      if (agent.id === 'summary-bot') activeInput = `Summarize the following findings related to "${subtask.input}":\n\n${accumulatedContext.substring(0, 3000)}`;
+      else if (agent.id === 'analyst-bot') activeInput = `Analyze this topic: "${subtask.input}"\n\nContext:\n${accumulatedContext.substring(0, 3000)}`;
+      else if (agent.id === 'code-bot') activeInput = `Action: "${subtask.input}"\n\nContext:\n${accumulatedContext.substring(0, 3000)}`;
+    }
+
     broadcastFn?.({
       type: 'agent_call',
       agent: agent.name,
       agentId: agent.id,
-      input: subtask.input?.substring(0, 100),
+      input: activeInput.substring(0, 100) + (activeInput.length > 100 ? '...' : ''),
       cost: agent.price,
       paymentFlow: x402Fetch ? 'x402-http402' : 'stellar-xlm-fallback',
       timestamp: new Date().toISOString(),
     });
 
-    const agentResponse = await callAgentViaX402(agent, subtask.input, broadcastFn);
+    const agentResponse = await callAgentViaX402(agent, activeInput, broadcastFn);
+    
+    if (agentResponse && agentResponse.result) {
+      accumulatedContext = typeof agentResponse.result === 'string' ? agentResponse.result : JSON.stringify(agentResponse.result);
+    }
     totalSpent += cost;
 
     if (agentResponse.paidVia === 'x402') x402PaymentCount += 1;
