@@ -128,13 +128,42 @@ npm run dev
 
 Visit **http://localhost:3001** — submit a task, set a budget, and watch agents work!
 
-### 7. Run the CLI Demo
+### 7. Run Recording Preflight (required)
+
+Before recording your demo, run:
+
+```bash
+npm run preflight
+```
+
+This is a strict go/no-go check that validates:
+- local server health
+- x402 middleware enabled
+- wallet trustlines and spendable USDC
+- model access
+- live x402 smoke task + on-chain transaction verification
+
+If preflight fails, fix blockers before recording.
+
+### 8. Run the CLI Demo
 
 ```bash
 npm run demo
 ```
 
 Runs 3 automated tasks including a budget-enforcement test. Prints all Stellar Expert links.
+
+## 🎬 Winning Demo Runbook
+
+Use the polished recording script in:
+
+- [DEMO_RECORDING_SCRIPT.md](./DEMO_RECORDING_SCRIPT.md)
+
+It includes:
+- exact shot list and timing
+- human-style voiceover beats
+- tx-click proof flow for judges
+- recovery steps if something breaks mid-recording
 
 ## 💎 Real Stellar Transactions
 
