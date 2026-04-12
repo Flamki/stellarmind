@@ -5,7 +5,7 @@ import path from 'node:path';
 
 import { config } from './config.js';
 import { AGENTS, discoverAgents, getAgentById } from './agents/registry.js';
-import { runResearch, runSummary, runAnalysis, runCode, setApiKey } from './agents/services.js';
+import { runResearch, runSummary, runAnalysis, runCode, setApiKey, MODEL_LABELS } from './agents/services.js';
 import { orchestrate } from './agents/orchestrator.js';
 import { getBalance, getTransactions, sendPayment } from './stellar/wallet.js';
 
@@ -109,7 +109,7 @@ app.get('/api/premium/research', async (req, res) => {
     broadcast({ type: 'agent_call', agent: '🔬 Research Agent', agentId: 'research-bot', input: topic, cost: '0.01', timestamp: new Date().toISOString() });
     const result = await runResearch(topic);
     broadcast({ type: 'agent_response', agent: '🔬 Research Agent', agentId: 'research-bot', resultPreview: result.substring(0, 150), cost: '0.01', timestamp: new Date().toISOString() });
-    res.json({ agent: 'research-bot', topic, result, model: 'claude-haiku-4-5', cost: '0.01 USDC', paidVia: 'x402' });
+    res.json({ agent: 'research-bot', topic, result, model: MODEL_LABELS.research, cost: '0.01 USDC', paidVia: 'x402' });
   } catch (err) {
     res.status(500).json({ error: 'Research agent temporarily unavailable', details: err.message });
   }
@@ -121,7 +121,7 @@ app.get('/api/premium/summarize', async (req, res) => {
     broadcast({ type: 'agent_call', agent: '📝 Summary Agent', agentId: 'summary-bot', input: text.substring(0, 100), cost: '0.01', timestamp: new Date().toISOString() });
     const result = await runSummary(text);
     broadcast({ type: 'agent_response', agent: '📝 Summary Agent', agentId: 'summary-bot', resultPreview: result.substring(0, 150), cost: '0.01', timestamp: new Date().toISOString() });
-    res.json({ agent: 'summary-bot', result, model: 'claude-haiku-4-5', cost: '0.01 USDC', paidVia: 'x402' });
+    res.json({ agent: 'summary-bot', result, model: MODEL_LABELS.summary, cost: '0.01 USDC', paidVia: 'x402' });
   } catch (err) {
     res.status(500).json({ error: 'Summary agent temporarily unavailable', details: err.message });
   }
@@ -133,7 +133,7 @@ app.get('/api/premium/analyze', async (req, res) => {
     broadcast({ type: 'agent_call', agent: '📊 Analysis Agent', agentId: 'analyst-bot', input: topic, cost: '0.05', timestamp: new Date().toISOString() });
     const result = await runAnalysis(topic);
     broadcast({ type: 'agent_response', agent: '📊 Analysis Agent', agentId: 'analyst-bot', resultPreview: result.substring(0, 150), cost: '0.05', timestamp: new Date().toISOString() });
-    res.json({ agent: 'analyst-bot', topic, result, model: 'claude-sonnet-4-5', cost: '0.05 USDC', paidVia: 'x402' });
+    res.json({ agent: 'analyst-bot', topic, result, model: MODEL_LABELS.analysis, cost: '0.05 USDC', paidVia: 'x402' });
   } catch (err) {
     res.status(500).json({ error: 'Analysis agent temporarily unavailable', details: err.message });
   }
@@ -145,7 +145,7 @@ app.get('/api/premium/code', async (req, res) => {
     broadcast({ type: 'agent_call', agent: '💻 Code Agent', agentId: 'code-bot', input: prompt.substring(0, 100), cost: '0.03', timestamp: new Date().toISOString() });
     const result = await runCode(prompt);
     broadcast({ type: 'agent_response', agent: '💻 Code Agent', agentId: 'code-bot', resultPreview: result.substring(0, 150), cost: '0.03', timestamp: new Date().toISOString() });
-    res.json({ agent: 'code-bot', prompt, result, model: 'claude-haiku-4-5', cost: '0.03 USDC', paidVia: 'x402' });
+    res.json({ agent: 'code-bot', prompt, result, model: MODEL_LABELS.code, cost: '0.03 USDC', paidVia: 'x402' });
   } catch (err) {
     res.status(500).json({ error: 'Code agent temporarily unavailable', details: err.message });
   }
@@ -156,7 +156,7 @@ app.get('/api/research', async (req, res) => {
   try {
     const topic = req.query.topic || 'AI payments';
     const result = await runResearch(topic);
-    res.json({ agent: 'research-bot', topic, result, model: 'claude-haiku-4-5', cost: '0.01 USDC' });
+    res.json({ agent: 'research-bot', topic, result, model: MODEL_LABELS.research, cost: '0.01 USDC' });
   } catch (err) {
     res.status(500).json({ error: 'Agent temporarily unavailable', fallback: 'Try again' });
   }
@@ -166,7 +166,7 @@ app.get('/api/summarize', async (req, res) => {
   try {
     const text = req.query.text || '';
     const result = await runSummary(text);
-    res.json({ agent: 'summary-bot', result, model: 'claude-haiku-4-5', cost: '0.01 USDC' });
+    res.json({ agent: 'summary-bot', result, model: MODEL_LABELS.summary, cost: '0.01 USDC' });
   } catch (err) {
     res.status(500).json({ error: 'Agent temporarily unavailable', fallback: 'Try again' });
   }
@@ -176,7 +176,7 @@ app.get('/api/analyze', async (req, res) => {
   try {
     const topic = req.query.topic || '';
     const result = await runAnalysis(topic);
-    res.json({ agent: 'analyst-bot', topic, result, model: 'claude-sonnet-4-5', cost: '0.05 USDC' });
+    res.json({ agent: 'analyst-bot', topic, result, model: MODEL_LABELS.analysis, cost: '0.05 USDC' });
   } catch (err) {
     res.status(500).json({ error: 'Agent temporarily unavailable', fallback: 'Try again' });
   }
@@ -186,7 +186,7 @@ app.get('/api/code', async (req, res) => {
   try {
     const prompt = req.query.prompt || '';
     const result = await runCode(prompt);
-    res.json({ agent: 'code-bot', result, model: 'claude-haiku-4-5', cost: '0.03 USDC' });
+    res.json({ agent: 'code-bot', result, model: MODEL_LABELS.code, cost: '0.03 USDC' });
   } catch (err) {
     res.status(500).json({ error: 'Agent temporarily unavailable', fallback: 'Try again' });
   }

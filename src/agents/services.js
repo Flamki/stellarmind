@@ -6,6 +6,21 @@ let anthropic = new Anthropic({ apiKey: config.anthropicApiKey });
 // Track whether Claude API is available
 let claudeAvailable = true;
 
+export const AGENT_MODELS = {
+  research: 'claude-haiku-4-5-20251001',
+  summary: 'claude-haiku-4-5-20251001',
+  analysisPrimary: 'claude-sonnet-4-5-20250929',
+  analysisFallback: 'claude-haiku-4-5-20251001',
+  code: 'claude-haiku-4-5-20251001',
+};
+
+export const MODEL_LABELS = {
+  research: AGENT_MODELS.research,
+  summary: AGENT_MODELS.summary,
+  analysis: `${AGENT_MODELS.analysisPrimary} (fallback: ${AGENT_MODELS.analysisFallback})`,
+  code: AGENT_MODELS.code,
+};
+
 /**
  * Update the Anthropic API key at runtime.
  * Allows users to plug in their own key without restarting the server.
@@ -121,6 +136,19 @@ async function callClaude(model, maxTokens, prompt, fallbackFn, fallbackInput) {
   }
 }
 
+async function callClaudeWithModelFallback(primaryModel, fallbackModel, maxTokens, prompt, fallbackFn, fallbackInput) {
+  try {
+    return await callClaude(primaryModel, maxTokens, prompt, fallbackFn, fallbackInput);
+  } catch (err) {
+    const message = String(err?.message || '').toLowerCase();
+    const isModelResolutionError = message.includes('model') || message.includes('not found') || message.includes('unsupported');
+    if (!isModelResolutionError || !fallbackModel || fallbackModel === primaryModel) throw err;
+
+    console.warn(`  Primary model ${primaryModel} unavailable, retrying with ${fallbackModel}`);
+    return callClaude(fallbackModel, maxTokens, prompt, fallbackFn, fallbackInput);
+  }
+}
+
 /**
  * Check if Claude API is currently available
  */
@@ -133,7 +161,7 @@ export function isClaudeAvailable() {
  */
 export async function runResearch(topic) {
   return callClaude(
-    'claude-haiku-4-5-20251001',
+    AGENT_MODELS.research,
     512,
     `You are a research agent. Research this topic thoroughly but concisely (4-5 sentences with key facts and data points): ${topic}`,
     FALLBACKS.research,
@@ -146,7 +174,7 @@ export async function runResearch(topic) {
  */
 export async function runSummary(text) {
   return callClaude(
-    'claude-haiku-4-5-20251001',
+    AGENT_MODELS.summary,
     256,
     `You are a summarization agent. Summarize the following text in 2-3 clear, concise sentences capturing the key points:\n\n${text}`,
     FALLBACKS.summary,
@@ -158,8 +186,9 @@ export async function runSummary(text) {
  * Analysis Agent — Claude Sonnet for deep analysis (premium tier)
  */
 export async function runAnalysis(topic) {
-  return callClaude(
-    'claude-haiku-4-5-20251001',
+  return callClaudeWithModelFallback(
+    AGENT_MODELS.analysisPrimary,
+    AGENT_MODELS.analysisFallback,
     800,
     `You are a strategic analysis agent. Provide a structured analysis of the following topic. Include:
 1. **Key Findings** (3-4 bullet points)
@@ -177,7 +206,7 @@ Topic: ${topic}`,
  */
 export async function runCode(prompt) {
   return callClaude(
-    'claude-haiku-4-5-20251001',
+    AGENT_MODELS.code,
     600,
     `You are a code assistant agent. Help with the following code task. Be concise and provide working code:\n\n${prompt}`,
     FALLBACKS.code,

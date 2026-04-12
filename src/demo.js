@@ -64,6 +64,8 @@ async function main() {
         'agent_call': '⚡',
         'agent_response': '✅',
         'payment': '💸',
+        'x402_payment': '🧾',
+        'x402_failure': '⚠️',
         'budget_limit': '🛑',
         'orchestrator_complete': '🏁',
       }[event.type] || '📡';
@@ -76,6 +78,10 @@ async function main() {
       console.log(`\n  📊 Result Summary:`);
       console.log(`     Agents used: ${result.agentsUsed}`);
       console.log(`     Total spent: ${result.totalSpent} USDC`);
+      console.log(`     Payment protocol: ${result.paymentProtocol}`);
+      console.log(`     x402 payments: ${result.x402PaymentCount}`);
+      console.log(`     XLM fallback payments: ${result.xlmFallbackCount}`);
+      console.log(`     Unpaid calls: ${result.unpaidCount}`);
       console.log(`     TX count:    ${result.txCount}`);
       console.log(`     Budget exhausted: ${result.budgetExhausted}`);
       console.log(`     Time: ${result.elapsed}`);

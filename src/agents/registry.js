@@ -2,6 +2,8 @@
  * Agent Registry — Marketplace service catalog
  * Each agent is a Claude-powered AI service with its own capability and pricing
  */
+import { MODEL_LABELS } from './services.js';
+
 export const AGENTS = [
   {
     id: 'research-bot',
@@ -9,7 +11,7 @@ export const AGENTS = [
     endpoint: '/api/research',
     price: '0.01',
     currency: 'USDC',
-    model: 'claude-haiku-4-5-20251001',
+    model: MODEL_LABELS.research,
     capability: 'Deep web research and fact-finding on any topic',
     description: 'Uses Claude Haiku for fast, accurate research synthesis. Returns well-sourced analysis.',
     status: 'online',
@@ -20,7 +22,7 @@ export const AGENTS = [
     endpoint: '/api/summarize',
     price: '0.01',
     currency: 'USDC',
-    model: 'claude-haiku-4-5-20251001',
+    model: MODEL_LABELS.summary,
     capability: 'Text summarization and key insight extraction',
     description: 'Condenses long texts into concise, actionable summaries powered by Claude Haiku.',
     status: 'online',
@@ -31,9 +33,9 @@ export const AGENTS = [
     endpoint: '/api/analyze',
     price: '0.05',
     currency: 'USDC',
-    model: 'claude-haiku-4-5-20251001',
+    model: MODEL_LABELS.analysis,
     capability: 'Deep strategic analysis with structured insights',
-    description: 'Uses Claude Sonnet for premium-tier analysis. Returns structured findings, risks, and opportunities.',
+    description: 'Uses Claude Sonnet for premium-tier analysis with automatic Haiku fallback when needed.',
     status: 'online',
   },
   {
@@ -42,7 +44,7 @@ export const AGENTS = [
     endpoint: '/api/code',
     price: '0.03',
     currency: 'USDC',
-    model: 'claude-haiku-4-5-20251001',
+    model: MODEL_LABELS.code,
     capability: 'Code generation, review, and debugging',
     description: 'Generates, reviews, and debugs code across multiple languages.',
     status: 'online',
