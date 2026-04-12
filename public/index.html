@@ -904,19 +904,23 @@
         case 'agent_call':
           icon = '⚡'; iconClass = 'agent';
           label = `${event.agent} called`;
-          sub = `Input: ${event.input?.substring(0, 50)}... | Cost: ${event.cost} USDC`;
-          // Highlight agent card
+          sub = `Cost: ${event.cost} USDC | ${event.paymentFlow || 'stellar'}`;
           highlightAgent(event.agentId);
+          break;
+        case 'x402_payment':
+          icon = '🔐'; iconClass = 'payment';
+          label = `x402: ${event.agent} — 402→sign→settle→200`;
+          sub = `${event.amount} ${event.currency} via ${event.protocol} on ${event.network}`;
           break;
         case 'agent_response':
           icon = '✅'; iconClass = 'complete';
           label = `${event.agent} responded`;
-          sub = event.resultPreview?.substring(0, 60) + '...';
+          sub = `${event.paidVia ? '[' + event.paidVia + '] ' : ''}${event.resultPreview?.substring(0, 50)}...`;
           break;
         case 'payment':
           icon = '💸'; iconClass = 'payment';
           label = `${event.from} → ${event.to}`;
-          sub = `${event.amount} ${event.currency}`;
+          sub = `${event.amount} ${event.currency} via ${event.method || 'stellar'}`;
           break;
         case 'budget_limit':
           icon = '🛑'; iconClass = 'budget';
@@ -926,7 +930,7 @@
         case 'orchestrator_complete':
           icon = '🏁'; iconClass = 'complete';
           label = `Task Complete — ${event.totalSpent} USDC spent`;
-          sub = `${event.agentsUsed} agents used, ${event.elapsed}`;
+          sub = `${event.agentsUsed} agents, ${event.elapsed}, protocol: ${event.paymentProtocol || 'stellar'}`;
           break;
         default:
           label = event.type;
@@ -1030,9 +1034,10 @@
       ).join('');
 
       stats.innerHTML = `
-        <div class="stat-chip">Agents Used: <span class="stat-value">${result.agentsUsed || 0}</span></div>
-        <div class="stat-chip">Total Spent: <span class="stat-value">${result.totalSpent || '0'} USDC</span></div>
-        <div class="stat-chip">Stellar TXs: <span class="stat-value">${result.txCount || 0}</span></div>
+        <div class="stat-chip">Agents: <span class="stat-value">${result.agentsUsed || 0}</span></div>
+        <div class="stat-chip">Spent: <span class="stat-value">${result.totalSpent || '0'} USDC</span></div>
+        <div class="stat-chip">TXs: <span class="stat-value">${result.txCount || 0}</span></div>
+        <div class="stat-chip">Protocol: <span class="stat-value">${result.paymentProtocol || 'stellar'}</span></div>
         <div class="stat-chip">Time: <span class="stat-value">${result.elapsed || '—'}</span></div>
         ${result.budgetExhausted ? '<div class="stat-chip" style="color:var(--accent-amber)">⚠️ Budget Exhausted</div>' : ''}
       `;

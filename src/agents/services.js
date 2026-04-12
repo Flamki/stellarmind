@@ -148,7 +148,7 @@ export async function runSummary(text) {
  */
 export async function runAnalysis(topic) {
   return callClaude(
-    'claude-sonnet-4-5-20250514',
+    'claude-haiku-4-5-20251001',
     800,
     `You are a strategic analysis agent. Provide a structured analysis of the following topic. Include:
 1. **Key Findings** (3-4 bullet points)

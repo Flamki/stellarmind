@@ -81,6 +81,14 @@ if (config.serverAddress) {
               payTo: config.serverAddress,
             },
           },
+          'GET /api/premium/code': {
+            accepts: {
+              scheme: 'exact',
+              price: '$0.03',
+              network: config.network,
+              payTo: config.serverAddress,
+            },
+          },
         },
         facilitatorClient,
         [{ network: config.network, server: stellarScheme }],
@@ -128,6 +136,18 @@ app.get('/api/premium/analyze', async (req, res) => {
     res.json({ agent: 'analyst-bot', topic, result, model: 'claude-sonnet-4-5', cost: '0.05 USDC', paidVia: 'x402' });
   } catch (err) {
     res.status(500).json({ error: 'Analysis agent temporarily unavailable', details: err.message });
+  }
+});
+
+app.get('/api/premium/code', async (req, res) => {
+  try {
+    const prompt = req.query.prompt || 'Write a hello world function';
+    broadcast({ type: 'agent_call', agent: '💻 Code Agent', agentId: 'code-bot', input: prompt.substring(0, 100), cost: '0.03', timestamp: new Date().toISOString() });
+    const result = await runCode(prompt);
+    broadcast({ type: 'agent_response', agent: '💻 Code Agent', agentId: 'code-bot', resultPreview: result.substring(0, 150), cost: '0.03', timestamp: new Date().toISOString() });
+    res.json({ agent: 'code-bot', prompt, result, model: 'claude-haiku-4-5', cost: '0.03 USDC', paidVia: 'x402' });
+  } catch (err) {
+    res.status(500).json({ error: 'Code agent temporarily unavailable', details: err.message });
   }
 });
 

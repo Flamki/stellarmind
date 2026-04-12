@@ -31,7 +31,7 @@ export const AGENTS = [
     endpoint: '/api/analyze',
     price: '0.05',
     currency: 'USDC',
-    model: 'claude-sonnet-4-5-20250514',
+    model: 'claude-haiku-4-5-20251001',
     capability: 'Deep strategic analysis with structured insights',
     description: 'Uses Claude Sonnet for premium-tier analysis. Returns structured findings, risks, and opportunities.',
     status: 'online',
