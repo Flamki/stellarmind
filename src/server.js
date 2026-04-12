@@ -268,18 +268,29 @@ app.get('/api/status', (req, res) => {
   res.json({
     name: 'StellarMind',
     version: '1.0.0',
-    description: 'AI Agent Marketplace with x402 Micropayments',
+    description: 'AI Agent Marketplace with x402 Micropayments on Stellar',
     status: 'online',
     network: config.network,
     facilitator: config.facilitatorUrl,
     agents: AGENTS.length,
+    x402: {
+      enabled: !!config.serverAddress,
+      middleware: '@x402/express (paymentMiddlewareFromConfig)',
+      client: '@x402/fetch (wrapFetchWithPayment + ExactStellarScheme)',
+      premiumEndpoints: [
+        'GET /api/premium/research ($0.01)',
+        'GET /api/premium/summarize ($0.01)',
+        'GET /api/premium/analyze ($0.05)',
+        'GET /api/premium/code ($0.03)',
+      ],
+      flow: '402 → wrapFetchWithPayment signs USDC tx → retry with X-PAYMENT → facilitator settles on-chain → 200',
+    },
     wallets: {
       server: config.serverAddress ? `${config.serverAddress.slice(0, 8)}...` : 'not configured',
       orchestrator: config.orchestratorAddress ? `${config.orchestratorAddress.slice(0, 8)}...` : 'not configured',
       buyer: config.buyerAddress ? `${config.buyerAddress.slice(0, 8)}...` : 'not configured',
     },
     claudeEnabled: !!config.anthropicApiKey,
-    x402Enabled: !!config.serverAddress,
   });
 });
 
