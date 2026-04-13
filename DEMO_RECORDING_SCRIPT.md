@@ -25,7 +25,7 @@ Note:
 ## 3) Voiceover Script Source
 
 - Narration text file: `DEMO_VOICEOVER.txt`
-- The automation uses this file to generate AI voice audio.
+- The automation uses this file to generate narration audio.
 - Edit wording there if you want your own tone before rendering.
 
 ## 4) One-Command Narrated Output
@@ -39,7 +39,7 @@ This performs:
 1. local server start
 2. strict preflight (`x402` + on-chain verify)
 3. website-only scripted recording
-4. AI voice generation
+4. narration generation
 5. final MP4 mux
 
 Final output path is printed and also saved in `recordings/latest-narrated.txt`.

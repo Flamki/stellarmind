@@ -2,11 +2,17 @@ import { spawn } from 'node:child_process';
 import path from 'node:path';
 import { promises as fs } from 'node:fs';
 import { fileURLToPath } from 'node:url';
+import dotenv from 'dotenv';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const repoRoot = path.join(__dirname, '..');
 const recordingsDir = path.join(repoRoot, 'recordings');
 const scriptPath = path.join(repoRoot, 'DEMO_VOICEOVER.txt');
+
+dotenv.config({
+  path: path.join(repoRoot, '.env'),
+  quiet: true,
+});
 
 function runCommand(command, args, label, cwd = repoRoot) {
   return new Promise((resolve, reject) => {

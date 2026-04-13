@@ -94,8 +94,13 @@ async function setBudget(page, amount) {
   await sleep(500);
 }
 
-async function openTxLinkAndReturn(page, locator, holdMs = 5000) {
+async function openTxLinkAndReturn(page, locator, holdMs = 5000, waitMs = 12000, required = true) {
+  const start = Date.now();
+  while ((await locator.count()) === 0 && (Date.now() - start < waitMs)) {
+    await sleep(300);
+  }
   if ((await locator.count()) === 0) {
+    if (!required) return false;
     throw new Error('Transaction proof link not found');
   }
 
@@ -115,6 +120,7 @@ async function openTxLinkAndReturn(page, locator, holdMs = 5000) {
   await page.goBack({ waitUntil: 'domcontentloaded', timeout: 60000 });
   await page.locator('.sb-item[data-page]').first().waitFor({ timeout: 30000 });
   await sleep(700);
+  return true;
 }
 
 async function runTask(page, taskText, budgetAmount) {
@@ -239,9 +245,20 @@ async function main() {
     );
     sceneEnd('main_run');
 
-    // Scene 5: click TX proof from result chips
+    // Scene 5: click TX proof (prefer result chips; fallback to transactions table)
     sceneStart('tx_proof_result', 'Transaction proof from result panel');
-    await openTxLinkAndReturn(page, page.locator('#result-chips a.fi-link'), 5600);
+    const openedFromResult = await openTxLinkAndReturn(
+      page,
+      page.locator('#result-chips a.fi-link'),
+      5600,
+      14000,
+      false,
+    );
+    if (!openedFromResult) {
+      await clickSidebar(page, 'transactions', 1800);
+      await openTxLinkAndReturn(page, page.locator('#tx-body a.tx-hash').first(), 5200);
+      await clickSidebar(page, 'orchestrator', 1400);
+    }
     sceneEnd('tx_proof_result');
 
     // Scene 6: budget guardrail run
