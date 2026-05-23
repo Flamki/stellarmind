@@ -58,3 +58,26 @@ npm run setup        # Generate Stellar wallets + fund via Friendbot
 npm run setup:usdc   # Add USDC trustlines for x402 payments
 npm run dev          # Start the server
 ```
+## Contributor Workflow
+
+1. Claim an issue by commenting on it.
+2. Fork the repository to your GitHub account.
+3. Create a new branch for your work.
+
+```bash
+git checkout -b feature-name
+```
+
+4. Make your changes and commit them.
+
+```bash
+git commit -m "Describe your changes"
+```
+
+5. Push your branch to GitHub.
+
+```bash
+git push origin feature-name
+```
+
+6. Open a Pull Request and link the related issue.
