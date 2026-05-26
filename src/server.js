@@ -22,14 +22,54 @@ app.use(express.json());
 app.use(express.static(path.join(__dirname, '..', 'public')));
 
 // ─── SSE Event Stream ────────────────────────────────────────
-const sseClients = [];
+const HEARTBEAT_INTERVAL_MS = 30_000;
+const STALE_CLIENT_THRESHOLD_MS = 90_000;
+const sseClients = new Map();
+
+function removeClient(clientId) {
+  const client = sseClients.get(clientId);
+  if (!client) return;
+  sseClients.delete(clientId);
+  client.res.end();
+}
+
+function writeSse(clientId, event) {
+  const client = sseClients.get(clientId);
+  if (!client) return false;
+
+  try {
+    const ok = client.res.write(`data: ${JSON.stringify(event)}\n\n`);
+    client.lastWriteAt = Date.now();
+    if (!ok) {
+      client.res.once('drain', () => {
+        const activeClient = sseClients.get(clientId);
+        if (activeClient) activeClient.lastWriteAt = Date.now();
+      });
+    }
+    return true;
+  } catch {
+    removeClient(clientId);
+    return false;
+  }
+}
 
 function broadcast(event) {
-  const data = JSON.stringify(event);
-  sseClients.forEach(res => {
-    res.write(`data: ${data}\n\n`);
-  });
+  for (const clientId of sseClients.keys()) {
+    writeSse(clientId, event);
+  }
 }
+
+setInterval(() => {
+  const now = Date.now();
+  for (const [clientId, client] of sseClients.entries()) {
+    if (now - client.lastWriteAt > STALE_CLIENT_THRESHOLD_MS) {
+      removeClient(clientId);
+      continue;
+    }
+
+    writeSse(clientId, { type: 'heartbeat', timestamp: new Date(now).toISOString() });
+  }
+}, HEARTBEAT_INTERVAL_MS);
 
 app.get('/api/events', (req, res) => {
   res.setHeader('Content-Type', 'text/event-stream');
@@ -39,12 +79,16 @@ app.get('/api/events', (req, res) => {
   res.flushHeaders();
 
   // Send initial connection event
-  res.write(`data: ${JSON.stringify({ type: 'connected', timestamp: new Date().toISOString() })}\n\n`);
+  const clientId = `${Date.now()}-${Math.random().toString(36).slice(2)}`;
+  sseClients.set(clientId, { res, lastWriteAt: Date.now() });
+  writeSse(clientId, { type: 'connected', timestamp: new Date().toISOString() });
 
-  sseClients.push(res);
   req.on('close', () => {
-    const idx = sseClients.indexOf(res);
-    if (idx !== -1) sseClients.splice(idx, 1);
+    removeClient(clientId);
+  });
+
+  req.on('error', () => {
+    removeClient(clientId);
   });
 });
 
