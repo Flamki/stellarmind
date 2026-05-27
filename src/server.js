@@ -323,6 +323,8 @@ app.post('/api/config/apikey', (req, res, next) => {
     err.code = 'INVALID_API_KEY';
     return next(err);
   }
+  // Security: Log only that a key was updated, never log the key itself
+  console.log('  🔑 API key updated (ephemeral, session-only)');
   setApiKey(apiKey);
   res.json({ success: true, masked: `sk-ant-...${apiKey.slice(-6)}` });
 });
