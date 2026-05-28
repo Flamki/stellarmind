@@ -799,9 +799,9 @@
       </div>
 
       <!-- ═══ SECURITY WARNING MODAL ═══ -->
-      <div id="security-modal" style="display:none;position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,0.7);z-index:100;display:flex;align-items:center;justify-content:center;">
+      <div id="security-modal" role="dialog" aria-modal="true" aria-labelledby="security-modal-title" style="display:none;position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,0.7);z-index:100;align-items:center;justify-content:center;">
         <div style="background:var(--bg-card);border:1px solid var(--border);border-radius:var(--radius);padding:24px;max-width:420px;box-shadow:0 20px 60px rgba(0,0,0,0.5);">
-          <h3 style="font-size:16px;font-weight:700;margin-bottom:12px;color:var(--red);">🔐 API Key Security Warning</h3>
+          <h3 id="security-modal-title" style="font-size:16px;font-weight:700;margin-bottom:12px;color:var(--red);">🔐 API Key Security Warning</h3>
           <div style="font-size:12px;color:var(--text-secondary);line-height:1.7;margin-bottom:16px;">
             <p style="margin-bottom:10px;"><strong>Your API key will be:</strong></p>
             <ul style="margin-left:16px;margin-bottom:10px;">
@@ -1315,11 +1315,54 @@
         alert('Please enter a valid Anthropic API key starting with sk-ant-');
         return;
       }
-      document.getElementById('security-modal').style.display = 'flex';
+      const modal = document.getElementById('security-modal');
+      modal.style.display = 'flex';
+
+      // Escape key handler — stored on modal so closeSecurityModal can remove it
+      modal._escHandler = function(e) {
+        if (e.key === 'Escape') closeSecurityModal();
+      };
+      document.addEventListener('keydown', modal._escHandler);
+
+      // Focus trap: collect focusable elements inside the modal
+      modal._trapHandler = function(e) {
+        if (e.key !== 'Tab') return;
+        const focusable = Array.from(modal.querySelectorAll(
+          'button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])'
+        )).filter(el => !el.disabled);
+        if (!focusable.length) return;
+        const first = focusable[0];
+        const last = focusable[focusable.length - 1];
+        if (e.shiftKey) {
+          if (document.activeElement === first) { e.preventDefault(); last.focus(); }
+        } else {
+          if (document.activeElement === last) { e.preventDefault(); first.focus(); }
+        }
+      };
+      document.addEventListener('keydown', modal._trapHandler);
+
+      // Focus the Cancel button (first actionable control)
+      const cancelBtn = modal.querySelector('button');
+      if (cancelBtn) cancelBtn.focus();
     }
 
     function closeSecurityModal() {
-      document.getElementById('security-modal').style.display = 'none';
+      const modal = document.getElementById('security-modal');
+      modal.style.display = 'none';
+
+      // Remove Escape and focus-trap handlers
+      if (modal._escHandler) {
+        document.removeEventListener('keydown', modal._escHandler);
+        modal._escHandler = null;
+      }
+      if (modal._trapHandler) {
+        document.removeEventListener('keydown', modal._trapHandler);
+        modal._trapHandler = null;
+      }
+
+      // Return focus to the API key input
+      const input = document.getElementById('api-key-input');
+      if (input) input.focus();
     }
 
     function confirmApiKeySubmission() {
