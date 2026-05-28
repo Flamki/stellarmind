@@ -178,8 +178,40 @@ src/
   generate-demo-voiceover.js
   render-narrated-demo.js
 public/
-  index.html
+  index.html                    # Semantic HTML shell
+  assets/
+    css/
+      variables.css            # Design tokens & reset
+      sidebar.css              # Navigation UI
+      layout.css               # Page structure & responsive
+      components.css           # Reusable UI elements
+      pages.css                # Page-specific styles
+    js/
+      navigation.js            # Page routing
+      budget.js                # Budget slider
+      agents.js                # Agent registry
+      wallet.js                # Wallet data
+      sse.js                   # Real-time events
+      rendering.js             # Result display
+      orchestration.js         # Task execution
+      pages.js                 # Page loading
+      init.js                  # App startup
 ```
+
+### Frontend Architecture
+
+The UI has been refactored from a monolithic 1,300-line HTML file into a modular structure:
+
+- **HTML**: Semantic markup only (~150 lines)
+- **CSS**: 5 organized modules (~1,060 lines) organized by concern
+- **JavaScript**: 9 focused modules (~810 lines) organized by feature
+
+See [FRONTEND_STRUCTURE.md](FRONTEND_STRUCTURE.md) for detailed documentation on:
+- CSS organization and design tokens
+- JavaScript module dependencies
+- API integration points
+- Responsive design approach
+- Testing and maintenance guidelines
 
 ## Contributing
 
