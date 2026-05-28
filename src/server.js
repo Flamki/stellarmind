@@ -25,6 +25,7 @@ app.use(requestId);
 
 // ─── SSE Event Stream ────────────────────────────────────────
 const sseClients = [];
+let x402MiddlewareReady = false;
 
 function broadcast(event) {
   const data = JSON.stringify(event);
@@ -51,9 +52,11 @@ function buildReadinessPayload() {
     },
     x402: {
       enabled: x402Enabled,
-      ready: !x402Enabled || !!config.facilitatorUrl,
+      ready: !x402Enabled || (x402MiddlewareReady && !!config.facilitatorUrl),
       description: x402Enabled
-        ? 'x402 payment wallet is configured'
+        ? (x402MiddlewareReady
+            ? 'x402 payment middleware initialized'
+            : 'x402 is enabled but middleware initialization failed')
         : 'x402 paywall is disabled; premium endpoints are not protected by payments',
     },
   };
@@ -143,11 +146,14 @@ if (config.serverAddress) {
         [{ network: config.network, server: stellarScheme }],
       )
     );
+    x402MiddlewareReady = true;
     console.log('✅ x402 payment middleware active');
   } catch (err) {
+    x402MiddlewareReady = false;
     console.warn('⚠️  x402 middleware init failed (non-fatal):', err.message);
   }
 } else {
+  x402MiddlewareReady = false;
   console.warn('⚠️  No SERVER_STELLAR_ADDRESS set — x402 paywall disabled');
 }
 
