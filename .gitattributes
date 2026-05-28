@@ -51,6 +51,6 @@
 *.gz binary
 
 # Lock files
-package-lock.json -text
-yarn.lock -text
-pnpm-lock.yaml -text
+package-lock.json text
+yarn.lock text
+pnpm-lock.yaml text
