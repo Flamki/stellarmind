@@ -33,6 +33,53 @@ function broadcast(event) {
   });
 }
 
+function buildReadinessPayload() {
+  const anthropicConfigured = !!config.anthropicApiKey;
+  const x402Enabled = !!config.serverAddress;
+
+  const components = {
+    app: {
+      ready: true,
+      description: 'Core HTTP server initialized',
+    },
+    anthropic: {
+      configured: anthropicConfigured,
+      ready: anthropicConfigured,
+      description: anthropicConfigured
+        ? 'Anthropic API key is configured for Claude-powered agents'
+        : 'Missing Anthropic API key; demo fallback responses are available',
+    },
+    x402: {
+      enabled: x402Enabled,
+      ready: !x402Enabled || !!config.facilitatorUrl,
+      description: x402Enabled
+        ? 'x402 payment wallet is configured'
+        : 'x402 paywall is disabled; premium endpoints are not protected by payments',
+    },
+  };
+
+  const ready = Object.values(components).every(component => component.ready);
+  return {
+    status: ready ? 'ready' : 'not_ready',
+    ready,
+    timestamp: new Date().toISOString(),
+    components,
+  };
+}
+
+app.get('/healthz', (req, res) => {
+  res.json({
+    status: 'ok',
+    uptime: process.uptime(),
+    timestamp: new Date().toISOString(),
+  });
+});
+
+app.get('/readyz', (req, res) => {
+  const payload = buildReadinessPayload();
+  res.status(payload.ready ? 200 : 503).json(payload);
+});
+
 app.get('/api/events', (req, res) => {
   res.setHeader('Content-Type', 'text/event-stream');
   res.setHeader('Cache-Control', 'no-cache');
