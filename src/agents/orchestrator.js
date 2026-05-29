@@ -1,7 +1,6 @@
-import Anthropic from '@anthropic-ai/sdk';
 import { config } from '../config.js';
 import { AGENTS, getAgentById } from './registry.js';
-import { runResearch, runSummary, runAnalysis, runCode, anthropic } from './services.js';
+import { runResearch, runSummary, runAnalysis, runCode, createAnthropicMessage } from './services.js';
 import { getBalance, sendPayment } from '../stellar/wallet.js';
 
 import { x402Client, x402HTTPClient, wrapFetchWithPayment } from '@x402/fetch';
@@ -212,7 +211,21 @@ async function callAgentViaX402(agent, input, broadcastFn) {
   const serviceFn = SERVICE_MAP[agent.id];
   let result;
   try {
-    result = await serviceFn(input);
+    result = await serviceFn(input, {
+      onRetryAttempt: (retry) => {
+        broadcastFn?.({
+          type: 'anthropic_retry',
+          agent: agent.name,
+          agentId: agent.id,
+          attempt: retry.attempt,
+          maxRetries: retry.maxRetries,
+          delayMs: retry.delayMs,
+          status: retry.status,
+          error: retry.error,
+          timestamp: new Date().toISOString(),
+        });
+      },
+    });
   } catch (err) {
     result = `Error: ${err.message}`;
   }
@@ -268,7 +281,7 @@ export async function orchestrate(task, budget, broadcastFn) {
 
   let plan;
   try {
-    const planResponse = await anthropic.messages.create({
+    const planResponse = await createAnthropicMessage({
       model: 'claude-haiku-4-5-20251001',
       max_tokens: 400,
       messages: [{
@@ -291,6 +304,19 @@ Respond ONLY with valid JSON (no markdown, no code fences):
   ]
 }`
       }],
+    }, {
+      onRetryAttempt: (retry) => {
+        broadcastFn?.({
+          type: 'anthropic_retry',
+          phase: 'planning',
+          attempt: retry.attempt,
+          maxRetries: retry.maxRetries,
+          delayMs: retry.delayMs,
+          status: retry.status,
+          error: retry.error,
+          timestamp: new Date().toISOString(),
+        });
+      },
     });
 
     const planText = planResponse.content[0].type === 'text' ? planResponse.content[0].text : '{}';
