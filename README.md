@@ -130,6 +130,9 @@ INTERNAL_BASE_URL=https://stellarmind.example.com
 | `npm run preflight` | Validate readiness (x402, wallets, model, payment path) |
 | `npm run setup` | Generate/fund Stellar testnet wallets |
 | `npm run setup:usdc` | Add USDC trustlines for settlement |
+| `npm run lint` | Run ESLint against the repository |
+| `npm run lint:fix` | Fix ESLint issues automatically |
+| `npm run format` | Format source and docs with Prettier |
 | `npm run record:video` | Capture website-only demo video |
 | `npm run voiceover` | Generate narration track |
 | `npm run record:narrated` | Full narrated demo render pipeline |

@@ -51,6 +51,16 @@ npm test        # Same as demo
 - Before every push, run `git diff --staged` and verify no keys are present.
 - If a secret is exposed, rotate it immediately.
 
+### Formatting and linting
+
+This project uses ESLint and Prettier to keep code and docs consistent. Before opening a PR, run:
+
+```bash
+npm run lint
+npm run lint:fix
+npm run format
+```
+
 ### Environment Setup
 
 ```bash
@@ -106,6 +116,8 @@ Keep changes focused on the issue you claimed. Run locally to verify nothing bre
 
 ```bash
 npm install
+npm run lint
+npm run format
 npm run dev
 ```
 
