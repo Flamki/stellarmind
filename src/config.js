@@ -1,13 +1,16 @@
-import dotenv from 'dotenv';
-import { fileURLToPath } from 'node:url';
+import dotenv from 'dotenv'
+import { fileURLToPath } from 'node:url'
 
 dotenv.config({
   path: fileURLToPath(new URL('../.env', import.meta.url)),
   quiet: true,
-});
+})
 
-const port = process.env.PORT || 3001;
-const internalBaseUrl = (process.env.INTERNAL_BASE_URL || `http://localhost:${port}`).replace(/\/+$/, '');
+const port = process.env.PORT || 3001
+const internalBaseUrl = (process.env.INTERNAL_BASE_URL || `http://localhost:${port}`).replace(
+  /\/+$/,
+  ''
+)
 
 export const config = {
   port,
@@ -30,4 +33,4 @@ export const config = {
 
   // Anthropic
   anthropicApiKey: process.env.ANTHROPIC_API_KEY || '',
-};
+}

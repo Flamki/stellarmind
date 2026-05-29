@@ -2,7 +2,7 @@
  * Agent Registry — Marketplace service catalog
  * Each agent is a Claude-powered AI service with its own capability and pricing
  */
-import { MODEL_LABELS } from './services.js';
+import { MODEL_LABELS } from './services.js'
 
 export const AGENTS = [
   {
@@ -13,7 +13,8 @@ export const AGENTS = [
     currency: 'USDC',
     model: MODEL_LABELS.research,
     capability: 'Deep web research and fact-finding on any topic',
-    description: 'Uses Claude Haiku for fast, accurate research synthesis. Returns well-sourced analysis.',
+    description:
+      'Uses Claude Haiku for fast, accurate research synthesis. Returns well-sourced analysis.',
     status: 'online',
   },
   {
@@ -35,7 +36,8 @@ export const AGENTS = [
     currency: 'USDC',
     model: MODEL_LABELS.analysis,
     capability: 'Deep strategic analysis with structured insights',
-    description: 'Uses Claude Sonnet for premium-tier analysis with automatic Haiku fallback when needed.',
+    description:
+      'Uses Claude Sonnet for premium-tier analysis with automatic Haiku fallback when needed.',
     status: 'online',
   },
   {
@@ -49,25 +51,24 @@ export const AGENTS = [
     description: 'Generates, reviews, and debugs code across multiple languages.',
     status: 'online',
   },
-];
+]
 
 /**
  * Discover agents by capability keyword
  */
 export function discoverAgents(query) {
-  const q = query.toLowerCase();
-  return AGENTS.filter(a =>
-    a.capability.toLowerCase().includes(q) ||
-    a.name.toLowerCase().includes(q) ||
-    a.id.includes(q)
-  );
+  const q = query.toLowerCase()
+  return AGENTS.filter(
+    (a) =>
+      a.capability.toLowerCase().includes(q) || a.name.toLowerCase().includes(q) || a.id.includes(q)
+  )
 }
 
 /**
  * Get agent by ID
  */
 export function getAgentById(id) {
-  return AGENTS.find(a => a.id === id);
+  return AGENTS.find((a) => a.id === id)
 }
 
 /**
@@ -75,7 +76,7 @@ export function getAgentById(id) {
  */
 export function estimateCost(agentIds) {
   return agentIds.reduce((total, id) => {
-    const agent = getAgentById(id);
-    return total + (agent ? parseFloat(agent.price) : 0);
-  }, 0);
+    const agent = getAgentById(id)
+    return total + (agent ? parseFloat(agent.price) : 0)
+  }, 0)
 }

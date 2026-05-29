@@ -5,7 +5,8 @@
 ![Stellar](https://img.shields.io/badge/network-Stellar%20Testnet-0f172a.svg)
 ![x402](https://img.shields.io/badge/payments-x402-0f172a.svg)
 
-Multi-agent AI marketplace on Stellar Testnet with x402-protected premium endpoints, budget guardrails, and on-chain payment verification.
+Multi-agent AI marketplace on Stellar Testnet with x402-protected premium endpoints, budget
+guardrails, and on-chain payment verification.
 
 ## Why This Repo Exists
 
@@ -96,7 +97,8 @@ npm run dev
 
 Open `http://localhost:3001`.
 
-Because `INTERNAL_BASE_URL` defaults to `http://localhost:$PORT`, local demo setup stays one-command simple: `npm run dev`.
+Because `INTERNAL_BASE_URL` defaults to `http://localhost:$PORT`, local demo setup stays one-command
+simple: `npm run dev`.
 
 ## Deployment Notes
 
@@ -104,7 +106,8 @@ The orchestrator uses `INTERNAL_BASE_URL` for its paid internal calls to `/api/p
 
 - Local development: leave `INTERNAL_BASE_URL` unset and run `npm run dev`
 - Single container / Docker Compose: set `INTERNAL_BASE_URL=http://<service-name>:3001`
-- Remote or reverse-proxied deployment: set `INTERNAL_BASE_URL` to the server origin the orchestrator can actually reach, for example `https://stellarmind.example.com`
+- Remote or reverse-proxied deployment: set `INTERNAL_BASE_URL` to the server origin the
+  orchestrator can actually reach, for example `https://stellarmind.example.com`
 
 Examples:
 
@@ -123,19 +126,19 @@ INTERNAL_BASE_URL=https://stellarmind.example.com
 
 ## Available Commands
 
-| Command | Purpose |
-| --- | --- |
-| `npm run dev` | Start local server |
-| `npm run demo` | Run end-to-end demo flow |
-| `npm run preflight` | Validate readiness (x402, wallets, model, payment path) |
-| `npm run setup` | Generate/fund Stellar testnet wallets |
-| `npm run setup:usdc` | Add USDC trustlines for settlement |
-| `npm run lint` | Run ESLint against the repository |
-| `npm run lint:fix` | Fix ESLint issues automatically |
-| `npm run format` | Format source and docs with Prettier |
-| `npm run record:video` | Capture website-only demo video |
-| `npm run voiceover` | Generate narration track |
-| `npm run record:narrated` | Full narrated demo render pipeline |
+| Command                   | Purpose                                                 |
+| ------------------------- | ------------------------------------------------------- |
+| `npm run dev`             | Start local server                                      |
+| `npm run demo`            | Run end-to-end demo flow                                |
+| `npm run preflight`       | Validate readiness (x402, wallets, model, payment path) |
+| `npm run setup`           | Generate/fund Stellar testnet wallets                   |
+| `npm run setup:usdc`      | Add USDC trustlines for settlement                      |
+| `npm run lint`            | Run ESLint against the repository                       |
+| `npm run lint:fix`        | Fix ESLint issues automatically                         |
+| `npm run format`          | Format source and docs with Prettier                    |
+| `npm run record:video`    | Capture website-only demo video                         |
+| `npm run voiceover`       | Generate narration track                                |
+| `npm run record:narrated` | Full narrated demo render pipeline                      |
 
 ## Demo Acceptance Checklist
 

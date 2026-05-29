@@ -11,7 +11,7 @@ jobs:
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        node-version: [18, 22]
+        node-version: 22
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -27,3 +27,6 @@ jobs:
 
       - name: Run ESLint
         run: npm run lint
+
+      - name: Check Prettier formatting
+        run: npm run format:check

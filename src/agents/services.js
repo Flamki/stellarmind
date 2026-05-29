@@ -1,10 +1,10 @@
-import Anthropic from '@anthropic-ai/sdk';
-import { config } from '../config.js';
+import Anthropic from '@anthropic-ai/sdk'
+import { config } from '../config.js'
 
-export let anthropic = new Anthropic({ apiKey: config.anthropicApiKey });
+export let anthropic = new Anthropic({ apiKey: config.anthropicApiKey })
 
 // Track whether Claude API is available
-let claudeAvailable = true;
+let claudeAvailable = true
 
 export const AGENT_MODELS = {
   research: 'claude-haiku-4-5-20251001',
@@ -12,24 +12,24 @@ export const AGENT_MODELS = {
   analysisPrimary: 'claude-sonnet-4-5-20250929',
   analysisFallback: 'claude-haiku-4-5-20251001',
   code: 'claude-haiku-4-5-20251001',
-};
+}
 
 export const MODEL_LABELS = {
   research: AGENT_MODELS.research,
   summary: AGENT_MODELS.summary,
   analysis: `${AGENT_MODELS.analysisPrimary} (fallback: ${AGENT_MODELS.analysisFallback})`,
   code: AGENT_MODELS.code,
-};
+}
 
 /**
  * Update the Anthropic API key at runtime.
  * Allows users to plug in their own key without restarting the server.
  */
 export function setApiKey(newKey) {
-  anthropic = new Anthropic({ apiKey: newKey });
-  config.anthropicApiKey = newKey;
-  claudeAvailable = true;
-  console.log('  🔑 Anthropic API key updated at runtime');
+  anthropic = new Anthropic({ apiKey: newKey })
+  config.anthropicApiKey = newKey
+  claudeAvailable = true
+  console.log('  🔑 Anthropic API key updated at runtime')
 }
 
 /**
@@ -104,15 +104,15 @@ async function executeAgentPayment(senderSecret, recipientPublic, amount) {
 \`\`\`
 
 This function handles a basic Stellar payment operation suitable for agent-to-agent micropayments.`,
-};
+}
 
 /**
  * Try Claude API, fall back to cached/demo response if credits exhausted
  */
 async function callClaude(model, maxTokens, prompt, fallbackFn, fallbackInput) {
   if (!config.anthropicApiKey) {
-    console.log('  ℹ️  No API key — using demo response');
-    return fallbackFn(fallbackInput);
+    console.log('  ℹ️  No API key — using demo response')
+    return fallbackFn(fallbackInput)
   }
 
   try {
@@ -120,32 +120,44 @@ async function callClaude(model, maxTokens, prompt, fallbackFn, fallbackInput) {
       model,
       max_tokens: maxTokens,
       messages: [{ role: 'user', content: prompt }],
-    });
-    claudeAvailable = true;
-    return msg.content[0].type === 'text' ? msg.content[0].text : '';
+    })
+    claudeAvailable = true
+    return msg.content[0].type === 'text' ? msg.content[0].text : ''
   } catch (err) {
-    console.error(`Claude API error: ${err.message}`);
-    if (err.message?.includes('credit balance') || err.message?.includes('rate_limit') || err.status === 429) {
+    console.error(`Claude API error: ${err.message}`)
+    if (
+      err.message?.includes('credit balance') ||
+      err.message?.includes('rate_limit') ||
+      err.status === 429
+    ) {
       if (claudeAvailable) {
-        console.log('  ⚠️  Claude API credits exhausted — switching to demo responses');
-        claudeAvailable = false;
+        console.log('  ⚠️  Claude API credits exhausted — switching to demo responses')
+        claudeAvailable = false
       }
-      return fallbackFn(fallbackInput);
+      return fallbackFn(fallbackInput)
     }
-    throw err;
+    throw err
   }
 }
 
-async function callClaudeWithModelFallback(primaryModel, fallbackModel, maxTokens, prompt, fallbackFn, fallbackInput) {
+async function callClaudeWithModelFallback(
+  primaryModel,
+  fallbackModel,
+  maxTokens,
+  prompt,
+  fallbackFn,
+  fallbackInput
+) {
   try {
-    return await callClaude(primaryModel, maxTokens, prompt, fallbackFn, fallbackInput);
+    return await callClaude(primaryModel, maxTokens, prompt, fallbackFn, fallbackInput)
   } catch (err) {
-    const message = String(err?.message || '').toLowerCase();
-    const isModelResolutionError = message.includes('model') || message.includes('not found') || message.includes('unsupported');
-    if (!isModelResolutionError || !fallbackModel || fallbackModel === primaryModel) throw err;
+    const message = String(err?.message || '').toLowerCase()
+    const isModelResolutionError =
+      message.includes('model') || message.includes('not found') || message.includes('unsupported')
+    if (!isModelResolutionError || !fallbackModel || fallbackModel === primaryModel) throw err
 
-    console.warn(`  Primary model ${primaryModel} unavailable, retrying with ${fallbackModel}`);
-    return callClaude(fallbackModel, maxTokens, prompt, fallbackFn, fallbackInput);
+    console.warn(`  Primary model ${primaryModel} unavailable, retrying with ${fallbackModel}`)
+    return callClaude(fallbackModel, maxTokens, prompt, fallbackFn, fallbackInput)
   }
 }
 
@@ -153,7 +165,7 @@ async function callClaudeWithModelFallback(primaryModel, fallbackModel, maxToken
  * Check if Claude API is currently available
  */
 export function isClaudeAvailable() {
-  return claudeAvailable;
+  return claudeAvailable
 }
 
 /**
@@ -165,8 +177,8 @@ export async function runResearch(topic) {
     512,
     `You are a research agent. Research this topic thoroughly but concisely (4-5 sentences with key facts and data points): ${topic}`,
     FALLBACKS.research,
-    topic,
-  );
+    topic
+  )
 }
 
 /**
@@ -178,8 +190,8 @@ export async function runSummary(text) {
     256,
     `You are a summarization agent. Summarize the following text in 2-3 clear, concise sentences capturing the key points:\n\n${text}`,
     FALLBACKS.summary,
-    text,
-  );
+    text
+  )
 }
 
 /**
@@ -197,8 +209,8 @@ export async function runAnalysis(topic) {
 
 Topic: ${topic}`,
     FALLBACKS.analysis,
-    topic,
-  );
+    topic
+  )
 }
 
 /**
@@ -210,6 +222,6 @@ export async function runCode(prompt) {
     600,
     `You are a code assistant agent. Help with the following code task. Be concise and provide working code:\n\n${prompt}`,
     FALLBACKS.code,
-    prompt,
-  );
+    prompt
+  )
 }

@@ -1,28 +1,29 @@
-import globals from "globals"
-import prettierPlugin from "eslint-plugin-prettier"
+import globals from 'globals'
+import prettierPlugin from 'eslint-plugin-prettier'
+import prettierConfig from 'eslint-config-prettier'
 
 const { browser, node } = globals
 
 export default [
+  prettierConfig,
   {
-    ignores: ["node_modules/**", ".github/**", "coverage/**", "dist/**", "**/*.log"],
-    files: ["**/*.{js,mjs,cjs}"],
+    ignores: ['node_modules/**', 'coverage/**', 'dist/**', '.github/**', '**/*.log'],
+    files: ['**/*.{js,mjs,cjs}'],
     languageOptions: {
-      ecmaVersion: "latest",
-      sourceType: "module",
+      ecmaVersion: 'latest',
+      sourceType: 'module',
       globals: {
         ...browser,
-        ...node
-      }
+        ...node,
+      },
     },
     plugins: {
-      prettier: prettierPlugin
+      prettier: prettierPlugin,
     },
-    extends: ["eslint:recommended", "plugin:prettier/recommended"],
     rules: {
-      "no-unused-vars": ["warn", { argsIgnorePattern: "^_" }],
-      "no-console": "off",
-      "prettier/prettier": ["error", { endOfLine: "lf" }]
-    }
-  }
+      'no-unused-vars': ['warn', { argsIgnorePattern: '^_' }],
+      'no-console': 'off',
+      'prettier/prettier': ['error', { endOfLine: 'lf' }],
+    },
+  },
 ]
