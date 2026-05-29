@@ -8,6 +8,10 @@ dotenv.config({
 
 const port = process.env.PORT || 3001;
 const internalBaseUrl = (process.env.INTERNAL_BASE_URL || `http://localhost:${port}`).replace(/\/+$/, '');
+const toNumberOr = (value, fallback) => {
+  const n = Number.parseInt(value, 10);
+  return Number.isFinite(n) ? n : fallback;
+};
 
 export const config = {
   port,
@@ -30,4 +34,7 @@ export const config = {
 
   // Anthropic
   anthropicApiKey: process.env.ANTHROPIC_API_KEY || '',
+  anthropicRequestTimeoutMs: Math.max(1000, toNumberOr(process.env.ANTHROPIC_REQUEST_TIMEOUT_MS, 20000)),
+  anthropicMaxRetries: Math.max(0, toNumberOr(process.env.ANTHROPIC_MAX_RETRIES, 2)),
+  anthropicRetryBaseDelayMs: Math.max(100, toNumberOr(process.env.ANTHROPIC_RETRY_BASE_DELAY_MS, 500)),
 };
