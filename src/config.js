@@ -6,8 +6,12 @@ dotenv.config({
   quiet: true,
 });
 
+const port = process.env.PORT || 3001;
+const internalBaseUrl = (process.env.INTERNAL_BASE_URL || `http://localhost:${port}`).replace(/\/+$/, '');
+
 export const config = {
-  port: process.env.PORT || 3001,
+  port,
+  internalBaseUrl,
   network: process.env.NETWORK || 'stellar:testnet',
   facilitatorUrl: process.env.FACILITATOR_URL || 'https://www.x402.org/facilitator',
   stellarRpcUrl: process.env.STELLAR_RPC_URL || 'https://soroban-testnet.stellar.org',

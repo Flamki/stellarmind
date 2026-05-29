@@ -4,10 +4,13 @@ import { fileURLToPath } from 'node:url';
 import path from 'node:path';
 
 import { config } from './config.js';
+import { pricingConfig } from './pricing.config.js';
+import { validateAll, throwIfInvalid, formatValidationErrors } from './pricing.validator.js';
 import { AGENTS, discoverAgents, getAgentById } from './agents/registry.js';
 import { runResearch, runSummary, runAnalysis, runCode, setApiKey, MODEL_LABELS } from './agents/services.js';
 import { orchestrate } from './agents/orchestrator.js';
 import { getBalance, getTransactions, sendPayment } from './stellar/wallet.js';
+import { requestId, errorHandler } from './middleware/errorHandler.js';
 
 // x402 imports
 import { paymentMiddlewareFromConfig } from '@x402/express';
@@ -17,9 +20,23 @@ import { ExactStellarScheme } from '@x402/stellar/exact/server';
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const app = express();
 
+// ─── Validate Pricing Configuration at Startup ──────────────
+const pricingValidation = validateAll(pricingConfig, {
+  network: config.network,
+  payTo: config.serverAddress,
+});
+
+if (!pricingValidation.valid) {
+  console.error('❌ FATAL: Pricing configuration validation failed');
+  console.error(formatValidationErrors(pricingValidation));
+  process.exit(1);
+}
+console.log('✅ Pricing configuration validated successfully');
+
 app.use(cors());
 app.use(express.json());
 app.use(express.static(path.join(__dirname, '..', 'public')));
+app.use(requestId);
 
 // ─── SSE Event Stream ────────────────────────────────────────
 const HEARTBEAT_INTERVAL_MS = 30_000;
@@ -98,166 +115,155 @@ if (config.serverAddress) {
     const facilitatorClient = new HTTPFacilitatorClient({ url: config.facilitatorUrl });
     const stellarScheme = new ExactStellarScheme();
 
+    // Use pricing config to generate x402 middleware configuration
+    const x402PricingConfig = pricingConfig.getX402Config({
+      network: config.network,
+      payTo: config.serverAddress,
+    });
+
     app.use(
       paymentMiddlewareFromConfig(
-        {
-          'GET /api/premium/research': {
-            accepts: {
-              scheme: 'exact',
-              price: '$0.01',
-              network: config.network,
-              payTo: config.serverAddress,
-            },
-          },
-          'GET /api/premium/summarize': {
-            accepts: {
-              scheme: 'exact',
-              price: '$0.01',
-              network: config.network,
-              payTo: config.serverAddress,
-            },
-          },
-          'GET /api/premium/analyze': {
-            accepts: {
-              scheme: 'exact',
-              price: '$0.05',
-              network: config.network,
-              payTo: config.serverAddress,
-            },
-          },
-          'GET /api/premium/code': {
-            accepts: {
-              scheme: 'exact',
-              price: '$0.03',
-              network: config.network,
-              payTo: config.serverAddress,
-            },
-          },
-        },
+        x402PricingConfig,
         facilitatorClient,
         [{ network: config.network, server: stellarScheme }],
       )
     );
+    x402MiddlewareReady = true;
     console.log('✅ x402 payment middleware active');
   } catch (err) {
+    x402MiddlewareReady = false;
     console.warn('⚠️  x402 middleware init failed (non-fatal):', err.message);
   }
 } else {
+  x402MiddlewareReady = false;
   console.warn('⚠️  No SERVER_STELLAR_ADDRESS set — x402 paywall disabled');
 }
 
 // ─── Premium x402-Protected Endpoints ────────────────────────
-app.get('/api/premium/research', async (req, res) => {
+app.get('/api/premium/research', async (req, res, next) => {
   try {
     const topic = req.query.topic || 'AI and blockchain payments';
-    broadcast({ type: 'agent_call', agent: '🔬 Research Agent', agentId: 'research-bot', input: topic, cost: '0.01', timestamp: new Date().toISOString() });
+    const priceInfo = pricingConfig.getEndpointInfo('GET /api/premium/research');
+    const cost = priceInfo.price.slice(1); // Remove '$' for display
+    broadcast({ type: 'agent_call', agent: `${priceInfo.emoji} Research Agent`, agentId: 'research-bot', input: topic, cost, timestamp: new Date().toISOString() });
     const result = await runResearch(topic);
-    broadcast({ type: 'agent_response', agent: '🔬 Research Agent', agentId: 'research-bot', resultPreview: result.substring(0, 150), cost: '0.01', timestamp: new Date().toISOString() });
-    res.json({ agent: 'research-bot', topic, result, model: MODEL_LABELS.research, cost: '0.01 USDC', paidVia: 'x402' });
+    broadcast({ type: 'agent_response', agent: `${priceInfo.emoji} Research Agent`, agentId: 'research-bot', resultPreview: result.substring(0, 150), cost, timestamp: new Date().toISOString() });
+    res.json({ agent: 'research-bot', topic, result, model: MODEL_LABELS.research, cost: `${cost} USDC`, paidVia: 'x402' });
   } catch (err) {
-    res.status(500).json({ error: 'Research agent temporarily unavailable', details: err.message });
+    next(err);
   }
 });
 
-app.get('/api/premium/summarize', async (req, res) => {
+app.get('/api/premium/summarize', async (req, res, next) => {
   try {
     const text = req.query.text || 'Please provide text to summarize via ?text= parameter';
-    broadcast({ type: 'agent_call', agent: '📝 Summary Agent', agentId: 'summary-bot', input: text.substring(0, 100), cost: '0.01', timestamp: new Date().toISOString() });
+    const priceInfo = pricingConfig.getEndpointInfo('GET /api/premium/summarize');
+    const cost = priceInfo.price.slice(1);
+    broadcast({ type: 'agent_call', agent: `${priceInfo.emoji} Summary Agent`, agentId: 'summary-bot', input: text.substring(0, 100), cost, timestamp: new Date().toISOString() });
     const result = await runSummary(text);
-    broadcast({ type: 'agent_response', agent: '📝 Summary Agent', agentId: 'summary-bot', resultPreview: result.substring(0, 150), cost: '0.01', timestamp: new Date().toISOString() });
-    res.json({ agent: 'summary-bot', result, model: MODEL_LABELS.summary, cost: '0.01 USDC', paidVia: 'x402' });
+    broadcast({ type: 'agent_response', agent: `${priceInfo.emoji} Summary Agent`, agentId: 'summary-bot', resultPreview: result.substring(0, 150), cost, timestamp: new Date().toISOString() });
+    res.json({ agent: 'summary-bot', result, model: MODEL_LABELS.summary, cost: `${cost} USDC`, paidVia: 'x402' });
   } catch (err) {
-    res.status(500).json({ error: 'Summary agent temporarily unavailable', details: err.message });
+    next(err);
   }
 });
 
-app.get('/api/premium/analyze', async (req, res) => {
+app.get('/api/premium/analyze', async (req, res, next) => {
   try {
     const topic = req.query.topic || 'AI agent economies';
-    broadcast({ type: 'agent_call', agent: '📊 Analysis Agent', agentId: 'analyst-bot', input: topic, cost: '0.05', timestamp: new Date().toISOString() });
+    const priceInfo = pricingConfig.getEndpointInfo('GET /api/premium/analyze');
+    const cost = priceInfo.price.slice(1);
+    broadcast({ type: 'agent_call', agent: `${priceInfo.emoji} Analysis Agent`, agentId: 'analyst-bot', input: topic, cost, timestamp: new Date().toISOString() });
     const result = await runAnalysis(topic);
-    broadcast({ type: 'agent_response', agent: '📊 Analysis Agent', agentId: 'analyst-bot', resultPreview: result.substring(0, 150), cost: '0.05', timestamp: new Date().toISOString() });
-    res.json({ agent: 'analyst-bot', topic, result, model: MODEL_LABELS.analysis, cost: '0.05 USDC', paidVia: 'x402' });
+    broadcast({ type: 'agent_response', agent: `${priceInfo.emoji} Analysis Agent`, agentId: 'analyst-bot', resultPreview: result.substring(0, 150), cost, timestamp: new Date().toISOString() });
+    res.json({ agent: 'analyst-bot', topic, result, model: MODEL_LABELS.analysis, cost: `${cost} USDC`, paidVia: 'x402' });
   } catch (err) {
-    res.status(500).json({ error: 'Analysis agent temporarily unavailable', details: err.message });
+    next(err);
   }
 });
 
-app.get('/api/premium/code', async (req, res) => {
+app.get('/api/premium/code', async (req, res, next) => {
   try {
     const prompt = req.query.prompt || 'Write a hello world function';
-    broadcast({ type: 'agent_call', agent: '💻 Code Agent', agentId: 'code-bot', input: prompt.substring(0, 100), cost: '0.03', timestamp: new Date().toISOString() });
+    const priceInfo = pricingConfig.getEndpointInfo('GET /api/premium/code');
+    const cost = priceInfo.price.slice(1);
+    broadcast({ type: 'agent_call', agent: `${priceInfo.emoji} Code Agent`, agentId: 'code-bot', input: prompt.substring(0, 100), cost, timestamp: new Date().toISOString() });
     const result = await runCode(prompt);
-    broadcast({ type: 'agent_response', agent: '💻 Code Agent', agentId: 'code-bot', resultPreview: result.substring(0, 150), cost: '0.03', timestamp: new Date().toISOString() });
-    res.json({ agent: 'code-bot', prompt, result, model: MODEL_LABELS.code, cost: '0.03 USDC', paidVia: 'x402' });
+    broadcast({ type: 'agent_response', agent: `${priceInfo.emoji} Code Agent`, agentId: 'code-bot', resultPreview: result.substring(0, 150), cost, timestamp: new Date().toISOString() });
+    res.json({ agent: 'code-bot', prompt, result, model: MODEL_LABELS.code, cost: `${cost} USDC`, paidVia: 'x402' });
   } catch (err) {
-    res.status(500).json({ error: 'Code agent temporarily unavailable', details: err.message });
+    next(err);
   }
 });
 
 // ─── Free Agent Endpoints (for internal orchestrator use) ────
-app.get('/api/research', async (req, res) => {
+app.get('/api/research', async (req, res, next) => {
   try {
     const topic = req.query.topic || 'AI payments';
     const result = await runResearch(topic);
     res.json({ agent: 'research-bot', topic, result, model: MODEL_LABELS.research, cost: '0.01 USDC' });
   } catch (err) {
-    res.status(500).json({ error: 'Agent temporarily unavailable', fallback: 'Try again' });
+    next(err);
   }
 });
 
-app.get('/api/summarize', async (req, res) => {
+app.get('/api/summarize', async (req, res, next) => {
   try {
     const text = req.query.text || '';
     const result = await runSummary(text);
     res.json({ agent: 'summary-bot', result, model: MODEL_LABELS.summary, cost: '0.01 USDC' });
   } catch (err) {
-    res.status(500).json({ error: 'Agent temporarily unavailable', fallback: 'Try again' });
+    next(err);
   }
 });
 
-app.get('/api/analyze', async (req, res) => {
+app.get('/api/analyze', async (req, res, next) => {
   try {
     const topic = req.query.topic || '';
     const result = await runAnalysis(topic);
     res.json({ agent: 'analyst-bot', topic, result, model: MODEL_LABELS.analysis, cost: '0.05 USDC' });
   } catch (err) {
-    res.status(500).json({ error: 'Agent temporarily unavailable', fallback: 'Try again' });
+    next(err);
   }
 });
 
-app.get('/api/code', async (req, res) => {
+app.get('/api/code', async (req, res, next) => {
   try {
     const prompt = req.query.prompt || '';
     const result = await runCode(prompt);
     res.json({ agent: 'code-bot', result, model: MODEL_LABELS.code, cost: '0.03 USDC' });
   } catch (err) {
-    res.status(500).json({ error: 'Agent temporarily unavailable', fallback: 'Try again' });
+    next(err);
   }
 });
 
 // ─── Orchestrator Endpoint ───────────────────────────────────
-app.post('/api/orchestrate', async (req, res) => {
+app.post('/api/orchestrate', async (req, res, next) => {
   try {
     const { task, budget } = req.body;
-    if (!task) return res.status(400).json({ error: 'Missing "task" in request body' });
+    if (!task) {
+      const err = new Error('Missing "task" in request body');
+      err.status = 400;
+      err.code = 'MISSING_FIELD';
+      return next(err);
+    }
     const budgetNum = parseFloat(budget) || 0.15;
     const result = await orchestrate(task, budgetNum, broadcast);
     res.json(result);
   } catch (err) {
-    res.status(500).json({ error: 'Orchestrator failed', details: err.message });
+    next(err);
   }
 });
 
 // Also support GET for easy testing
-app.get('/api/orchestrate', async (req, res) => {
+app.get('/api/orchestrate', async (req, res, next) => {
   try {
     const task = req.query.task || 'Research AI payments';
     const budget = parseFloat(req.query.budget) || 0.15;
     const result = await orchestrate(task, budget, broadcast);
     res.json(result);
   } catch (err) {
-    res.status(500).json({ error: 'Orchestrator failed', details: err.message });
+    next(err);
   }
 });
 
@@ -271,14 +277,19 @@ app.get('/api/agents/discover/:capability', (req, res) => {
   res.json(results);
 });
 
-app.get('/api/agents/:id', (req, res) => {
+app.get('/api/agents/:id', (req, res, next) => {
   const agent = getAgentById(req.params.id);
-  if (!agent) return res.status(404).json({ error: 'Agent not found' });
+  if (!agent) {
+    const err = new Error('Agent not found');
+    err.status = 404;
+    err.code = 'NOT_FOUND';
+    return next(err);
+  }
   res.json(agent);
 });
 
 // ─── Wallet Endpoints ────────────────────────────────────────
-app.get('/api/wallet/balances', async (req, res) => {
+app.get('/api/wallet/balances', async (req, res, next) => {
   try {
     const wallets = {};
     if (config.serverAddress) {
@@ -292,23 +303,27 @@ app.get('/api/wallet/balances', async (req, res) => {
     }
     res.json(wallets);
   } catch (err) {
-    res.status(500).json({ error: 'Failed to fetch balances', details: err.message });
+    next(err);
   }
 });
 
-app.get('/api/wallet/transactions', async (req, res) => {
+app.get('/api/wallet/transactions', async (req, res, next) => {
   try {
     const address = req.query.address || config.orchestratorAddress || config.serverAddress;
     if (!address) return res.json([]);
     const txs = await getTransactions(address, 20);
     res.json(txs);
   } catch (err) {
-    res.status(500).json({ error: 'Failed to fetch transactions', details: err.message });
+    next(err);
   }
 });
 
 // ─── System Status ───────────────────────────────────────────
 app.get('/api/status', (req, res) => {
+  const premiumEndpoints = pricingConfig.getAllPricingInfo().map(info => 
+    `${info.endpoint} (${info.price})`
+  );
+
   res.json({
     name: 'StellarMind',
     version: '1.0.0',
@@ -321,12 +336,8 @@ app.get('/api/status', (req, res) => {
       enabled: !!config.serverAddress,
       middleware: '@x402/express (paymentMiddlewareFromConfig)',
       client: '@x402/fetch (wrapFetchWithPayment + ExactStellarScheme)',
-      premiumEndpoints: [
-        'GET /api/premium/research ($0.01)',
-        'GET /api/premium/summarize ($0.01)',
-        'GET /api/premium/analyze ($0.05)',
-        'GET /api/premium/code ($0.03)',
-      ],
+      premiumEndpoints,
+      pricing: pricingConfig.getAllPricingInfo(),
       flow: '402 → wrapFetchWithPayment signs USDC tx → retry with X-PAYMENT → facilitator settles on-chain → 200',
     },
     wallets: {
@@ -347,11 +358,16 @@ app.get('/api/config/apikey', (req, res) => {
   });
 });
 
-app.post('/api/config/apikey', (req, res) => {
+app.post('/api/config/apikey', (req, res, next) => {
   const { apiKey } = req.body;
   if (!apiKey || !apiKey.startsWith('sk-ant-')) {
-    return res.status(400).json({ error: 'Invalid API key. Must start with sk-ant-' });
+    const err = new Error('Invalid API key. Must start with sk-ant-');
+    err.status = 400;
+    err.code = 'INVALID_API_KEY';
+    return next(err);
   }
+  // Security: Log only that a key was updated, never log the key itself
+  console.log('  🔑 API key updated (ephemeral, session-only)');
   setApiKey(apiKey);
   res.json({ success: true, masked: `sk-ant-...${apiKey.slice(-6)}` });
 });
@@ -360,6 +376,9 @@ app.post('/api/config/apikey', (req, res) => {
 app.get('/', (req, res) => {
   res.sendFile(path.join(__dirname, '..', 'public', 'index.html'));
 });
+
+// ─── Centralized Error Handler ───────────────────────────────
+app.use(errorHandler);
 
 // ─── Start Server ────────────────────────────────────────────
 const PORT = config.port;

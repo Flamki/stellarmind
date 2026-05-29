@@ -7,7 +7,7 @@ const HORIZON_BASE_URL = config.network.includes('testnet')
   ? 'https://horizon-testnet.stellar.org'
   : 'https://horizon.stellar.org';
 
-const SERVER_BASE_URL = `http://localhost:${config.port}`;
+const SERVER_BASE_URL = config.internalBaseUrl;
 
 function ok(message) {
   console.log(`PASS  ${message}`);
@@ -63,9 +63,9 @@ async function main() {
     const response = await fetch(`${SERVER_BASE_URL}/api/status`);
     if (!response.ok) throw new Error(`/api/status returned ${response.status}`);
     statusPayload = await response.json();
-    ok('Local server is reachable');
+    ok('Server is reachable through INTERNAL_BASE_URL');
   } catch (err) {
-    fail(`Cannot reach local server at ${SERVER_BASE_URL}. Start it with: npm run dev`);
+    fail(`Cannot reach server at ${SERVER_BASE_URL}. Start it with: npm run dev`);
     fail(`Details: ${err.message}`);
     process.exit(1);
   }

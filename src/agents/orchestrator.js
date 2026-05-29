@@ -4,8 +4,9 @@ import { AGENTS, getAgentById } from './registry.js';
 import { runResearch, runSummary, runAnalysis, runCode, anthropic } from './services.js';
 import { getBalance, sendPayment } from '../stellar/wallet.js';
 
-import { x402Client, x402HTTPClient, wrapFetchWithPayment, decodePaymentResponseHeader } from '@x402/fetch';
+import { x402Client, x402HTTPClient, wrapFetchWithPayment } from '@x402/fetch';
 import { ExactStellarScheme, createEd25519Signer } from '@x402/stellar';
+import { parseSettlementHeader, extractTxHash } from './settlement-header.js';
 
 // const anthropic = ... (imported from services.js)
 
@@ -107,54 +108,6 @@ function buildExplorerUrl(txHash) {
   return txHash ? `${EXPLORER_BASE_URL}${txHash}` : null;
 }
 
-function safeJsonParse(value) {
-  try {
-    return JSON.parse(value);
-  } catch {
-    return null;
-  }
-}
-
-function extractTxHash(settle) {
-  if (!settle || typeof settle !== 'object') return null;
-  return settle.transaction
-    || settle.txHash
-    || settle.transactionHash
-    || settle.tx_id
-    || settle.txId
-    || null;
-}
-
-function parseSettlementHeader(response) {
-  const candidates = [
-    response.headers.get('PAYMENT-RESPONSE'),
-    response.headers.get('X-PAYMENT-RESPONSE'),
-    response.headers.get('payment-response'),
-    response.headers.get('x-payment-response'),
-  ].filter(Boolean);
-
-  if (candidates.length === 0) return null;
-  const encoded = candidates[0];
-
-  // Some gateways return raw JSON instead of encoded x402 header payload.
-  const jsonDirect = safeJsonParse(encoded);
-  if (jsonDirect) return jsonDirect;
-
-  try {
-    return decodePaymentResponseHeader(encoded);
-  } catch (err) {
-    // Try base64-json fallback before giving up.
-    try {
-      const decoded = Buffer.from(encoded, 'base64').toString('utf8');
-      const json = safeJsonParse(decoded);
-      if (json) return json;
-    } catch {}
-
-    console.warn(`  unable to decode payment response header, using unverified settlement mode: ${summarizeError(err)}`);
-    return { _unverified: true };
-  }
-}
-
 async function parseResponseBody(response) {
   const contentType = response.headers.get('content-type') || '';
   if (contentType.includes('application/json')) return response.json();
@@ -175,7 +128,7 @@ function paymentProtocolSummary(x402Count, xlmFallbackCount) {
 }
 
 async function callAgentViaX402(agent, input, broadcastFn) {
-  const baseUrl = `http://localhost:${config.port}`;
+  const baseUrl = config.internalBaseUrl;
   const endpointFn = PREMIUM_ENDPOINT_MAP[agent.id];
 
   if (x402Fetch && endpointFn) {

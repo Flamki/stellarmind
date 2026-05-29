@@ -12,7 +12,9 @@
     "record:narrated": "node src/render-narrated-demo.js",
     "setup": "node src/setup-wallets.js",
     "setup:usdc": "node src/setup-usdc.js",
-    "test": "node src/demo.js"
+    "test": "node src/agents/settlement-header.test.js",
+    "test:parser": "node src/agents/settlement-header.test.js",
+    "test:demo": "node src/demo.js"
   },
   "keywords": [
     "stellar",

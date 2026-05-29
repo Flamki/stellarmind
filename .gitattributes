@@ -1,0 +1,56 @@
+# Auto-detect text files and normalize line endings
+* text=auto
+
+# Source code
+*.js text
+*.ts text
+*.jsx text
+*.tsx text
+*.css text
+*.scss text
+*.html text
+*.json text
+*.yml text
+*.yaml text
+*.xml text
+*.vue text
+*.svelte text
+
+# Scripts
+*.sh text eol=lf
+*.bash text eol=lf
+*.py text
+*.rb text
+
+# Config
+*.env text
+*.env.example text
+.editorconfig text
+.gitignore text
+.gitattributes text
+*.md text
+*.txt text
+
+# Binaries - treat as binary
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.gif binary
+*.ico binary
+*.svg binary
+*.webp binary
+*.mp4 binary
+*.mov binary
+*.wav binary
+*.mp3 binary
+
+# Archives
+*.zip binary
+*.tar.gz binary
+*.tgz binary
+*.gz binary
+
+# Lock files
+package-lock.json text
+yarn.lock text
+pnpm-lock.yaml text

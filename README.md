@@ -75,6 +75,13 @@ Add your Anthropic key:
 ANTHROPIC_API_KEY=sk-ant-your-key
 ```
 
+Optional for deployments:
+
+```env
+# Defaults to http://localhost:3001 in local dev
+INTERNAL_BASE_URL=http://server:3001
+```
+
 ### 3) Prepare USDC trustlines
 
 ```bash
@@ -88,6 +95,57 @@ npm run dev
 ```
 
 Open `http://localhost:3001`.
+
+Because `INTERNAL_BASE_URL` defaults to `http://localhost:$PORT`, local demo setup stays one-command simple: `npm run dev`.
+
+## Deployment Notes
+
+The orchestrator uses `INTERNAL_BASE_URL` for its paid internal calls to `/api/premium/*`.
+
+- Local development: leave `INTERNAL_BASE_URL` unset and run `npm run dev`
+- Single container / Docker Compose: set `INTERNAL_BASE_URL=http://<service-name>:3001`
+- Remote or reverse-proxied deployment: set `INTERNAL_BASE_URL` to the server origin the orchestrator can actually reach, for example `https://stellarmind.example.com`
+
+Examples:
+
+```env
+# Local
+PORT=3001
+
+# Docker Compose
+PORT=3001
+INTERNAL_BASE_URL=http://stellarmind:3001
+
+# Remote deployment behind HTTPS
+PORT=3001
+INTERNAL_BASE_URL=https://stellarmind.example.com
+```
+
+## Operational Health Checks
+
+StellarMind exposes lightweight endpoints for deployment tooling and load balancer probes:
+
+- `GET /healthz`
+  - returns `200` and `status: ok` when the process is alive
+  - no external dependency checks are performed
+- `GET /readyz`
+  - returns `200` when the configured critical components are ready
+  - returns `503` when required configuration is missing
+
+Example `/readyz` response:
+
+```json
+{
+  "status": "ready",
+  "ready": true,
+  "timestamp": "2026-05-28T12:00:00.000Z",
+  "components": {
+    "app": { "ready": true, "description": "Core HTTP server initialized" },
+    "anthropic": { "configured": true, "ready": true, "description": "Anthropic API key is configured for Claude-powered agents" },
+    "x402": { "enabled": true, "ready": true, "description": "x402 payment wallet is configured" }
+  }
+}
+```
 
 ## Available Commands
 

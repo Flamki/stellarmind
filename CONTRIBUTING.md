@@ -58,3 +58,74 @@ npm run setup        # Generate Stellar wallets + fund via Friendbot
 npm run setup:usdc   # Add USDC trustlines for x402 payments
 npm run dev          # Start the server
 ```
+
+---
+
+## Contributor workflow
+
+### 1. Claim an issue
+
+Before writing any code, comment on the issue you want to work on:
+
+> "I'd like to work on this — claiming it."
+
+Wait for a maintainer to assign it to you. This prevents two people solving the same thing at once.
+
+### 2. Fork and clone
+
+Fork the repo on GitHub, then clone your fork locally:
+
+```bash
+git clone https://github.com/YOUR_USERNAME/stellarmind.git
+cd stellarmind
+```
+
+Add the original repo as `upstream`:
+
+```bash
+git remote add upstream https://github.com/Flamki/stellarmind.git
+```
+
+### 3. Create a branch
+
+Never work directly on `master`. Name your branch after your issue:
+
+```
+docs/issue-44-contributor-workflow
+fix/issue-12-short-description
+feat/issue-27-short-description
+```
+
+```bash
+git checkout -b feat/issue-27-short-description
+```
+
+### 4. Make your changes
+
+Keep changes focused on the issue you claimed. Run locally to verify nothing breaks:
+
+```bash
+npm install
+npm run dev
+```
+
+### 5. Commit your work
+
+Include `Closes #<number>` so GitHub auto-closes the issue on merge:
+
+```bash
+git commit -m "Your change description
+
+Closes #44"
+```
+
+### 6. Push and open a PR
+
+```bash
+git push origin your-branch-name
+```
+
+Go to your fork on GitHub, click **"Compare & pull request"**, then fill in:
+
+- **Title:** short description of what you did
+- **Description:** what changed, how to test it, and `Closes #44`
