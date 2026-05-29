@@ -4,6 +4,8 @@ import { fileURLToPath } from 'node:url';
 import path from 'node:path';
 
 import { config } from './config.js';
+import { pricingConfig } from './pricing.config.js';
+import { validateAll, throwIfInvalid, formatValidationErrors } from './pricing.validator.js';
 import { AGENTS, discoverAgents, getAgentById } from './agents/registry.js';
 import { runResearch, runSummary, runAnalysis, runCode, setApiKey, MODEL_LABELS } from './agents/services.js';
 import { orchestrate } from './agents/orchestrator.js';
@@ -17,6 +19,19 @@ import { ExactStellarScheme } from '@x402/stellar/exact/server';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const app = express();
+
+// ─── Validate Pricing Configuration at Startup ──────────────
+const pricingValidation = validateAll(pricingConfig, {
+  network: config.network,
+  payTo: config.serverAddress,
+});
+
+if (!pricingValidation.valid) {
+  console.error('❌ FATAL: Pricing configuration validation failed');
+  console.error(formatValidationErrors(pricingValidation));
+  process.exit(1);
+}
+console.log('✅ Pricing configuration validated successfully');
 
 app.use(cors());
 app.use(express.json());
@@ -106,42 +121,15 @@ if (config.serverAddress) {
     const facilitatorClient = new HTTPFacilitatorClient({ url: config.facilitatorUrl });
     const stellarScheme = new ExactStellarScheme();
 
+    // Use pricing config to generate x402 middleware configuration
+    const x402PricingConfig = pricingConfig.getX402Config({
+      network: config.network,
+      payTo: config.serverAddress,
+    });
+
     app.use(
       paymentMiddlewareFromConfig(
-        {
-          'GET /api/premium/research': {
-            accepts: {
-              scheme: 'exact',
-              price: '$0.01',
-              network: config.network,
-              payTo: config.serverAddress,
-            },
-          },
-          'GET /api/premium/summarize': {
-            accepts: {
-              scheme: 'exact',
-              price: '$0.01',
-              network: config.network,
-              payTo: config.serverAddress,
-            },
-          },
-          'GET /api/premium/analyze': {
-            accepts: {
-              scheme: 'exact',
-              price: '$0.05',
-              network: config.network,
-              payTo: config.serverAddress,
-            },
-          },
-          'GET /api/premium/code': {
-            accepts: {
-              scheme: 'exact',
-              price: '$0.03',
-              network: config.network,
-              payTo: config.serverAddress,
-            },
-          },
-        },
+        x402PricingConfig,
         facilitatorClient,
         [{ network: config.network, server: stellarScheme }],
       )
@@ -161,10 +149,12 @@ if (config.serverAddress) {
 app.get('/api/premium/research', async (req, res, next) => {
   try {
     const topic = req.query.topic || 'AI and blockchain payments';
-    broadcast({ type: 'agent_call', agent: '🔬 Research Agent', agentId: 'research-bot', input: topic, cost: '0.01', timestamp: new Date().toISOString() });
+    const priceInfo = pricingConfig.getEndpointInfo('GET /api/premium/research');
+    const cost = priceInfo.price.slice(1); // Remove '$' for display
+    broadcast({ type: 'agent_call', agent: `${priceInfo.emoji} Research Agent`, agentId: 'research-bot', input: topic, cost, timestamp: new Date().toISOString() });
     const result = await runResearch(topic);
-    broadcast({ type: 'agent_response', agent: '🔬 Research Agent', agentId: 'research-bot', resultPreview: result.substring(0, 150), cost: '0.01', timestamp: new Date().toISOString() });
-    res.json({ agent: 'research-bot', topic, result, model: MODEL_LABELS.research, cost: '0.01 USDC', paidVia: 'x402' });
+    broadcast({ type: 'agent_response', agent: `${priceInfo.emoji} Research Agent`, agentId: 'research-bot', resultPreview: result.substring(0, 150), cost, timestamp: new Date().toISOString() });
+    res.json({ agent: 'research-bot', topic, result, model: MODEL_LABELS.research, cost: `${cost} USDC`, paidVia: 'x402' });
   } catch (err) {
     next(err);
   }
@@ -173,10 +163,12 @@ app.get('/api/premium/research', async (req, res, next) => {
 app.get('/api/premium/summarize', async (req, res, next) => {
   try {
     const text = req.query.text || 'Please provide text to summarize via ?text= parameter';
-    broadcast({ type: 'agent_call', agent: '📝 Summary Agent', agentId: 'summary-bot', input: text.substring(0, 100), cost: '0.01', timestamp: new Date().toISOString() });
+    const priceInfo = pricingConfig.getEndpointInfo('GET /api/premium/summarize');
+    const cost = priceInfo.price.slice(1);
+    broadcast({ type: 'agent_call', agent: `${priceInfo.emoji} Summary Agent`, agentId: 'summary-bot', input: text.substring(0, 100), cost, timestamp: new Date().toISOString() });
     const result = await runSummary(text);
-    broadcast({ type: 'agent_response', agent: '📝 Summary Agent', agentId: 'summary-bot', resultPreview: result.substring(0, 150), cost: '0.01', timestamp: new Date().toISOString() });
-    res.json({ agent: 'summary-bot', result, model: MODEL_LABELS.summary, cost: '0.01 USDC', paidVia: 'x402' });
+    broadcast({ type: 'agent_response', agent: `${priceInfo.emoji} Summary Agent`, agentId: 'summary-bot', resultPreview: result.substring(0, 150), cost, timestamp: new Date().toISOString() });
+    res.json({ agent: 'summary-bot', result, model: MODEL_LABELS.summary, cost: `${cost} USDC`, paidVia: 'x402' });
   } catch (err) {
     next(err);
   }
@@ -185,10 +177,12 @@ app.get('/api/premium/summarize', async (req, res, next) => {
 app.get('/api/premium/analyze', async (req, res, next) => {
   try {
     const topic = req.query.topic || 'AI agent economies';
-    broadcast({ type: 'agent_call', agent: '📊 Analysis Agent', agentId: 'analyst-bot', input: topic, cost: '0.05', timestamp: new Date().toISOString() });
+    const priceInfo = pricingConfig.getEndpointInfo('GET /api/premium/analyze');
+    const cost = priceInfo.price.slice(1);
+    broadcast({ type: 'agent_call', agent: `${priceInfo.emoji} Analysis Agent`, agentId: 'analyst-bot', input: topic, cost, timestamp: new Date().toISOString() });
     const result = await runAnalysis(topic);
-    broadcast({ type: 'agent_response', agent: '📊 Analysis Agent', agentId: 'analyst-bot', resultPreview: result.substring(0, 150), cost: '0.05', timestamp: new Date().toISOString() });
-    res.json({ agent: 'analyst-bot', topic, result, model: MODEL_LABELS.analysis, cost: '0.05 USDC', paidVia: 'x402' });
+    broadcast({ type: 'agent_response', agent: `${priceInfo.emoji} Analysis Agent`, agentId: 'analyst-bot', resultPreview: result.substring(0, 150), cost, timestamp: new Date().toISOString() });
+    res.json({ agent: 'analyst-bot', topic, result, model: MODEL_LABELS.analysis, cost: `${cost} USDC`, paidVia: 'x402' });
   } catch (err) {
     next(err);
   }
@@ -197,10 +191,12 @@ app.get('/api/premium/analyze', async (req, res, next) => {
 app.get('/api/premium/code', async (req, res, next) => {
   try {
     const prompt = req.query.prompt || 'Write a hello world function';
-    broadcast({ type: 'agent_call', agent: '💻 Code Agent', agentId: 'code-bot', input: prompt.substring(0, 100), cost: '0.03', timestamp: new Date().toISOString() });
+    const priceInfo = pricingConfig.getEndpointInfo('GET /api/premium/code');
+    const cost = priceInfo.price.slice(1);
+    broadcast({ type: 'agent_call', agent: `${priceInfo.emoji} Code Agent`, agentId: 'code-bot', input: prompt.substring(0, 100), cost, timestamp: new Date().toISOString() });
     const result = await runCode(prompt);
-    broadcast({ type: 'agent_response', agent: '💻 Code Agent', agentId: 'code-bot', resultPreview: result.substring(0, 150), cost: '0.03', timestamp: new Date().toISOString() });
-    res.json({ agent: 'code-bot', prompt, result, model: MODEL_LABELS.code, cost: '0.03 USDC', paidVia: 'x402' });
+    broadcast({ type: 'agent_response', agent: `${priceInfo.emoji} Code Agent`, agentId: 'code-bot', resultPreview: result.substring(0, 150), cost, timestamp: new Date().toISOString() });
+    res.json({ agent: 'code-bot', prompt, result, model: MODEL_LABELS.code, cost: `${cost} USDC`, paidVia: 'x402' });
   } catch (err) {
     next(err);
   }
@@ -330,6 +326,10 @@ app.get('/api/wallet/transactions', async (req, res, next) => {
 
 // ─── System Status ───────────────────────────────────────────
 app.get('/api/status', (req, res) => {
+  const premiumEndpoints = pricingConfig.getAllPricingInfo().map(info => 
+    `${info.endpoint} (${info.price})`
+  );
+
   res.json({
     name: 'StellarMind',
     version: '1.0.0',
@@ -342,12 +342,8 @@ app.get('/api/status', (req, res) => {
       enabled: !!config.serverAddress,
       middleware: '@x402/express (paymentMiddlewareFromConfig)',
       client: '@x402/fetch (wrapFetchWithPayment + ExactStellarScheme)',
-      premiumEndpoints: [
-        'GET /api/premium/research ($0.01)',
-        'GET /api/premium/summarize ($0.01)',
-        'GET /api/premium/analyze ($0.05)',
-        'GET /api/premium/code ($0.03)',
-      ],
+      premiumEndpoints,
+      pricing: pricingConfig.getAllPricingInfo(),
       flow: '402 → wrapFetchWithPayment signs USDC tx → retry with X-PAYMENT → facilitator settles on-chain → 200',
     },
     wallets: {
