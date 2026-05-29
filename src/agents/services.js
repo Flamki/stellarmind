@@ -24,12 +24,14 @@ export const MODEL_LABELS = {
 /**
  * Update the Anthropic API key at runtime.
  * Allows users to plug in their own key without restarting the server.
+ * Security: Key is stored in memory only, never logged or persisted.
  */
 export function setApiKey(newKey) {
   anthropic = new Anthropic({ apiKey: newKey });
   config.anthropicApiKey = newKey;
   claudeAvailable = true;
-  console.log('  🔑 Anthropic API key updated at runtime');
+  // Security: Never log the actual key, only confirm it was set
+  console.log('  🔑 Anthropic API key updated at runtime (ephemeral, session-only)');
 }
 
 /**
