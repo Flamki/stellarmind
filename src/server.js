@@ -318,7 +318,44 @@ app.get('/api/wallet/transactions', async (req, res, next) => {
   try {
     const address = req.query.address || config.orchestratorAddress || config.serverAddress;
     if (!address) return res.json([]);
-    const txs = await getTransactions(address, 20);
+
+    // 1. Validate & clamp "limit"
+    let limit = 20; // default
+    if (req.query.limit !== undefined) {
+      const parsedLimit = parseInt(req.query.limit, 10);
+      if (isNaN(parsedLimit) || parsedLimit <= 0 || String(parsedLimit) !== String(req.query.limit)) {
+        const err = new Error('Invalid query parameter "limit". Must be a positive integer.');
+        err.status = 400;
+        err.code = 'INVALID_LIMIT';
+        return next(err);
+      }
+      limit = Math.max(1, Math.min(200, parsedLimit));
+    }
+
+    // 2. Validate "order"/"direction"
+    let order = 'desc'; // default
+    const directionParam = req.query.direction || req.query.order;
+    if (directionParam !== undefined) {
+      const normalizedDir = String(directionParam).toLowerCase();
+      if (normalizedDir !== 'asc' && normalizedDir !== 'desc') {
+        const err = new Error('Invalid query parameter "direction"/"order". Must be "asc" or "desc".');
+        err.status = 400;
+        err.code = 'INVALID_DIRECTION';
+        return next(err);
+      }
+      order = normalizedDir;
+    }
+
+    // 3. Extract & validate "cursor" / "page" (supporting both)
+    const cursor = req.query.cursor || req.query.page || null;
+    if (cursor !== null && typeof cursor !== 'string') {
+      const err = new Error('Invalid query parameter "cursor"/"page". Must be a string.');
+      err.status = 400;
+      err.code = 'INVALID_CURSOR';
+      return next(err);
+    }
+
+    const txs = await getTransactions(address, limit, cursor, order);
     res.json(txs);
   } catch (err) {
     next(err);
