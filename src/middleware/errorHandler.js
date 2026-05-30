@@ -50,6 +50,10 @@ export function errorHandler(err, req, res, _next) {
     requestId: req.requestId,
   };
 
+  if (Array.isArray(err.details) && err.details.length > 0) {
+    body.details = err.details;
+  }
+
   // Expose stack only in development
   if (!isProd && err.stack) {
     body.stack = err.stack;

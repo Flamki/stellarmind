@@ -11,6 +11,7 @@ import { runResearch, runSummary, runAnalysis, runCode, setApiKey, MODEL_LABELS 
 import { orchestrate } from './agents/orchestrator.js';
 import { getBalance, getTransactions, sendPayment } from './stellar/wallet.js';
 import { requestId, errorHandler } from './middleware/errorHandler.js';
+import { validatePremiumQuery, validateOrchestrate, validateWalletTransactions, validateConfigApiKey, } from './requestValidation.js';
 
 // x402 imports
 import { paymentMiddlewareFromConfig } from '@x402/express';
@@ -146,9 +147,9 @@ if (config.serverAddress) {
 }
 
 // ─── Premium x402-Protected Endpoints ────────────────────────
-app.get('/api/premium/research', async (req, res, next) => {
+app.get('/api/premium/research', validatePremiumQuery, async (req, res, next) => {
   try {
-    const topic = req.query.topic || 'AI and blockchain payments';
+    const topic = req.validated.topic;
     const priceInfo = pricingConfig.getEndpointInfo('GET /api/premium/research');
     const cost = priceInfo.price.slice(1); // Remove '$' for display
     broadcast({ type: 'agent_call', agent: `${priceInfo.emoji} Research Agent`, agentId: 'research-bot', input: topic, cost, timestamp: new Date().toISOString() });
@@ -160,7 +161,7 @@ app.get('/api/premium/research', async (req, res, next) => {
   }
 });
 
-app.get('/api/premium/summarize', async (req, res, next) => {
+app.get('/api/premium/summarize', validatePremiumQuery, async (req, res, next) => {
   try {
     const text = req.query.text || 'Please provide text to summarize via ?text= parameter';
     const priceInfo = pricingConfig.getEndpointInfo('GET /api/premium/summarize');
@@ -174,9 +175,9 @@ app.get('/api/premium/summarize', async (req, res, next) => {
   }
 });
 
-app.get('/api/premium/analyze', async (req, res, next) => {
+app.get('/api/premium/analyze', validatePremiumQuery, async (req, res, next) => {
   try {
-    const topic = req.query.topic || 'AI agent economies';
+    const topic = req.validated.topic;
     const priceInfo = pricingConfig.getEndpointInfo('GET /api/premium/analyze');
     const cost = priceInfo.price.slice(1);
     broadcast({ type: 'agent_call', agent: `${priceInfo.emoji} Analysis Agent`, agentId: 'analyst-bot', input: topic, cost, timestamp: new Date().toISOString() });
@@ -188,9 +189,9 @@ app.get('/api/premium/analyze', async (req, res, next) => {
   }
 });
 
-app.get('/api/premium/code', async (req, res, next) => {
+app.get('/api/premium/code', validatePremiumQuery, async (req, res, next) => {
   try {
-    const prompt = req.query.prompt || 'Write a hello world function';
+    const prompt = req.validated.prompt;
     const priceInfo = pricingConfig.getEndpointInfo('GET /api/premium/code');
     const cost = priceInfo.price.slice(1);
     broadcast({ type: 'agent_call', agent: `${priceInfo.emoji} Code Agent`, agentId: 'code-bot', input: prompt.substring(0, 100), cost, timestamp: new Date().toISOString() });
@@ -244,17 +245,10 @@ app.get('/api/code', async (req, res, next) => {
 });
 
 // ─── Orchestrator Endpoint ───────────────────────────────────
-app.post('/api/orchestrate', async (req, res, next) => {
+app.post('/api/orchestrate', validateOrchestrate, async (req, res, next) => {
   try {
-    const { task, budget } = req.body;
-    if (!task) {
-      const err = new Error('Missing "task" in request body');
-      err.status = 400;
-      err.code = 'MISSING_FIELD';
-      return next(err);
-    }
-    const budgetNum = parseFloat(budget) || 0.15;
-    const result = await orchestrate(task, budgetNum, broadcast);
+    const { task, budget } = req.validated;
+    const result = await orchestrate(task, budget, broadcast);
     res.json(result);
   } catch (err) {
     next(err);
@@ -262,10 +256,9 @@ app.post('/api/orchestrate', async (req, res, next) => {
 });
 
 // Also support GET for easy testing
-app.get('/api/orchestrate', async (req, res, next) => {
+app.get('/api/orchestrate', validateOrchestrate, async (req, res, next) => {
   try {
-    const task = req.query.task || 'Research AI payments';
-    const budget = parseFloat(req.query.budget) || 0.15;
+    const { task, budget } = req.validated;
     const result = await orchestrate(task, budget, broadcast);
     res.json(result);
   } catch (err) {
@@ -313,9 +306,9 @@ app.get('/api/wallet/balances', async (req, res, next) => {
   }
 });
 
-app.get('/api/wallet/transactions', async (req, res, next) => {
+app.get('/api/wallet/transactions', validateWalletTransactions, async (req, res, next) => {
   try {
-    const address = req.query.address || config.orchestratorAddress || config.serverAddress;
+    const address = req.validated?.address || config.orchestratorAddress || config.serverAddress;
     if (!address) return res.json([]);
     const txs = await getTransactions(address, 20);
     res.json(txs);
@@ -364,14 +357,8 @@ app.get('/api/config/apikey', (req, res) => {
   });
 });
 
-app.post('/api/config/apikey', (req, res, next) => {
-  const { apiKey } = req.body;
-  if (!apiKey || !apiKey.startsWith('sk-ant-')) {
-    const err = new Error('Invalid API key. Must start with sk-ant-');
-    err.status = 400;
-    err.code = 'INVALID_API_KEY';
-    return next(err);
-  }
+app.post('/api/config/apikey', validateConfigApiKey, (req, res, next) => {
+  const { apiKey } = req.validated;
   // Security: Log only that a key was updated, never log the key itself
   console.log('  🔑 API key updated (ephemeral, session-only)');
   setApiKey(apiKey);
