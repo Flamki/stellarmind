@@ -11,6 +11,7 @@ import { runResearch, runSummary, runAnalysis, runCode, setApiKey, MODEL_LABELS 
 import { orchestrate } from './agents/orchestrator.js';
 import { getBalance, getTransactions, sendPayment } from './stellar/wallet.js';
 import { requestId, errorHandler } from './middleware/errorHandler.js';
+import { orchestrateLimiter, apikeyLimiter } from './middleware/rateLimiter.js';
 
 // x402 imports
 import { paymentMiddlewareFromConfig } from '@x402/express';
@@ -244,7 +245,7 @@ app.get('/api/code', async (req, res, next) => {
 });
 
 // ─── Orchestrator Endpoint ───────────────────────────────────
-app.post('/api/orchestrate', async (req, res, next) => {
+app.post('/api/orchestrate', orchestrateLimiter, async (req, res, next) => {
   try {
     const { task, budget } = req.body;
     if (!task) {
@@ -262,7 +263,7 @@ app.post('/api/orchestrate', async (req, res, next) => {
 });
 
 // Also support GET for easy testing
-app.get('/api/orchestrate', async (req, res, next) => {
+app.get('/api/orchestrate', orchestrateLimiter, async (req, res, next) => {
   try {
     const task = req.query.task || 'Research AI payments';
     const budget = parseFloat(req.query.budget) || 0.15;
@@ -356,7 +357,7 @@ app.get('/api/status', (req, res) => {
 });
 
 // ─── API Key Configuration ───────────────────────────────────
-app.get('/api/config/apikey', (req, res) => {
+app.get('/api/config/apikey', apikeyLimiter, (req, res) => {
   const key = config.anthropicApiKey || '';
   res.json({
     configured: !!key,
@@ -364,7 +365,7 @@ app.get('/api/config/apikey', (req, res) => {
   });
 });
 
-app.post('/api/config/apikey', (req, res, next) => {
+app.post('/api/config/apikey', apikeyLimiter, (req, res, next) => {
   const { apiKey } = req.body;
   if (!apiKey || !apiKey.startsWith('sk-ant-')) {
     const err = new Error('Invalid API key. Must start with sk-ant-');
