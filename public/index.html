@@ -835,6 +835,9 @@
               <thead><tr><th>Hash</th><th>Type</th><th>Amount</th><th>Memo</th><th>Time</th></tr></thead>
               <tbody id="tx-body"><tr><td colspan="5" style="text-align:center;padding:32px;color:var(--text-muted);">Loading transactions...</td></tr></tbody>
             </table>
+            <div style="padding: 14px; text-align: center; border-top: 1px solid var(--border);" id="tx-pagination">
+              <button class="btn" id="btn-load-more" onclick="loadMoreTransactions()" style="padding: 8px 16px; font-size: 11.5px; display: none;">Load More</button>
+            </div>
           </div>
         </div>
       </div>
@@ -1120,16 +1123,31 @@
     }
 
     // ─── Load Transactions Page ───
-    async function loadTxPage() {
+    let txCursor = null;
+    const txLimit = 10;
+
+    async function loadTxPage(isLoadMore = false) {
+      if (!isLoadMore) {
+        txCursor = null;
+        document.getElementById('tx-body').innerHTML = '<tr><td colspan="5" style="text-align:center;padding:32px;color:var(--text-muted);">Loading transactions...</td></tr>';
+        document.getElementById('btn-load-more').style.display = 'none';
+      }
+
       try {
-        const txs = await (await fetch('/api/wallet/transactions')).json();
-        document.getElementById('tx-cnt').textContent = txs.length;
-        document.getElementById('tx-total').textContent = `${txs.length} Transactions`;
-        if (!txs.length) {
-          document.getElementById('tx-body').innerHTML = '<tr><td colspan="5" style="text-align:center;padding:32px;color:var(--text-muted);">No transactions yet. Run the orchestrator first!</td></tr>';
-          return;
+        const url = `/api/wallet/transactions?limit=${txLimit}` + (txCursor ? `&cursor=${txCursor}` : '');
+        const txs = await (await fetch(url)).json();
+        
+        if (!isLoadMore) {
+          document.getElementById('tx-cnt').textContent = txs.length;
+          document.getElementById('tx-total').textContent = `${txs.length} Transactions`;
+          if (!txs.length) {
+            document.getElementById('tx-body').innerHTML = '<tr><td colspan="5" style="text-align:center;padding:32px;color:var(--text-muted);">No transactions yet. Run the orchestrator first!</td></tr>';
+            return;
+          }
+          document.getElementById('tx-body').innerHTML = '';
         }
-        document.getElementById('tx-body').innerHTML = txs.map(tx => {
+
+        const rowsHtml = txs.map(tx => {
           const ops = tx.operations || [];
           const op = ops[0] || {};
           let amt = '—';
@@ -1154,7 +1172,37 @@
             <td><span class="tx-time">${time}</span></td>
           </tr>`;
         }).join('');
-      } catch { document.getElementById('tx-body').innerHTML = '<tr><td colspan="5" style="text-align:center;padding:32px;color:var(--text-muted);">Failed to load transactions.</td></tr>'; }
+
+        if (isLoadMore) {
+          document.getElementById('tx-body').insertAdjacentHTML('beforeend', rowsHtml);
+          const currentTotal = document.getElementById('tx-body').children.length;
+          document.getElementById('tx-cnt').textContent = currentTotal;
+          document.getElementById('tx-total').textContent = `${currentTotal} Transactions`;
+        } else {
+          document.getElementById('tx-body').innerHTML = rowsHtml;
+        }
+
+        if (txs.length === txLimit) {
+          txCursor = txs[txs.length - 1].paging_token;
+          document.getElementById('btn-load-more').style.display = 'inline-block';
+        } else {
+          document.getElementById('btn-load-more').style.display = 'none';
+        }
+      } catch (err) {
+        if (!isLoadMore) {
+          document.getElementById('tx-body').innerHTML = '<tr><td colspan="5" style="text-align:center;padding:32px;color:var(--text-muted);">Failed to load transactions.</td></tr>';
+        }
+        console.error(err);
+      }
+    }
+
+    async function loadMoreTransactions() {
+      const btn = document.getElementById('btn-load-more');
+      btn.disabled = true;
+      btn.textContent = 'Loading...';
+      await loadTxPage(true);
+      btn.disabled = false;
+      btn.textContent = 'Load More';
     }
 
     // ─── Load Wallets ───
