@@ -144,7 +144,11 @@ Example `/readyz` response:
   "timestamp": "2026-05-28T12:00:00.000Z",
   "components": {
     "app": { "ready": true, "description": "Core HTTP server initialized" },
-    "anthropic": { "configured": true, "ready": true, "description": "Anthropic API key is configured for Claude-powered agents" },
+    "anthropic": {
+      "configured": true,
+      "ready": true,
+      "description": "Anthropic API key is configured for Claude-powered agents"
+    },
     "x402": { "enabled": true, "ready": true, "description": "x402 payment wallet is configured" }
   }
 }

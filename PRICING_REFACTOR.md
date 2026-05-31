@@ -2,11 +2,14 @@
 
 ## Overview
 
-This document describes the refactoring of hardcoded pricing configuration in StellarMind to use a centralized, validated pricing configuration system. This ensures a single source of truth for all premium endpoint pricing.
+This document describes the refactoring of hardcoded pricing configuration in StellarMind to use a
+centralized, validated pricing configuration system. This ensures a single source of truth for all
+premium endpoint pricing.
 
 ## Problem Statement
 
 **Before Refactoring:**
+
 - Premium endpoint prices were hardcoded in `src/server.js` in the x402 middleware configuration
 - Changes required code modifications and re-deployment
 - Risk of inconsistencies between middleware config, status endpoint, and broadcast events
@@ -14,6 +17,7 @@ This document describes the refactoring of hardcoded pricing configuration in St
 - Difficult to maintain and audit pricing changes
 
 **After Refactoring:**
+
 - All pricing defined in `src/pricing.config.js`
 - Automatic validation at application startup
 - Single source of truth for all pricing
@@ -68,7 +72,7 @@ export const pricingConfig = {
     },
   },
   // ... lookup maps and methods
-};
+}
 ```
 
 ### Field Descriptions
@@ -86,96 +90,103 @@ export const pricingConfig = {
 The `src/pricing.validator.js` module provides comprehensive validation:
 
 #### `validatePrice(price)`
+
 Validates individual price strings.
 
 ```javascript
-import { validatePrice } from './src/pricing.validator.js';
+import { validatePrice } from './src/pricing.validator.js'
 
 // Valid
-validatePrice('$0.01');  // { valid: true, value: 0.01 }
+validatePrice('$0.01') // { valid: true, value: 0.01 }
 
 // Invalid
-validatePrice('0.01');   // { valid: false, error: "Price must be in format '$X.XX'..." }
-validatePrice('$0.1');   // { valid: false, error: "Price must be in format '$X.XX'..." }
-validatePrice('$-0.01'); // { valid: false, error: "Price cannot be negative..." }
-validatePrice('$0.00');  // { valid: false, error: "Price cannot be zero..." }
+validatePrice('0.01') // { valid: false, error: "Price must be in format '$X.XX'..." }
+validatePrice('$0.1') // { valid: false, error: "Price must be in format '$X.XX'..." }
+validatePrice('$-0.01') // { valid: false, error: "Price cannot be negative..." }
+validatePrice('$0.00') // { valid: false, error: "Price cannot be zero..." }
 ```
 
 #### `validateEndpoint(endpoint)`
+
 Validates endpoint format.
 
 ```javascript
-import { validateEndpoint } from './src/pricing.validator.js';
+import { validateEndpoint } from './src/pricing.validator.js'
 
 // Valid
-validateEndpoint('GET /api/premium/research');   // { valid: true }
-validateEndpoint('POST /api/premium/analyze');   // { valid: true }
+validateEndpoint('GET /api/premium/research') // { valid: true }
+validateEndpoint('POST /api/premium/analyze') // { valid: true }
 
 // Invalid
-validateEndpoint('GET /api/research');           // { valid: false, error: "..." }
-validateEndpoint('GET /premium/research');       // { valid: false, error: "..." }
+validateEndpoint('GET /api/research') // { valid: false, error: "..." }
+validateEndpoint('GET /premium/research') // { valid: false, error: "..." }
 ```
 
 #### `validateEndpointInfo(endpoint, info)`
+
 Validates endpoint configuration object.
 
 ```javascript
-import { validateEndpointInfo } from './src/pricing.validator.js';
+import { validateEndpointInfo } from './src/pricing.validator.js'
 
 const info = {
   price: '$0.01',
   agent: 'research-bot',
   description: 'Research Agent',
   emoji: '🔬',
-};
+}
 
-validateEndpointInfo('GET /api/premium/research', info);
+validateEndpointInfo('GET /api/premium/research', info)
 // { valid: true, errors: [] }
 ```
 
 #### `validatePricingConfig(pricingConfig)`
+
 Validates entire pricing configuration.
 
 ```javascript
-import { validatePricingConfig } from './src/pricing.validator.js';
+import { validatePricingConfig } from './src/pricing.validator.js'
 
-validatePricingConfig(pricingConfig);
+validatePricingConfig(pricingConfig)
 // { valid: true, errors: [] }
 ```
 
 #### `validateX402Compatibility(pricingConfig, config)`
+
 Validates x402 middleware compatibility.
 
 ```javascript
-import { validateX402Compatibility } from './src/pricing.validator.js';
+import { validateX402Compatibility } from './src/pricing.validator.js'
 
 const appConfig = {
   network: 'stellar:testnet',
   payTo: 'GBUQWP3BOUZX34ULNQG23RQ6F4BVWCIYU2IYJJQ7YCVROSNM4SQKVUC',
-};
+}
 
-validateX402Compatibility(pricingConfig, appConfig);
+validateX402Compatibility(pricingConfig, appConfig)
 // { valid: true, errors: [] }
 ```
 
 #### `validateAll(pricingConfig, config)`
+
 Comprehensive validation combining all checks.
 
 ```javascript
-import { validateAll } from './src/pricing.validator.js';
+import { validateAll } from './src/pricing.validator.js'
 
-const validation = validateAll(pricingConfig, appConfig);
+const validation = validateAll(pricingConfig, appConfig)
 // { valid: true, errors: [], warnings: [] }
 ```
 
 #### `throwIfInvalid(validation, context)`
+
 Throws an error if validation failed.
 
 ```javascript
-import { throwIfInvalid } from './src/pricing.validator.js';
+import { throwIfInvalid } from './src/pricing.validator.js'
 
-const validation = validateAll(pricingConfig, appConfig);
-throwIfInvalid(validation, 'Pricing configuration');
+const validation = validateAll(pricingConfig, appConfig)
+throwIfInvalid(validation, 'Pricing configuration')
 // Throws if invalid, otherwise returns silently
 ```
 
@@ -188,14 +199,14 @@ The server validates pricing configuration at startup:
 const pricingValidation = validateAll(pricingConfig, {
   network: config.network,
   payTo: config.serverAddress,
-});
+})
 
 if (!pricingValidation.valid) {
-  console.error('❌ FATAL: Pricing configuration validation failed');
-  console.error(formatValidationErrors(pricingValidation));
-  process.exit(1);
+  console.error('❌ FATAL: Pricing configuration validation failed')
+  console.error(formatValidationErrors(pricingValidation))
+  process.exit(1)
 }
-console.log('✅ Pricing configuration validated successfully');
+console.log('✅ Pricing configuration validated successfully')
 ```
 
 ## Usage Examples
@@ -205,6 +216,7 @@ console.log('✅ Pricing configuration validated successfully');
 To change the price of the research endpoint from `$0.01` to `$0.02`:
 
 **Before (hardcoded in server.js):**
+
 ```javascript
 // In src/server.js - HARDCODED
 'GET /api/premium/research': {
@@ -218,6 +230,7 @@ To change the price of the research endpoint from `$0.01` to `$0.02`:
 ```
 
 **After (centralized config):**
+
 ```javascript
 // In src/pricing.config.js
 'GET /api/premium/research': {
@@ -229,6 +242,7 @@ To change the price of the research endpoint from `$0.01` to `$0.02`:
 ```
 
 This single change automatically updates:
+
 - x402 middleware configuration
 - Status endpoint output
 - Broadcast events
@@ -251,7 +265,7 @@ export const pricingConfig = {
     },
   },
   // ... rest of config ...
-};
+}
 ```
 
 Then add the endpoint handler in `src/server.js`:
@@ -259,17 +273,39 @@ Then add the endpoint handler in `src/server.js`:
 ```javascript
 app.get('/api/premium/translate', async (req, res) => {
   try {
-    const text = req.query.text || '';
-    const priceInfo = pricingConfig.getEndpointInfo('GET /api/premium/translate');
-    const cost = priceInfo.price.slice(1);
-    broadcast({ type: 'agent_call', agent: `${priceInfo.emoji} Translator Agent`, agentId: 'translator-bot', input: text.substring(0, 100), cost, timestamp: new Date().toISOString() });
-    const result = await runTranslate(text);
-    broadcast({ type: 'agent_response', agent: `${priceInfo.emoji} Translator Agent`, agentId: 'translator-bot', resultPreview: result.substring(0, 150), cost, timestamp: new Date().toISOString() });
-    res.json({ agent: 'translator-bot', result, model: MODEL_LABELS.translate, cost: `${cost} USDC`, paidVia: 'x402' });
+    const text = req.query.text || ''
+    const priceInfo = pricingConfig.getEndpointInfo('GET /api/premium/translate')
+    const cost = priceInfo.price.slice(1)
+    broadcast({
+      type: 'agent_call',
+      agent: `${priceInfo.emoji} Translator Agent`,
+      agentId: 'translator-bot',
+      input: text.substring(0, 100),
+      cost,
+      timestamp: new Date().toISOString(),
+    })
+    const result = await runTranslate(text)
+    broadcast({
+      type: 'agent_response',
+      agent: `${priceInfo.emoji} Translator Agent`,
+      agentId: 'translator-bot',
+      resultPreview: result.substring(0, 150),
+      cost,
+      timestamp: new Date().toISOString(),
+    })
+    res.json({
+      agent: 'translator-bot',
+      result,
+      model: MODEL_LABELS.translate,
+      cost: `${cost} USDC`,
+      paidVia: 'x402',
+    })
   } catch (err) {
-    res.status(500).json({ error: 'Translator agent temporarily unavailable', details: err.message });
+    res
+      .status(500)
+      .json({ error: 'Translator agent temporarily unavailable', details: err.message })
   }
-});
+})
 ```
 
 The x402 middleware will automatically protect this endpoint with the configured price.
@@ -277,37 +313,37 @@ The x402 middleware will automatically protect this endpoint with the configured
 ### Querying Pricing Information
 
 ```javascript
-import { pricingConfig } from './src/pricing.config.js';
+import { pricingConfig } from './src/pricing.config.js'
 
 // Get price for specific endpoint
-const price = pricingConfig.getPrice('GET /api/premium/research');
+const price = pricingConfig.getPrice('GET /api/premium/research')
 // '$0.01'
 
 // Get all premium endpoints
-const endpoints = pricingConfig.getPremiumEndpoints();
+const endpoints = pricingConfig.getPremiumEndpoints()
 // ['GET /api/premium/research', 'GET /api/premium/summarize', ...]
 
 // Get endpoint info
-const info = pricingConfig.getEndpointInfo('GET /api/premium/research');
+const info = pricingConfig.getEndpointInfo('GET /api/premium/research')
 // { price: '$0.01', agent: 'research-bot', description: '...', emoji: '🔬' }
 
 // Get all pricing info (for status endpoint)
-const allInfo = pricingConfig.getAllPricingInfo();
+const allInfo = pricingConfig.getAllPricingInfo()
 // [{ endpoint: '...', price: '...', agent: '...', ... }, ...]
 
 // Get x402 middleware configuration
 const x402Config = pricingConfig.getX402Config({
   network: 'stellar:testnet',
   payTo: 'GBUQWP3BOUZX34ULNQG23RQ6F4BVWCIYU2IYJJQ7YCVROSNM4SQKVUC',
-});
+})
 // { 'GET /api/premium/research': { accepts: { ... } }, ... }
 
 // Lookup by agent
-const agentInfo = pricingConfig.byAgent['research-bot'];
+const agentInfo = pricingConfig.byAgent['research-bot']
 // { endpoint: 'GET /api/premium/research', price: '$0.01', ... }
 
 // Lookup by price
-const endpointsAt001 = pricingConfig.byPrice['$0.01'];
+const endpointsAt001 = pricingConfig.byPrice['$0.01']
 // [{ endpoint: 'GET /api/premium/research', agent: 'research-bot' }, ...]
 ```
 
@@ -326,6 +362,7 @@ const endpointsAt001 = pricingConfig.byPrice['$0.01'];
 ```
 
 **Error at startup:**
+
 ```
 ❌ FATAL: Pricing configuration validation failed
 ❌ Pricing configuration validation failed:
@@ -347,6 +384,7 @@ Errors:
 ```
 
 **Error at startup:**
+
 ```
 ❌ FATAL: Pricing configuration validation failed
 ❌ Pricing configuration validation failed:
@@ -374,6 +412,7 @@ Errors:
 ```
 
 **Error at startup:**
+
 ```
 ❌ FATAL: Pricing configuration validation failed
 ❌ Pricing configuration validation failed:
@@ -395,6 +434,7 @@ Errors:
 ```
 
 **Error at startup:**
+
 ```
 ❌ FATAL: Pricing configuration validation failed
 ❌ Pricing configuration validation failed:
@@ -416,6 +456,7 @@ Errors:
 ```
 
 **Error at startup:**
+
 ```
 ❌ FATAL: Pricing configuration validation failed
 ❌ Pricing configuration validation failed:
@@ -433,6 +474,7 @@ node tests/pricing.validator.test.js
 ```
 
 **Output:**
+
 ```
 📋 Testing Price Validation...
 ✅ Price validation tests passed
@@ -470,6 +512,7 @@ node tests/pricing.integration.test.js
 ```
 
 **Output:**
+
 ```
 📋 Testing Pricing Config Structure...
 ✅ Found 4 premium endpoints
@@ -626,6 +669,7 @@ The `/api/status` endpoint now includes detailed pricing information:
 ## Support
 
 For questions or issues with the pricing configuration system, please refer to:
+
 - Unit tests: `tests/pricing.validator.test.js`
 - Integration tests: `tests/pricing.integration.test.js`
 - Configuration: `src/pricing.config.js`

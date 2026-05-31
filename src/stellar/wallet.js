@@ -94,16 +94,13 @@ export async function fundWithFriendbot(publicKey) {
  */
 export async function getTransactions(publicKey, limit = 10, cursor = null, order = 'desc') {
   try {
-    let query = server.transactions()
-      .forAccount(publicKey)
-      .order(order)
-      .limit(limit);
+    let query = server.transactions().forAccount(publicKey).order(order).limit(limit)
 
     if (cursor) {
-      query = query.cursor(cursor);
+      query = query.cursor(cursor)
     }
 
-    const txs = await query.call();
+    const txs = await query.call()
 
     const decorated = await Promise.all(
       txs.records.map(async (tx) => {

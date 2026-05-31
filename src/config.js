@@ -6,12 +6,15 @@ dotenv.config({
   quiet: true,
 })
 
-const port = process.env.PORT || 3001;
-const internalBaseUrl = (process.env.INTERNAL_BASE_URL || `http://localhost:${port}`).replace(/\/+$/, '');
+const port = process.env.PORT || 3001
+const internalBaseUrl = (process.env.INTERNAL_BASE_URL || `http://localhost:${port}`).replace(
+  /\/+$/,
+  ''
+)
 const toNumberOr = (value, fallback) => {
-  const n = Number.parseInt(value, 10);
-  return Number.isFinite(n) ? n : fallback;
-};
+  const n = Number.parseInt(value, 10)
+  return Number.isFinite(n) ? n : fallback
+}
 
 export const config = {
   port,
@@ -34,9 +37,15 @@ export const config = {
 
   // Anthropic
   anthropicApiKey: process.env.ANTHROPIC_API_KEY || '',
-  anthropicRequestTimeoutMs: Math.max(1000, toNumberOr(process.env.ANTHROPIC_REQUEST_TIMEOUT_MS, 20000)),
+  anthropicRequestTimeoutMs: Math.max(
+    1000,
+    toNumberOr(process.env.ANTHROPIC_REQUEST_TIMEOUT_MS, 20000)
+  ),
   anthropicMaxRetries: Math.max(0, toNumberOr(process.env.ANTHROPIC_MAX_RETRIES, 2)),
-  anthropicRetryBaseDelayMs: Math.max(100, toNumberOr(process.env.ANTHROPIC_RETRY_BASE_DELAY_MS, 500)),
+  anthropicRetryBaseDelayMs: Math.max(
+    100,
+    toNumberOr(process.env.ANTHROPIC_RETRY_BASE_DELAY_MS, 500)
+  ),
   // Rate limiting (defaults are intentionally permissive for demos)
   rateLimit: {
     // Default window in seconds and max requests per window
@@ -44,11 +53,14 @@ export const config = {
     defaultMax: Math.max(1, toNumberOr(process.env.RATE_LIMIT_DEFAULT_MAX, 60)),
 
     // Stricter limits for /api/orchestrate
-    orchestrateWindowSec: Math.max(1, toNumberOr(process.env.RATE_LIMIT_ORCHESTRATE_WINDOW_SEC, 60)),
+    orchestrateWindowSec: Math.max(
+      1,
+      toNumberOr(process.env.RATE_LIMIT_ORCHESTRATE_WINDOW_SEC, 60)
+    ),
     orchestrateMax: Math.max(1, toNumberOr(process.env.RATE_LIMIT_ORCHESTRATE_MAX, 10)),
 
     // Stricter limits for /api/config/apikey
     apikeyWindowSec: Math.max(1, toNumberOr(process.env.RATE_LIMIT_APIKEY_WINDOW_SEC, 60)),
     apikeyMax: Math.max(1, toNumberOr(process.env.RATE_LIMIT_APIKEY_MAX, 5)),
   },
-};
+}
