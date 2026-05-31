@@ -40,64 +40,54 @@ app.use(express.static(path.join(__dirname, '..', 'public')));
 app.use(requestId);
 
 // ─── SSE Event Stream ────────────────────────────────────────
-const sseClients = [];
-let x402MiddlewareReady = false;
+const HEARTBEAT_INTERVAL_MS = 30_000;
+const STALE_CLIENT_THRESHOLD_MS = 90_000;
+const sseClients = new Map();
+
+function removeClient(clientId) {
+  const client = sseClients.get(clientId);
+  if (!client) return;
+  sseClients.delete(clientId);
+  client.res.end();
+}
+
+function writeSse(clientId, event) {
+  const client = sseClients.get(clientId);
+  if (!client) return false;
+
+  try {
+    const ok = client.res.write(`data: ${JSON.stringify(event)}\n\n`);
+    client.lastWriteAt = Date.now();
+    if (!ok) {
+      client.res.once('drain', () => {
+        const activeClient = sseClients.get(clientId);
+        if (activeClient) activeClient.lastWriteAt = Date.now();
+      });
+    }
+    return true;
+  } catch {
+    removeClient(clientId);
+    return false;
+  }
+}
 
 function broadcast(event) {
-  const data = JSON.stringify(event);
-  sseClients.forEach(res => {
-    res.write(`data: ${data}\n\n`);
-  });
+  for (const clientId of sseClients.keys()) {
+    writeSse(clientId, event);
+  }
 }
 
-function buildReadinessPayload() {
-  const anthropicConfigured = !!config.anthropicApiKey;
-  const x402Enabled = !!config.serverAddress;
+setInterval(() => {
+  const now = Date.now();
+  for (const [clientId, client] of sseClients.entries()) {
+    if (now - client.lastWriteAt > STALE_CLIENT_THRESHOLD_MS) {
+      removeClient(clientId);
+      continue;
+    }
 
-  const components = {
-    app: {
-      ready: true,
-      description: 'Core HTTP server initialized',
-    },
-    anthropic: {
-      configured: anthropicConfigured,
-      ready: anthropicConfigured,
-      description: anthropicConfigured
-        ? 'Anthropic API key is configured for Claude-powered agents'
-        : 'Missing Anthropic API key; demo fallback responses are available',
-    },
-    x402: {
-      enabled: x402Enabled,
-      ready: !x402Enabled || (x402MiddlewareReady && !!config.facilitatorUrl),
-      description: x402Enabled
-        ? (x402MiddlewareReady
-            ? 'x402 payment middleware initialized'
-            : 'x402 is enabled but middleware initialization failed')
-        : 'x402 paywall is disabled; premium endpoints are not protected by payments',
-    },
-  };
-
-  const ready = Object.values(components).every(component => component.ready);
-  return {
-    status: ready ? 'ready' : 'not_ready',
-    ready,
-    timestamp: new Date().toISOString(),
-    components,
-  };
-}
-
-app.get('/healthz', (req, res) => {
-  res.json({
-    status: 'ok',
-    uptime: process.uptime(),
-    timestamp: new Date().toISOString(),
-  });
-});
-
-app.get('/readyz', (req, res) => {
-  const payload = buildReadinessPayload();
-  res.status(payload.ready ? 200 : 503).json(payload);
-});
+    writeSse(clientId, { type: 'heartbeat', timestamp: new Date(now).toISOString() });
+  }
+}, HEARTBEAT_INTERVAL_MS);
 
 app.get('/api/events', (req, res) => {
   res.setHeader('Content-Type', 'text/event-stream');
@@ -107,12 +97,16 @@ app.get('/api/events', (req, res) => {
   res.flushHeaders();
 
   // Send initial connection event
-  res.write(`data: ${JSON.stringify({ type: 'connected', timestamp: new Date().toISOString() })}\n\n`);
+  const clientId = `${Date.now()}-${Math.random().toString(36).slice(2)}`;
+  sseClients.set(clientId, { res, lastWriteAt: Date.now() });
+  writeSse(clientId, { type: 'connected', timestamp: new Date().toISOString() });
 
-  sseClients.push(res);
   req.on('close', () => {
-    const idx = sseClients.indexOf(res);
-    if (idx !== -1) sseClients.splice(idx, 1);
+    removeClient(clientId);
+  });
+
+  req.on('error', () => {
+    removeClient(clientId);
   });
 });
 
