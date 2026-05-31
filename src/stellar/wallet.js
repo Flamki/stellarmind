@@ -92,9 +92,18 @@ export async function fundWithFriendbot(publicKey) {
 /**
  * Get recent transactions for a wallet
  */
-export async function getTransactions(publicKey, limit = 10) {
+export async function getTransactions(publicKey, limit = 10, cursor = null, order = 'desc') {
   try {
-    const txs = await server.transactions().forAccount(publicKey).order('desc').limit(limit).call()
+    let query = server.transactions()
+      .forAccount(publicKey)
+      .order(order)
+      .limit(limit);
+
+    if (cursor) {
+      query = query.cursor(cursor);
+    }
+
+    const txs = await query.call();
 
     const decorated = await Promise.all(
       txs.records.map(async (tx) => {
@@ -137,6 +146,7 @@ export async function getTransactions(publicKey, limit = 10) {
 
         return {
           hash: tx.hash,
+          paging_token: tx.paging_token,
           ledger: tx.ledger,
           createdAt: tx.created_at,
           created_at: tx.created_at,

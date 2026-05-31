@@ -1148,42 +1148,46 @@
         }
       }
 
-      @media (max-width: 768px) {
-        body {
-          flex-direction: column;
-        }
-        .sidebar {
-          width: 100%;
-          height: auto;
-        }
-        .sb-nav,
-        .sb-agents,
-        .sb-footer {
-          display: none;
-        }
-        .main {
-          height: auto;
-          overflow: visible;
-        }
-        .g3,
-        .g4 {
-          grid-template-columns: 1fr 1fr;
-        }
-      }
-    </style>
-  </head>
-  <body>
-    <!-- ═══ SIDEBAR ═══ -->
-    <aside class="sidebar">
-      <div class="sb-header">
-        <div class="sb-logo">
-          <div class="sb-logo-icon">🧠</div>
-          <div class="sb-logo-text">
-            <h1>StellarMind</h1>
-            <span>x402 Micropayments</span>
-          </div>
+    @media (max-width: 768px) {
+      body { flex-direction: column; }
+      .sidebar { width: 100%; height: auto; }
+      .sb-nav, .sb-agents, .sb-footer { display: none; }
+      .main { height: auto; overflow: visible; }
+      .g3, .g4 { grid-template-columns: 1fr 1fr; }
+    }
+
+    /* ═══ SECURITY MODAL ═══ */
+    #security-modal {
+      animation: fadeIn 0.2s ease-out;
+    }
+
+    @keyframes fadeIn {
+      from { opacity: 0; }
+      to { opacity: 1; }
+    }
+
+    #security-modal > div {
+      animation: slideUp 0.3s ease-out;
+    }
+
+    @keyframes slideUp {
+      from { transform: translateY(20px); opacity: 0; }
+      to { transform: translateY(0); opacity: 1; }
+    }
+  </style>
+</head>
+<body>
+  <!-- ═══ SIDEBAR ═══ -->
+  <aside class="sidebar">
+    <div class="sb-header">
+      <div class="sb-logo">
+        <div class="sb-logo-icon">🧠</div>
+        <div class="sb-logo-text">
+          <h1>StellarMind</h1>
+          <span>x402 Micropayments</span>
         </div>
       </div>
+    </div>
 
       <nav class="sb-nav">
         <div class="sb-label">Platform</div>
@@ -1347,87 +1351,82 @@
           <div class="agent-cards" id="agent-cards"></div>
         </div>
 
-        <!-- ═══ PAGE: API STATUS ═══ -->
-        <div class="page" id="page-status">
-          <div class="status-grid" id="status-grid"></div>
-
-          <div class="card">
-            <div class="card-h">
-              <h2>🧠 Claude AI Configuration</h2>
-              <span class="tag" id="key-status-tag">Checking...</span>
-            </div>
-            <div class="card-b">
-              <div id="api-key-config">
-                <p class="lbl" style="margin-bottom: 10px">
-                  Configure your Anthropic API key to enable real AI responses (starts with
-                  sk-ant-). If not set, the system uses high-quality fallback agents.
-                </p>
-                <div class="task-row">
-                  <div class="task-input-w">
-                    <input
-                      type="password"
-                      id="api-key-input"
-                      class="task-input"
-                      placeholder="sk-ant-..."
-                    />
-                  </div>
-                  <button class="btn" onclick="saveApiKey()" id="btn-save-key">Update Key</button>
+      <!-- ═══ PAGE: API STATUS ═══ -->
+      <div class="page" id="page-status">
+        <div class="status-grid" id="status-grid"></div>
+        
+        <div class="card">
+          <div class="card-h"><h2>🧠 Claude AI Configuration</h2><span class="tag" id="key-status-tag">Checking...</span></div>
+          <div class="card-b">
+            <div id="api-key-config">
+              <p class="lbl" style="margin-bottom:10px;color:var(--text-secondary);">Configure your Anthropic API key to enable real AI responses (starts with sk-ant-). Your key is stored in server memory only and never persisted.</p>
+              <div class="task-row">
+                <div class="task-input-w">
+                  <input type="password" id="api-key-input" class="task-input" placeholder="sk-ant-..." />
                 </div>
-                <p class="sc-sub" id="key-hint" style="margin-top: 10px">Current: Loading...</p>
+                <button class="btn" onclick="showSecurityWarning()" id="btn-save-key">Update Key</button>
               </div>
+              <p class="sc-sub" id="key-hint" style="margin-top:10px;">Current: Loading...</p>
+              <p class="sc-sub" style="margin-top:8px;color:var(--text-muted);font-size:10px;">💡 Tip: Your key is ephemeral and cleared when the server restarts. For production, use environment variables.</p>
             </div>
-          </div>
-
-          <div class="card">
-            <div class="card-h">
-              <h2>🔌 API Endpoints</h2>
-              <span class="tag">x402 Paywalled</span>
-            </div>
-            <div class="card-b"><div class="endpoint-list" id="endpoint-list"></div></div>
-          </div>
-          <div class="card">
-            <div class="card-h">
-              <h2>🔐 x402 Payment Protocol</h2>
-              <span class="tag purple">Architecture</span>
-            </div>
-            <div class="card-b" id="x402-info"></div>
           </div>
         </div>
 
-        <!-- ═══ PAGE: TRANSACTIONS ═══ -->
-        <div class="page" id="page-transactions">
-          <div class="card">
-            <div class="card-h">
-              <h2>🔗 Stellar Testnet Transactions</h2>
-              <span class="tag green" id="tx-total">Loading...</span>
-            </div>
-            <div class="card-b" style="padding: 0">
-              <table class="tx-table" id="tx-table">
-                <thead>
-                  <tr>
-                    <th>Hash</th>
-                    <th>Type</th>
-                    <th>Amount</th>
-                    <th>Memo</th>
-                    <th>Time</th>
-                  </tr>
-                </thead>
-                <tbody id="tx-body">
-                  <tr>
-                    <td
-                      colspan="5"
-                      style="text-align: center; padding: 32px; color: var(--text-muted)"
-                    >
-                      Loading transactions...
-                    </td>
-                  </tr>
-                </tbody>
-              </table>
+        <div class="card">
+          <div class="card-h"><h2>🔌 API Endpoints</h2><span class="tag">x402 Paywalled</span></div>
+          <div class="card-b"><div class="endpoint-list" id="endpoint-list"></div></div>
+        </div>
+        <div class="card">
+          <div class="card-h"><h2>🔐 x402 Payment Protocol</h2><span class="tag purple">Architecture</span></div>
+          <div class="card-b" id="x402-info"></div>
+        </div>
+      </div>
+
+      <!-- ═══ SECURITY WARNING MODAL ═══ -->
+      <div id="security-modal" role="dialog" aria-modal="true" aria-labelledby="security-modal-title" style="display:none;position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,0.7);z-index:100;align-items:center;justify-content:center;">
+        <div style="background:var(--bg-card);border:1px solid var(--border);border-radius:var(--radius);padding:24px;max-width:420px;box-shadow:0 20px 60px rgba(0,0,0,0.5);">
+          <h3 id="security-modal-title" style="font-size:16px;font-weight:700;margin-bottom:12px;color:var(--red);">🔐 API Key Security Warning</h3>
+          <div style="font-size:12px;color:var(--text-secondary);line-height:1.7;margin-bottom:16px;">
+            <p style="margin-bottom:10px;"><strong>Your API key will be:</strong></p>
+            <ul style="margin-left:16px;margin-bottom:10px;">
+              <li>✓ Sent over HTTPS only</li>
+              <li>✓ Stored in server memory (session-only)</li>
+              <li>✓ Never persisted to disk or logs</li>
+              <li>✓ Cleared when server restarts</li>
+            </ul>
+            <p style="margin-bottom:10px;"><strong>Your API key will NOT be:</strong></p>
+            <ul style="margin-left:16px;margin-bottom:10px;">
+              <li>✗ Stored in browser storage (localStorage/sessionStorage)</li>
+              <li>✗ Sent to third parties</li>
+              <li>✗ Logged or exposed in error messages</li>
+              <li>✗ Persisted across server restarts</li>
+            </ul>
+            <p style="margin-top:10px;color:var(--amber);"><strong>⚠️ Only submit your key if you trust this server.</strong></p>
+          </div>
+          <div style="display:flex;gap:10px;justify-content:flex-end;">
+            <button class="btn" style="background:var(--bg-input);color:var(--text-primary);padding:9px 16px;font-size:11px;" onclick="closeSecurityModal()">Cancel</button>
+            <button class="btn" style="padding:9px 16px;font-size:11px;" onclick="confirmApiKeySubmission()">I Understand, Submit Key</button>
+          </div>
+        </div>
+      </div>
+
+      <!-- ═══ PAGE: TRANSACTIONS ═══ -->
+      <div class="page" id="page-transactions">
+        <div class="card">
+          <div class="card-h"><h2>🔗 Stellar Testnet Transactions</h2><span class="tag green" id="tx-total">Loading...</span></div>
+          <div class="card-b" style="padding: 0;">
+            <table class="tx-table" id="tx-table">
+              <thead><tr><th>Hash</th><th>Type</th><th>Amount</th><th>Memo</th><th>Time</th></tr></thead>
+              <tbody id="tx-body"><tr><td colspan="5" style="text-align:center;padding:32px;color:var(--text-muted);">Loading transactions...</td></tr></tbody>
+            </table>
+            <div style="padding: 14px; text-align: center; border-top: 1px solid var(--border);" id="tx-pagination">
+              <button class="btn" id="btn-load-more" onclick="loadMoreTransactions()" style="padding: 8px 16px; font-size: 11.5px; display: none;">Load More</button>
             </div>
           </div>
         </div>
       </div>
     </div>
+  </div>
 
     <script>
       let evCnt = 0,
@@ -1736,30 +1735,41 @@
         } catch {}
       }
 
-      // ─── Load Transactions Page ───
-      async function loadTxPage() {
-        try {
-          const txs = await (await fetch('/api/wallet/transactions')).json()
-          document.getElementById('tx-cnt').textContent = txs.length
-          document.getElementById('tx-total').textContent = `${txs.length} Transactions`
+    // ─── Load Transactions Page ───
+    let txCursor = null;
+    const txLimit = 10;
+
+    async function loadTxPage(isLoadMore = false) {
+      if (!isLoadMore) {
+        txCursor = null;
+        document.getElementById('tx-body').innerHTML = '<tr><td colspan="5" style="text-align:center;padding:32px;color:var(--text-muted);">Loading transactions...</td></tr>';
+        document.getElementById('btn-load-more').style.display = 'none';
+      }
+
+      try {
+        const url = `/api/wallet/transactions?limit=${txLimit}` + (txCursor ? `&cursor=${txCursor}` : '');
+        const txs = await (await fetch(url)).json();
+        
+        if (!isLoadMore) {
+          document.getElementById('tx-cnt').textContent = txs.length;
+          document.getElementById('tx-total').textContent = `${txs.length} Transactions`;
           if (!txs.length) {
-            document.getElementById('tx-body').innerHTML =
-              '<tr><td colspan="5" style="text-align:center;padding:32px;color:var(--text-muted);">No transactions yet. Run the orchestrator first!</td></tr>'
-            return
+            document.getElementById('tx-body').innerHTML = '<tr><td colspan="5" style="text-align:center;padding:32px;color:var(--text-muted);">No transactions yet. Run the orchestrator first!</td></tr>';
+            return;
           }
-          document.getElementById('tx-body').innerHTML = txs
-            .map((tx) => {
-              const ops = tx.operations || []
-              const op = ops[0] || {}
-              let amt = '—'
-              if (op.amount) {
-                const num = Number.parseFloat(op.amount)
-                amt = Number.isFinite(num)
-                  ? `${num.toFixed(2)} ${op.asset_code || 'XLM'}`
-                  : `${op.amount} ${op.asset_code || 'XLM'}`
-              } else if (op.type === 'invoke_host_function') {
-                amt = 'contract call'
-              }
+          document.getElementById('tx-body').innerHTML = '';
+        }
+
+        const rowsHtml = txs.map(tx => {
+          const ops = tx.operations || [];
+          const op = ops[0] || {};
+          let amt = '—';
+          if (op.amount) {
+            const num = Number.parseFloat(op.amount);
+            amt = Number.isFinite(num) ? `${num.toFixed(2)} ${op.asset_code || 'XLM'}` : `${op.amount} ${op.asset_code || 'XLM'}`;
+          } else if (op.type === 'invoke_host_function') {
+            amt = 'contract call';
+          }
 
               const hash = tx.hash || tx.id || ''
               const url = `https://stellar.expert/explorer/testnet/tx/${hash}`
@@ -1773,14 +1783,40 @@
             <td><span class="tx-amount">${amt}</span></td>
             <td><span class="tx-memo">${memoValue}</span></td>
             <td><span class="tx-time">${time}</span></td>
-          </tr>`
-            })
-            .join('')
-        } catch {
-          document.getElementById('tx-body').innerHTML =
-            '<tr><td colspan="5" style="text-align:center;padding:32px;color:var(--text-muted);">Failed to load transactions.</td></tr>'
+          </tr>`;
+        }).join('');
+
+        if (isLoadMore) {
+          document.getElementById('tx-body').insertAdjacentHTML('beforeend', rowsHtml);
+          const currentTotal = document.getElementById('tx-body').children.length;
+          document.getElementById('tx-cnt').textContent = currentTotal;
+          document.getElementById('tx-total').textContent = `${currentTotal} Transactions`;
+        } else {
+          document.getElementById('tx-body').innerHTML = rowsHtml;
         }
+
+        if (txs.length === txLimit) {
+          txCursor = txs[txs.length - 1].paging_token;
+          document.getElementById('btn-load-more').style.display = 'inline-block';
+        } else {
+          document.getElementById('btn-load-more').style.display = 'none';
+        }
+      } catch (err) {
+        if (!isLoadMore) {
+          document.getElementById('tx-body').innerHTML = '<tr><td colspan="5" style="text-align:center;padding:32px;color:var(--text-muted);">Failed to load transactions.</td></tr>';
+        }
+        console.error(err);
       }
+    }
+
+    async function loadMoreTransactions() {
+      const btn = document.getElementById('btn-load-more');
+      btn.disabled = true;
+      btn.textContent = 'Loading...';
+      await loadTxPage(true);
+      btn.disabled = false;
+      btn.textContent = 'Load More';
+    }
 
       // ─── Load Wallets ───
       async function loadWallets() {
@@ -2025,43 +2061,103 @@
         pushLiveLine('Final answer generated')
       }
 
-      document.getElementById('task-input').addEventListener('keydown', (e) => {
-        if (e.key === 'Enter' && !e.shiftKey) {
-          e.preventDefault()
-          runOrchestration()
-        }
-      })
+    document.getElementById('task-input').addEventListener('keydown', e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); runOrchestration(); }});
 
-      async function saveApiKey() {
-        const key = document.getElementById('api-key-input').value.trim()
-        const btn = document.getElementById('btn-save-key')
-        if (!key || !key.startsWith('sk-ant-')) {
-          alert('Please enter a valid Anthropic API key starting with sk-ant-')
-          return
-        }
-        btn.disabled = true
-        btn.textContent = 'Saving...'
-        try {
-          const res = await fetch('/api/config/apikey', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ apiKey: key }),
-          })
-          const d = await res.json()
-          if (d.success) {
-            alert('API Key updated successfully! Agents will now use your key.')
-            document.getElementById('api-key-input').value = ''
-            loadStatusPage()
-          } else {
-            alert(`Error: ${d.error}`)
-          }
-        } catch (err) {
-          alert(`Failed to save key: ${err.message}`)
-        } finally {
-          btn.disabled = false
-          btn.textContent = 'Update Key'
-        }
+    // ─── Security Modal Functions ───
+    function showSecurityWarning() {
+      const key = document.getElementById('api-key-input').value.trim();
+      if (!key) {
+        alert('Please enter an API key first');
+        return;
       }
+      if (!key.startsWith('sk-ant-')) {
+        alert('Please enter a valid Anthropic API key starting with sk-ant-');
+        return;
+      }
+      const modal = document.getElementById('security-modal');
+      modal.style.display = 'flex';
+
+      // Escape key handler — stored on modal so closeSecurityModal can remove it
+      modal._escHandler = function(e) {
+        if (e.key === 'Escape') closeSecurityModal();
+      };
+      document.addEventListener('keydown', modal._escHandler);
+
+      // Focus trap: collect focusable elements inside the modal
+      modal._trapHandler = function(e) {
+        if (e.key !== 'Tab') return;
+        const focusable = Array.from(modal.querySelectorAll(
+          'button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])'
+        )).filter(el => !el.disabled);
+        if (!focusable.length) return;
+        const first = focusable[0];
+        const last = focusable[focusable.length - 1];
+        if (e.shiftKey) {
+          if (document.activeElement === first) { e.preventDefault(); last.focus(); }
+        } else {
+          if (document.activeElement === last) { e.preventDefault(); first.focus(); }
+        }
+      };
+      document.addEventListener('keydown', modal._trapHandler);
+
+      // Focus the Cancel button (first actionable control)
+      const cancelBtn = modal.querySelector('button');
+      if (cancelBtn) cancelBtn.focus();
+    }
+
+    function closeSecurityModal() {
+      const modal = document.getElementById('security-modal');
+      modal.style.display = 'none';
+
+      // Remove Escape and focus-trap handlers
+      if (modal._escHandler) {
+        document.removeEventListener('keydown', modal._escHandler);
+        modal._escHandler = null;
+      }
+      if (modal._trapHandler) {
+        document.removeEventListener('keydown', modal._trapHandler);
+        modal._trapHandler = null;
+      }
+
+      // Return focus to the API key input
+      const input = document.getElementById('api-key-input');
+      if (input) input.focus();
+    }
+
+    function confirmApiKeySubmission() {
+      closeSecurityModal();
+      saveApiKey();
+    }
+
+    async function saveApiKey() {
+      const key = document.getElementById('api-key-input').value.trim();
+      const btn = document.getElementById('btn-save-key');
+      if (!key || !key.startsWith('sk-ant-')) {
+        alert('Please enter a valid Anthropic API key starting with sk-ant-');
+        return;
+      }
+      btn.disabled = true;
+      btn.textContent = 'Saving...';
+      try {
+        const res = await fetch('/api/config/apikey', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ apiKey: key })
+        });
+        const d = await res.json();
+        if (d.success) {
+          alert('✅ API Key updated successfully! Agents will now use your key.\n\n⚠️ Remember: Your key is stored in server memory only and will be cleared when the server restarts.');
+          document.getElementById('api-key-input').value = '';
+          loadStatusPage();
+        } else {
+          alert(`Error: ${d.error}`);
+        }
+      } catch (err) { alert(`Failed to save key: ${err.message}`); }
+      finally {
+        btn.disabled = false;
+        btn.textContent = 'Update Key';
+      }
+    }
 
       // ─── Init ───
       loadAgents()

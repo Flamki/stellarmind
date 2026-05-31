@@ -1,16 +1,11 @@
-import Anthropic from '@anthropic-ai/sdk'
-import { config } from '../config.js'
-import { AGENTS, getAgentById } from './registry.js'
-import { runResearch, runSummary, runAnalysis, runCode, anthropic } from './services.js'
-import { getBalance, sendPayment } from '../stellar/wallet.js'
+import { config } from '../config.js';
+import { AGENTS, getAgentById } from './registry.js';
+import { runResearch, runSummary, runAnalysis, runCode, createAnthropicMessage } from './services.js';
+import { getBalance, sendPayment } from '../stellar/wallet.js';
 
-import {
-  x402Client,
-  x402HTTPClient,
-  wrapFetchWithPayment,
-  decodePaymentResponseHeader,
-} from '@x402/fetch'
-import { ExactStellarScheme, createEd25519Signer } from '@x402/stellar'
+import { x402Client, x402HTTPClient, wrapFetchWithPayment } from '@x402/fetch';
+import { ExactStellarScheme, createEd25519Signer } from '@x402/stellar';
+import { parseSettlementHeader, extractTxHash } from './settlement-header.js';
 
 // const anthropic = ... (imported from services.js)
 
@@ -110,58 +105,6 @@ function summarizeError(err) {
 
 function buildExplorerUrl(txHash) {
   return txHash ? `${EXPLORER_BASE_URL}${txHash}` : null
-}
-
-function safeJsonParse(value) {
-  try {
-    return JSON.parse(value)
-  } catch {
-    return null
-  }
-}
-
-function extractTxHash(settle) {
-  if (!settle || typeof settle !== 'object') return null
-  return (
-    settle.transaction ||
-    settle.txHash ||
-    settle.transactionHash ||
-    settle.tx_id ||
-    settle.txId ||
-    null
-  )
-}
-
-function parseSettlementHeader(response) {
-  const candidates = [
-    response.headers.get('PAYMENT-RESPONSE'),
-    response.headers.get('X-PAYMENT-RESPONSE'),
-    response.headers.get('payment-response'),
-    response.headers.get('x-payment-response'),
-  ].filter(Boolean)
-
-  if (candidates.length === 0) return null
-  const encoded = candidates[0]
-
-  // Some gateways return raw JSON instead of encoded x402 header payload.
-  const jsonDirect = safeJsonParse(encoded)
-  if (jsonDirect) return jsonDirect
-
-  try {
-    return decodePaymentResponseHeader(encoded)
-  } catch (err) {
-    // Try base64-json fallback before giving up.
-    try {
-      const decoded = Buffer.from(encoded, 'base64').toString('utf8')
-      const json = safeJsonParse(decoded)
-      if (json) return json
-    } catch {}
-
-    console.warn(
-      `  unable to decode payment response header, using unverified settlement mode: ${summarizeError(err)}`
-    )
-    return { _unverified: true }
-  }
 }
 
 async function parseResponseBody(response) {
@@ -271,7 +214,21 @@ async function callAgentViaX402(agent, input, broadcastFn) {
   const serviceFn = SERVICE_MAP[agent.id]
   let result
   try {
-    result = await serviceFn(input)
+    result = await serviceFn(input, {
+      onRetryAttempt: (retry) => {
+        broadcastFn?.({
+          type: 'anthropic_retry',
+          agent: agent.name,
+          agentId: agent.id,
+          attempt: retry.attempt,
+          maxRetries: retry.maxRetries,
+          delayMs: retry.delayMs,
+          status: retry.status,
+          error: retry.error,
+          timestamp: new Date().toISOString(),
+        });
+      },
+    });
   } catch (err) {
     result = `Error: ${err.message}`
   }
@@ -329,7 +286,7 @@ export async function orchestrate(task, budget, broadcastFn) {
 
   let plan
   try {
-    const planResponse = await anthropic.messages.create({
+    const planResponse = await createAnthropicMessage({
       model: 'claude-haiku-4-5-20251001',
       max_tokens: 400,
       messages: [
@@ -351,10 +308,22 @@ Respond ONLY with valid JSON (no markdown, no code fences):
   "subtasks": [
     {"agentId": "agent-id-here", "input": "what to send to the agent", "cost": "0.01"}
   ]
-}`,
-        },
-      ],
-    })
+}`
+      }],
+    }, {
+      onRetryAttempt: (retry) => {
+        broadcastFn?.({
+          type: 'anthropic_retry',
+          phase: 'planning',
+          attempt: retry.attempt,
+          maxRetries: retry.maxRetries,
+          delayMs: retry.delayMs,
+          status: retry.status,
+          error: retry.error,
+          timestamp: new Date().toISOString(),
+        });
+      },
+    });
 
     const planText = planResponse.content[0].type === 'text' ? planResponse.content[0].text : '{}'
     const cleanJson = planText

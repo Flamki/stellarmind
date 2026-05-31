@@ -124,6 +124,32 @@ PORT=3001
 INTERNAL_BASE_URL=https://stellarmind.example.com
 ```
 
+## Operational Health Checks
+
+StellarMind exposes lightweight endpoints for deployment tooling and load balancer probes:
+
+- `GET /healthz`
+  - returns `200` and `status: ok` when the process is alive
+  - no external dependency checks are performed
+- `GET /readyz`
+  - returns `200` when the configured critical components are ready
+  - returns `503` when required configuration is missing
+
+Example `/readyz` response:
+
+```json
+{
+  "status": "ready",
+  "ready": true,
+  "timestamp": "2026-05-28T12:00:00.000Z",
+  "components": {
+    "app": { "ready": true, "description": "Core HTTP server initialized" },
+    "anthropic": { "configured": true, "ready": true, "description": "Anthropic API key is configured for Claude-powered agents" },
+    "x402": { "enabled": true, "ready": true, "description": "x402 payment wallet is configured" }
+  }
+}
+```
+
 ## Available Commands
 
 | Command                   | Purpose                                                 |
