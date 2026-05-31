@@ -42,6 +42,9 @@ Orchestrator (plan, select agents, enforce spend limits)
 Agent execution + streamed updates + tx proof links
 ```
 
+For a deeper, standalone walkthrough — components plus the request, payment, and
+orchestration flows — see [docs/architecture.md](docs/architecture.md).
+
 ## Quick Start
 
 ### 1) Clone and install
