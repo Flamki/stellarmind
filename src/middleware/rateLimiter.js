@@ -2,6 +2,7 @@
 // Identifier: X-Request-Key header if present, otherwise IP (req.ip or X-Forwarded-For)
 
 import { config } from '../config.js';
+import { logger } from '../logger.js';
 
 function getIdentifier(req) {
   const hdr = req.headers['x-request-key'] || req.headers['x-api-key'] || req.headers['authorization'];
@@ -35,7 +36,14 @@ function createFixedWindowLimiter({ windowSec, max }) {
       if (entry.count > max) {
         const retryAfterSec = Math.ceil((entry.windowStart + windowMs - now) / 1000) || 1;
         // Clear sensitive details in logs
-        console.warn(`Rate limit exceeded`, { requestId: req.requestId, id, path: req.originalUrl, method: req.method, max, windowSec });
+        logger.warn('rate_limit_exceeded', {
+          correlationId: req.requestId,
+          id,
+          path: req.originalUrl,
+          method: req.method,
+          max,
+          windowSec,
+        });
         res.set('Retry-After', String(retryAfterSec));
         return res.status(429).json({
           code: 'RATE_LIMIT_EXCEEDED',
@@ -48,7 +56,7 @@ function createFixedWindowLimiter({ windowSec, max }) {
       next();
     } catch (err) {
       // On any unexpected error in limiter, allow the request through
-      console.error('Rate limiter error', err);
+      logger.error('rate_limiter_error', { correlationId: req.requestId, err });
       next();
     }
   };
