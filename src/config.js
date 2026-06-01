@@ -1,5 +1,6 @@
 import dotenv from 'dotenv';
 import { fileURLToPath } from 'node:url';
+import path from 'node:path';
 
 dotenv.config({
   path: fileURLToPath(new URL('../.env', import.meta.url)),
@@ -12,6 +13,7 @@ const toNumberOr = (value, fallback) => {
   const n = Number.parseInt(value, 10);
   return Number.isFinite(n) ? n : fallback;
 };
+const repoRoot = fileURLToPath(new URL('..', import.meta.url));
 
 export const config = {
   port,
@@ -37,4 +39,11 @@ export const config = {
   anthropicRequestTimeoutMs: Math.max(1000, toNumberOr(process.env.ANTHROPIC_REQUEST_TIMEOUT_MS, 20000)),
   anthropicMaxRetries: Math.max(0, toNumberOr(process.env.ANTHROPIC_MAX_RETRIES, 2)),
   anthropicRetryBaseDelayMs: Math.max(100, toNumberOr(process.env.ANTHROPIC_RETRY_BASE_DELAY_MS, 500)),
+
+  // Run history persistence
+  runHistoryStorage: process.env.RUN_HISTORY_STORAGE || 'file',
+  runHistoryFile: process.env.RUN_HISTORY_FILE
+    ? path.resolve(process.env.RUN_HISTORY_FILE)
+    : path.join(repoRoot, 'data', 'run-history.json'),
+  runHistoryMaxRuns: Math.max(10, toNumberOr(process.env.RUN_HISTORY_MAX_RUNS, 200)),
 };

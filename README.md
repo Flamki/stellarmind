@@ -82,6 +82,14 @@ Optional for deployments:
 INTERNAL_BASE_URL=http://server:3001
 ```
 
+Run history persistence (for orchestration/payment audit):
+
+```env
+RUN_HISTORY_STORAGE=file
+RUN_HISTORY_FILE=./data/run-history.json
+RUN_HISTORY_MAX_RUNS=200
+```
+
 ### 3) Prepare USDC trustlines
 
 ```bash
@@ -146,6 +154,19 @@ Example `/readyz` response:
   }
 }
 ```
+
+## Audit Run History
+
+StellarMind now persists orchestration and payment audit history.
+
+- `GET /api/runs?limit=20`
+  - returns recent runs across restarts when `RUN_HISTORY_STORAGE=file`
+  - includes task, budget/spend summary, status, and tx proof linkage (`txHash`, `explorerUrl`)
+
+Storage modes:
+
+- `RUN_HISTORY_STORAGE=file` (default): durable JSON file
+- `RUN_HISTORY_STORAGE=memory`: in-memory only (cleared on restart)
 
 ## Available Commands
 

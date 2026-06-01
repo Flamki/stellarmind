@@ -11,6 +11,7 @@ import { runResearch, runSummary, runAnalysis, runCode, setApiKey, MODEL_LABELS 
 import { orchestrate } from './agents/orchestrator.js';
 import { getBalance, getTransactions, sendPayment } from './stellar/wallet.js';
 import { requestId, errorHandler } from './middleware/errorHandler.js';
+import { createRunHistoryStore } from './storage/run-history.js';
 
 // x402 imports
 import { paymentMiddlewareFromConfig } from '@x402/express';
@@ -41,6 +42,7 @@ app.use(requestId);
 // ─── SSE Event Stream ────────────────────────────────────────
 const sseClients = [];
 let x402MiddlewareReady = false;
+const runHistoryStore = await createRunHistoryStore(config);
 
 function broadcast(event) {
   const data = JSON.stringify(event);
@@ -254,7 +256,25 @@ app.post('/api/orchestrate', async (req, res, next) => {
       return next(err);
     }
     const budgetNum = parseFloat(budget) || 0.15;
-    const result = await orchestrate(task, budgetNum, broadcast);
+    const run = await runHistoryStore.createRun({ task, budget: budgetNum, source: 'POST /api/orchestrate' });
+    const runBroadcast = (event) => {
+      const eventWithRun = { ...event, runId: run.id };
+      broadcast(eventWithRun);
+      runHistoryStore.appendEvent(run.id, eventWithRun).catch((persistErr) => {
+        console.warn(`  run history append warning (${run.id}): ${persistErr.message}`);
+      });
+    };
+
+    let result;
+    try {
+      result = await orchestrate(task, budgetNum, runBroadcast);
+      await runHistoryStore.completeRun(run.id, result);
+    } catch (err) {
+      await runHistoryStore.failRun(run.id, err);
+      throw err;
+    }
+
+    result.runId = run.id;
     res.json(result);
   } catch (err) {
     next(err);
@@ -266,8 +286,41 @@ app.get('/api/orchestrate', async (req, res, next) => {
   try {
     const task = req.query.task || 'Research AI payments';
     const budget = parseFloat(req.query.budget) || 0.15;
-    const result = await orchestrate(task, budget, broadcast);
+    const run = await runHistoryStore.createRun({ task, budget, source: 'GET /api/orchestrate' });
+    const runBroadcast = (event) => {
+      const eventWithRun = { ...event, runId: run.id };
+      broadcast(eventWithRun);
+      runHistoryStore.appendEvent(run.id, eventWithRun).catch((persistErr) => {
+        console.warn(`  run history append warning (${run.id}): ${persistErr.message}`);
+      });
+    };
+
+    let result;
+    try {
+      result = await orchestrate(task, budget, runBroadcast);
+      await runHistoryStore.completeRun(run.id, result);
+    } catch (err) {
+      await runHistoryStore.failRun(run.id, err);
+      throw err;
+    }
+
+    result.runId = run.id;
     res.json(result);
+  } catch (err) {
+    next(err);
+  }
+});
+
+app.get('/api/runs', async (req, res, next) => {
+  try {
+    const limit = req.query.limit || 20;
+    const runs = await runHistoryStore.listRecent(limit);
+    res.json({
+      storage: config.runHistoryStorage,
+      file: config.runHistoryStorage === 'file' ? config.runHistoryFile : null,
+      count: runs.length,
+      runs,
+    });
   } catch (err) {
     next(err);
   }
@@ -352,6 +405,11 @@ app.get('/api/status', (req, res) => {
       buyer: config.buyerAddress ? `${config.buyerAddress.slice(0, 8)}...` : 'not configured',
     },
     claudeEnabled: !!config.anthropicApiKey,
+    runHistory: {
+      storage: config.runHistoryStorage,
+      file: config.runHistoryStorage === 'file' ? config.runHistoryFile : null,
+      maxRuns: config.runHistoryMaxRuns,
+    },
   });
 });
 
