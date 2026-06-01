@@ -23,6 +23,8 @@ We will acknowledge receipt and prioritize triage.
 - Never commit private keys (`S...`) or API keys (`sk-ant-...`).
 - Use `.env.example` for placeholders only.
 - Rotate credentials immediately if exposed in logs, recordings, or commits.
+- `npm run setup` masks wallet secrets in stdout by default.
+- Full secret output is opt-in only via `node src/setup-wallets.js --show-secrets`.
 
 ## Local Safety Checklist
 

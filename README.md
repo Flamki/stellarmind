@@ -69,6 +69,11 @@ Then either:
 - run `npm run setup` to generate testnet wallets automatically, or
 - manually fill wallet fields in `.env`
 
+Security note:
+
+- `npm run setup` masks wallet secrets in terminal output by default.
+- Use `node src/setup-wallets.js --show-secrets` only when you explicitly need full secret printing.
+
 Add your Anthropic key:
 
 ```env
