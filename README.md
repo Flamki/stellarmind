@@ -82,6 +82,12 @@ Optional for deployments:
 INTERNAL_BASE_URL=http://server:3001
 ```
 
+Structured logging mode:
+
+```env
+LOG_FORMAT=json
+```
+
 ### 3) Prepare USDC trustlines
 
 ```bash
@@ -146,6 +152,13 @@ Example `/readyz` response:
   }
 }
 ```
+
+## Request Correlation and Logs
+
+- Every API request is assigned a correlation ID (`x-correlation-id`).
+- Incoming `x-correlation-id` / `x-request-id` headers are reused when provided.
+- Response always includes `x-correlation-id`.
+- Structured logs default to JSON (`LOG_FORMAT=json`) and include correlation data for request lifecycle, orchestrator flow, and payment events.
 
 ## Available Commands
 

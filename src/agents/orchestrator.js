@@ -2,6 +2,7 @@ import { config } from '../config.js';
 import { AGENTS, getAgentById } from './registry.js';
 import { runResearch, runSummary, runAnalysis, runCode, createAnthropicMessage } from './services.js';
 import { getBalance, sendPayment } from '../stellar/wallet.js';
+import { logger } from '../logger.js';
 
 import { x402Client, x402HTTPClient, wrapFetchWithPayment } from '@x402/fetch';
 import { ExactStellarScheme, createEd25519Signer } from '@x402/stellar';
@@ -44,21 +45,21 @@ if (config.orchestratorSecret) {
     const httpClient = new x402HTTPClient(client);
     x402Fetch = wrapFetchWithPayment(fetch, httpClient);
 
-    console.log('  x402 client fetch configured (orchestrator -> paywalled endpoints)');
+    logger.info('x402_client_configured');
   } catch (err) {
     x402InitError = err?.message || 'unknown x402 client init error';
-    console.warn(`  x402 client init failed: ${x402InitError}`);
+    logger.warn('x402_client_init_failed', { error: x402InitError });
   }
 } else {
   x402InitError = 'ORCHESTRATOR_STELLAR_SECRET is not configured';
-  console.warn(`  ${x402InitError}`);
+  logger.warn('x402_client_disabled', { reason: x402InitError });
 }
 
 async function checkX402WalletReadiness() {
   if (!config.orchestratorAddress) {
     x402WalletReady = false;
     x402WalletHint = 'ORCHESTRATOR_STELLAR_ADDRESS is not configured';
-    console.warn(`  ${x402WalletHint}`);
+    logger.warn('x402_wallet_not_ready', { reason: x402WalletHint });
     return;
   }
 
@@ -70,24 +71,24 @@ async function checkX402WalletReadiness() {
     if (!usdcBalance) {
       x402WalletReady = false;
       x402WalletHint = 'No USDC trustline on orchestrator wallet. Run: npm run setup:usdc';
-      console.warn(`  ${x402WalletHint}`);
+      logger.warn('x402_wallet_not_ready', { reason: x402WalletHint });
       return;
     }
 
     if (!Number.isFinite(usdcAmount) || usdcAmount <= 0) {
       x402WalletReady = false;
       x402WalletHint = 'USDC balance is 0. Fund testnet USDC via https://faucet.circle.com';
-      console.warn(`  ${x402WalletHint}`);
+      logger.warn('x402_wallet_not_ready', { reason: x402WalletHint });
       return;
     }
 
     x402WalletReady = true;
     x402WalletHint = null;
-    console.log(`  x402 wallet ready (USDC balance: ${usdcBalance.balance})`);
+    logger.info('x402_wallet_ready', { usdcBalance: usdcBalance.balance });
   } catch (err) {
     x402WalletReady = false;
     x402WalletHint = `Unable to verify x402 wallet readiness: ${summarizeError(err)}`;
-    console.warn(`  ${x402WalletHint}`);
+    logger.warn('x402_wallet_not_ready', { reason: x402WalletHint });
   }
 }
 
@@ -95,7 +96,7 @@ if (x402Fetch) {
   checkX402WalletReadiness().catch((err) => {
     x402WalletReady = false;
     x402WalletHint = `Wallet readiness check failed: ${summarizeError(err)}`;
-    console.warn(`  ${x402WalletHint}`);
+    logger.warn('x402_wallet_not_ready', { reason: x402WalletHint });
   });
 }
 
@@ -126,14 +127,19 @@ function paymentProtocolSummary(x402Count, xlmFallbackCount) {
   return 'none';
 }
 
-async function callAgentViaX402(agent, input, broadcastFn) {
+async function callAgentViaX402(agent, input, broadcastFn, context = {}) {
   const baseUrl = config.internalBaseUrl;
   const endpointFn = PREMIUM_ENDPOINT_MAP[agent.id];
 
   if (x402Fetch && endpointFn) {
     try {
       const url = `${baseUrl}${endpointFn(input)}`;
-      console.log(`  x402 request -> ${url}`);
+      logger.info('x402_request_start', {
+        correlationId: context.correlationId,
+        agentId: agent.id,
+        paymentMethod: 'x402',
+        endpoint: url,
+      });
 
       const response = await x402Fetch(url);
       const data = await parseResponseBody(response);
@@ -152,7 +158,12 @@ async function callAgentViaX402(agent, input, broadcastFn) {
             fallback: true,
             timestamp: new Date().toISOString(),
           });
-          console.warn(`  x402 settlement reported failure: ${reason}`);
+          logger.warn('x402_settlement_reported_failure', {
+            correlationId: context.correlationId,
+            agentId: agent.id,
+            paymentMethod: 'x402',
+            reason,
+          });
         } else {
           const verification = txHash ? 'verified' : 'unverified';
           broadcastFn?.({
@@ -193,7 +204,12 @@ async function callAgentViaX402(agent, input, broadcastFn) {
         fallback: true,
         timestamp: new Date().toISOString(),
       });
-      console.warn(`  ${reason}`);
+      logger.warn('x402_request_failed_status', {
+        correlationId: context.correlationId,
+        agentId: agent.id,
+        paymentMethod: 'x402',
+        reason,
+      });
     } catch (err) {
       const reason = summarizeError(err);
       broadcastFn?.({
@@ -204,7 +220,12 @@ async function callAgentViaX402(agent, input, broadcastFn) {
         fallback: true,
         timestamp: new Date().toISOString(),
       });
-      console.warn(`  x402 flow failed: ${reason}, falling back to XLM`);
+      logger.warn('x402_flow_failed_falling_back', {
+        correlationId: context.correlationId,
+        agentId: agent.id,
+        paymentMethod: 'x402',
+        reason,
+      });
     }
   }
 
@@ -240,7 +261,12 @@ async function callAgentViaX402(agent, input, broadcastFn) {
         `pay:${agent.id}`
       );
     } catch (err) {
-      console.error('  XLM fallback payment failed:', err.message);
+      logger.error('xlm_fallback_payment_failed', {
+        correlationId: context.correlationId,
+        agentId: agent.id,
+        paymentMethod: 'stellar-xlm-direct',
+        error: err.message,
+      });
     }
   }
 
@@ -255,7 +281,7 @@ async function callAgentViaX402(agent, input, broadcastFn) {
   };
 }
 
-export async function orchestrate(task, budget, broadcastFn) {
+export async function orchestrate(task, budget, broadcastFn, context = {}) {
   const startTime = Date.now();
   const results = [];
   const payments = [];
@@ -323,7 +349,10 @@ Respond ONLY with valid JSON (no markdown, no code fences):
     const cleanJson = planText.replace(/```json\n?/g, '').replace(/```\n?/g, '').trim();
     plan = JSON.parse(cleanJson);
   } catch (err) {
-    console.error('Orchestrator planning (smart fallback):', err.message?.substring(0, 80));
+    logger.warn('orchestrator_planning_fallback', {
+      correlationId: context.correlationId,
+      error: err.message?.substring(0, 120),
+    });
     const subtasks = [];
     let remaining = budget;
 
@@ -387,7 +416,7 @@ Respond ONLY with valid JSON (no markdown, no code fences):
       timestamp: new Date().toISOString(),
     });
 
-    const agentResponse = await callAgentViaX402(agent, activeInput, broadcastFn);
+    const agentResponse = await callAgentViaX402(agent, activeInput, broadcastFn, context);
     
     if (agentResponse && agentResponse.result) {
       accumulatedContext = typeof agentResponse.result === 'string' ? agentResponse.result : JSON.stringify(agentResponse.result);
@@ -428,6 +457,12 @@ Respond ONLY with valid JSON (no markdown, no code fences):
     });
 
     if (agentResponse.paymentSuccess) {
+      logger.info('payment_settled', {
+        correlationId: context.correlationId,
+        agentId: agent.id,
+        paymentMethod: agentResponse.paidVia,
+        txHash: agentResponse.txHash || null,
+      });
       broadcastFn?.({
         type: 'payment',
         from: 'Orchestrator',
