@@ -2,6 +2,7 @@
  * StellarMind — Wallet Setup Script
  * Generates 3 Stellar testnet keypairs and funds them via Friendbot
  * Run: npm run setup
+ * Optional: node src/setup-wallets.js --show-secrets
  */
 
 import { Keypair } from '@stellar/stellar-sdk';
@@ -10,6 +11,12 @@ import path from 'path';
 import { fileURLToPath } from 'node:url';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
+const SHOW_FULL_SECRETS = process.argv.includes('--show-secrets');
+
+function maskSecret(secret) {
+  if (!secret || secret.length < 10) return '***';
+  return `${secret.slice(0, 4)}...${secret.slice(-4)}`;
+}
 
 async function fundWithFriendbot(publicKey, label) {
   try {
@@ -48,17 +55,20 @@ async function main() {
   const buyer = Keypair.random();
 
   console.log('📋 Generated Keypairs:\n');
+  if (!SHOW_FULL_SECRETS) {
+    console.log('  🔒 Secret keys are masked by default. Use --show-secrets to print full secrets.\n');
+  }
   console.log(`  SERVER (receives agent payments):`);
   console.log(`    Public:  ${server.publicKey()}`);
-  console.log(`    Secret:  ${server.secret()}\n`);
+  console.log(`    Secret:  ${SHOW_FULL_SECRETS ? server.secret() : maskSecret(server.secret())}\n`);
 
   console.log(`  ORCHESTRATOR (pays for sub-agent calls):`);
   console.log(`    Public:  ${orchestrator.publicKey()}`);
-  console.log(`    Secret:  ${orchestrator.secret()}\n`);
+  console.log(`    Secret:  ${SHOW_FULL_SECRETS ? orchestrator.secret() : maskSecret(orchestrator.secret())}\n`);
 
   console.log(`  BUYER (demo user wallet):`);
   console.log(`    Public:  ${buyer.publicKey()}`);
-  console.log(`    Secret:  ${buyer.secret()}\n`);
+  console.log(`    Secret:  ${SHOW_FULL_SECRETS ? buyer.secret() : maskSecret(buyer.secret())}\n`);
 
   // Fund all 3 via Friendbot
   console.log('💰 Funding wallets via Friendbot...\n');

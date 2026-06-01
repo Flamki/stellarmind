@@ -37,6 +37,7 @@ export const config = {
   anthropicRequestTimeoutMs: Math.max(1000, toNumberOr(process.env.ANTHROPIC_REQUEST_TIMEOUT_MS, 20000)),
   anthropicMaxRetries: Math.max(0, toNumberOr(process.env.ANTHROPIC_MAX_RETRIES, 2)),
   anthropicRetryBaseDelayMs: Math.max(100, toNumberOr(process.env.ANTHROPIC_RETRY_BASE_DELAY_MS, 500)),
+  logFormat: (process.env.LOG_FORMAT || 'json').toLowerCase() === 'pretty' ? 'pretty' : 'json',
   // Rate limiting (defaults are intentionally permissive for demos)
   rateLimit: {
     // Default window in seconds and max requests per window

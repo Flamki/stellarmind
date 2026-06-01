@@ -69,6 +69,11 @@ Then either:
 - run `npm run setup` to generate testnet wallets automatically, or
 - manually fill wallet fields in `.env`
 
+Security note:
+
+- `npm run setup` masks wallet secrets in terminal output by default.
+- Use `node src/setup-wallets.js --show-secrets` only when you explicitly need full secret printing.
+
 Add your Anthropic key:
 
 ```env
@@ -80,6 +85,12 @@ Optional for deployments:
 ```env
 # Defaults to http://localhost:3001 in local dev
 INTERNAL_BASE_URL=http://server:3001
+```
+
+Structured logging mode:
+
+```env
+LOG_FORMAT=json
 ```
 
 ### 3) Prepare USDC trustlines
@@ -146,6 +157,13 @@ Example `/readyz` response:
   }
 }
 ```
+
+## Request Correlation and Logs
+
+- Every API request is assigned a correlation ID (`x-correlation-id`).
+- Incoming `x-correlation-id` / `x-request-id` headers are reused when provided.
+- Response always includes `x-correlation-id`.
+- Structured logs default to JSON (`LOG_FORMAT=json`) and include correlation data for request lifecycle, orchestrator flow, and payment events.
 
 ## Available Commands
 
