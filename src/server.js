@@ -12,6 +12,7 @@ import { orchestrate } from './agents/orchestrator.js';
 import { getBalance, getTransactions, sendPayment } from './stellar/wallet.js';
 import { requestId, errorHandler } from './middleware/errorHandler.js';
 import { validatePremiumQuery, validateOrchestrate, validateWalletTransactions, validateConfigApiKey, } from './requestValidation.js';
+import { orchestrateLimiter, apikeyLimiter } from './middleware/rateLimiter.js';
 
 // x402 imports
 import { paymentMiddlewareFromConfig } from '@x402/express';
@@ -310,7 +311,44 @@ app.get('/api/wallet/transactions', validateWalletTransactions, async (req, res,
   try {
     const address = req.validated?.address || config.orchestratorAddress || config.serverAddress;
     if (!address) return res.json([]);
-    const txs = await getTransactions(address, 20);
+
+    // 1. Validate & clamp "limit"
+    let limit = 20; // default
+    if (req.query.limit !== undefined) {
+      const parsedLimit = parseInt(req.query.limit, 10);
+      if (isNaN(parsedLimit) || parsedLimit <= 0 || String(parsedLimit) !== String(req.query.limit)) {
+        const err = new Error('Invalid query parameter "limit". Must be a positive integer.');
+        err.status = 400;
+        err.code = 'INVALID_LIMIT';
+        return next(err);
+      }
+      limit = Math.max(1, Math.min(200, parsedLimit));
+    }
+
+    // 2. Validate "order"/"direction"
+    let order = 'desc'; // default
+    const directionParam = req.query.direction || req.query.order;
+    if (directionParam !== undefined) {
+      const normalizedDir = String(directionParam).toLowerCase();
+      if (normalizedDir !== 'asc' && normalizedDir !== 'desc') {
+        const err = new Error('Invalid query parameter "direction"/"order". Must be "asc" or "desc".');
+        err.status = 400;
+        err.code = 'INVALID_DIRECTION';
+        return next(err);
+      }
+      order = normalizedDir;
+    }
+
+    // 3. Extract & validate "cursor" / "page" (supporting both)
+    const cursor = req.query.cursor || req.query.page || null;
+    if (cursor !== null && typeof cursor !== 'string') {
+      const err = new Error('Invalid query parameter "cursor"/"page". Must be a string.');
+      err.status = 400;
+      err.code = 'INVALID_CURSOR';
+      return next(err);
+    }
+
+    const txs = await getTransactions(address, limit, cursor, order);
     res.json(txs);
   } catch (err) {
     next(err);
@@ -349,7 +387,7 @@ app.get('/api/status', (req, res) => {
 });
 
 // ─── API Key Configuration ───────────────────────────────────
-app.get('/api/config/apikey', (req, res) => {
+app.get('/api/config/apikey', apikeyLimiter, (req, res) => {
   const key = config.anthropicApiKey || '';
   res.json({
     configured: !!key,
@@ -357,8 +395,14 @@ app.get('/api/config/apikey', (req, res) => {
   });
 });
 
-app.post('/api/config/apikey', validateConfigApiKey, (req, res, next) => {
-  const { apiKey } = req.validated;
+app.post('/api/config/apikey', apikeyLimiter, (req, res, next) => {
+  const { apiKey } = req.body;
+  if (!apiKey || !apiKey.startsWith('sk-ant-')) {
+    const err = new Error('Invalid API key. Must start with sk-ant-');
+    err.status = 400;
+    err.code = 'INVALID_API_KEY';
+    return next(err);
+  }
   // Security: Log only that a key was updated, never log the key itself
   console.log('  🔑 API key updated (ephemeral, session-only)');
   setApiKey(apiKey);
