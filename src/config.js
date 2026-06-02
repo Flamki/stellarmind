@@ -19,6 +19,7 @@ export const config = {
   network: process.env.NETWORK || 'stellar:testnet',
   facilitatorUrl: process.env.FACILITATOR_URL || 'https://www.x402.org/facilitator',
   stellarRpcUrl: process.env.STELLAR_RPC_URL || 'https://soroban-testnet.stellar.org',
+  adminToken: process.env.ADMIN_TOKEN || '',
 
   // Server wallet (receives payments)
   serverAddress: process.env.SERVER_STELLAR_ADDRESS || '',

@@ -13,6 +13,7 @@ import { getBalance, getTransactions, sendPayment } from './stellar/wallet.js';
 import { requestId, requestLogger, errorHandler } from './middleware/errorHandler.js';
 import { orchestrateLimiter, apikeyLimiter } from './middleware/rateLimiter.js';
 import { logger } from './logger.js';
+import { adminAuth } from './middleware/auth.js';
 
 // x402 imports
 import { paymentMiddlewareFromConfig } from '@x402/express';
@@ -404,7 +405,7 @@ app.get('/api/config/apikey', apikeyLimiter, (req, res) => {
   });
 });
 
-app.post('/api/config/apikey', apikeyLimiter, (req, res, next) => {
+app.post('/api/config/apikey', apikeyLimiter, adminAuth, (req, res, next) => {
   const { apiKey } = req.body;
   if (!apiKey || !apiKey.startsWith('sk-ant-')) {
     const err = new Error('Invalid API key. Must start with sk-ant-');
