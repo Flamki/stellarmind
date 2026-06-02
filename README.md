@@ -77,7 +77,9 @@ Security note:
 Add your Anthropic key:
 
 ```env
-ANTHROPIC_API_KEY=sk-ant-your-key
+| `ANTHROPIC_API_KEY` | `sk-ant-...` | Anthropic API key for Claude agents |
+| `ADMIN_TOKEN` | (optional) | Token required for runtime config changes (e.g. `POST /api/config/apikey`) |
+| `SERVER_STELLAR_ADDRESS` | `G...` | Public Key of the server wallet (receives payments) |
 ```
 
 Optional for deployments:
