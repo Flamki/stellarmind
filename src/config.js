@@ -1,5 +1,6 @@
 import dotenv from 'dotenv'
 import { fileURLToPath } from 'node:url'
+import path from 'node:path'
 
 dotenv.config({
   path: fileURLToPath(new URL('../.env', import.meta.url)),
@@ -15,6 +16,7 @@ const toNumberOr = (value, fallback) => {
   const n = Number.parseInt(value, 10)
   return Number.isFinite(n) ? n : fallback
 }
+const repoRoot = fileURLToPath(new URL('..', import.meta.url))
 
 export const config = {
   port,
@@ -65,4 +67,10 @@ export const config = {
     apikeyWindowSec: Math.max(1, toNumberOr(process.env.RATE_LIMIT_APIKEY_WINDOW_SEC, 60)),
     apikeyMax: Math.max(1, toNumberOr(process.env.RATE_LIMIT_APIKEY_MAX, 5)),
   },
+  // Run history persistence
+  runHistoryStorage: process.env.RUN_HISTORY_STORAGE || 'file',
+  runHistoryFile: process.env.RUN_HISTORY_FILE
+    ? path.resolve(process.env.RUN_HISTORY_FILE)
+    : path.join(repoRoot, 'data', 'run-history.json'),
+  runHistoryMaxRuns: Math.max(10, toNumberOr(process.env.RUN_HISTORY_MAX_RUNS, 200)),
 }
