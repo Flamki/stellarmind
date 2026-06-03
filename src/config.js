@@ -22,6 +22,7 @@ export const config = {
   network: process.env.NETWORK || 'stellar:testnet',
   facilitatorUrl: process.env.FACILITATOR_URL || 'https://www.x402.org/facilitator',
   stellarRpcUrl: process.env.STELLAR_RPC_URL || 'https://soroban-testnet.stellar.org',
+  adminToken: process.env.ADMIN_TOKEN || '',
 
   // Server wallet (receives payments)
   serverAddress: process.env.SERVER_STELLAR_ADDRESS || '',
@@ -46,6 +47,7 @@ export const config = {
     100,
     toNumberOr(process.env.ANTHROPIC_RETRY_BASE_DELAY_MS, 500)
   ),
+  logFormat: (process.env.LOG_FORMAT || 'json').toLowerCase() === 'pretty' ? 'pretty' : 'json',
   // Rate limiting (defaults are intentionally permissive for demos)
   rateLimit: {
     // Default window in seconds and max requests per window

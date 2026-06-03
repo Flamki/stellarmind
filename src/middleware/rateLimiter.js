@@ -2,6 +2,7 @@
 // Identifier: X-Request-Key header if present, otherwise IP (req.ip or X-Forwarded-For)
 
 import { config } from '../config.js'
+import { logger } from '../logger.js'
 
 function getIdentifier(req) {
   const hdr =
@@ -36,8 +37,8 @@ function createFixedWindowLimiter({ windowSec, max }) {
       if (entry.count > max) {
         const retryAfterSec = Math.ceil((entry.windowStart + windowMs - now) / 1000) || 1
         // Clear sensitive details in logs
-        console.warn(`Rate limit exceeded`, {
-          requestId: req.requestId,
+        logger.warn('rate_limit_exceeded', {
+          correlationId: req.requestId,
           id,
           path: req.originalUrl,
           method: req.method,
@@ -56,7 +57,7 @@ function createFixedWindowLimiter({ windowSec, max }) {
       next()
     } catch (err) {
       // On any unexpected error in limiter, allow the request through
-      console.error('Rate limiter error', err)
+      logger.error('rate_limiter_error', { correlationId: req.requestId, err })
       next()
     }
   }

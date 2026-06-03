@@ -17,8 +17,10 @@ import {
 } from './agents/services.js'
 import { orchestrate } from './agents/orchestrator.js'
 import { getBalance, getTransactions, sendPayment } from './stellar/wallet.js'
-import { requestId, errorHandler } from './middleware/errorHandler.js'
+import { requestId, requestLogger, errorHandler } from './middleware/errorHandler.js'
 import { orchestrateLimiter, apikeyLimiter } from './middleware/rateLimiter.js'
+import { logger } from './logger.js'
+import { adminAuth } from './middleware/auth.js'
 
 // x402 imports
 import { paymentMiddlewareFromConfig } from '@x402/express'
@@ -35,16 +37,19 @@ const pricingValidation = validateAll(pricingConfig, {
 })
 
 if (!pricingValidation.valid) {
-  console.error('❌ FATAL: Pricing configuration validation failed')
-  console.error(formatValidationErrors(pricingValidation))
+  logger.error('pricing_config_validation_failed', { errors: pricingValidation.errors })
+  logger.error('pricing_config_validation_details', {
+    details: formatValidationErrors(pricingValidation),
+  })
   process.exit(1)
 }
-console.log('✅ Pricing configuration validated successfully')
+logger.info('pricing_config_validated')
 
 app.use(cors())
 app.use(express.json())
 app.use(express.static(path.join(__dirname, '..', 'public')))
 app.use(requestId)
+app.use(requestLogger)
 
 // ─── SSE Event Stream ────────────────────────────────────────
 const sseClients = []
@@ -143,14 +148,14 @@ if (config.serverAddress) {
       ])
     )
     x402MiddlewareReady = true
-    console.log('✅ x402 payment middleware active')
+    logger.info('x402_middleware_active')
   } catch (err) {
     x402MiddlewareReady = false
-    console.warn('⚠️  x402 middleware init failed (non-fatal):', err.message)
+    logger.warn('x402_middleware_init_failed', { error: err.message })
   }
 } else {
   x402MiddlewareReady = false
-  console.warn('⚠️  No SERVER_STELLAR_ADDRESS set — x402 paywall disabled')
+  logger.warn('x402_paywall_disabled', { reason: 'SERVER_STELLAR_ADDRESS not configured' })
 }
 
 // ─── Premium x402-Protected Endpoints ────────────────────────
@@ -357,7 +362,7 @@ app.post('/api/orchestrate', orchestrateLimiter, async (req, res, next) => {
       return next(err)
     }
     const budgetNum = parseFloat(budget) || 0.15
-    const result = await orchestrate(task, budgetNum, broadcast)
+    const result = await orchestrate(task, budgetNum, broadcast, { correlationId: req.requestId })
     res.json(result)
   } catch (err) {
     next(err)
@@ -369,7 +374,7 @@ app.get('/api/orchestrate', orchestrateLimiter, async (req, res, next) => {
   try {
     const task = req.query.task || 'Research AI payments'
     const budget = parseFloat(req.query.budget) || 0.15
-    const result = await orchestrate(task, budget, broadcast)
+    const result = await orchestrate(task, budget, broadcast, { correlationId: req.requestId })
     res.json(result)
   } catch (err) {
     next(err)
@@ -521,7 +526,7 @@ app.get('/api/config/apikey', apikeyLimiter, (req, res) => {
   })
 })
 
-app.post('/api/config/apikey', apikeyLimiter, (req, res, next) => {
+app.post('/api/config/apikey', apikeyLimiter, adminAuth, (req, res, next) => {
   const { apiKey } = req.body
   if (!apiKey || !apiKey.startsWith('sk-ant-')) {
     const err = new Error('Invalid API key. Must start with sk-ant-')
@@ -530,7 +535,7 @@ app.post('/api/config/apikey', apikeyLimiter, (req, res, next) => {
     return next(err)
   }
   // Security: Log only that a key was updated, never log the key itself
-  console.log('  🔑 API key updated (ephemeral, session-only)')
+  logger.info('api_key_updated', { correlationId: req.requestId })
   setApiKey(apiKey)
   res.json({ success: true, masked: `sk-ant-...${apiKey.slice(-6)}` })
 })
