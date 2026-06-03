@@ -1,13 +1,13 @@
 /**
  * Centralized Pricing Configuration for StellarMind Premium Endpoints
- * 
+ *
  * This is the single source of truth for all premium endpoint pricing.
  * Changes here automatically propagate to:
  * - x402 payment middleware configuration
  * - Status endpoint output
  * - Broadcast events
  * - Integration tests
- * 
+ *
  * Price format: "$X.XX" (USD equivalent in USDC)
  */
 
@@ -51,7 +51,7 @@ export const pricingConfig = {
    * @returns {string} Price in format '$X.XX'
    */
   getPrice(endpoint) {
-    return this.endpoints[endpoint]?.price;
+    return this.endpoints[endpoint]?.price
   },
 
   /**
@@ -59,7 +59,7 @@ export const pricingConfig = {
    * @returns {Array} Array of endpoint paths
    */
   getPremiumEndpoints() {
-    return Object.keys(this.endpoints);
+    return Object.keys(this.endpoints)
   },
 
   /**
@@ -68,7 +68,7 @@ export const pricingConfig = {
    * @returns {Object} Pricing info object
    */
   getEndpointInfo(endpoint) {
-    return this.endpoints[endpoint];
+    return this.endpoints[endpoint]
   },
 
   /**
@@ -79,7 +79,7 @@ export const pricingConfig = {
     return Object.entries(this.endpoints).map(([endpoint, info]) => ({
       endpoint,
       ...info,
-    }));
+    }))
   },
 
   /**
@@ -88,7 +88,7 @@ export const pricingConfig = {
    * @returns {Object} x402 middleware pricing configuration
    */
   getX402Config(config) {
-    const x402Config = {};
+    const x402Config = {}
     for (const [endpoint, info] of Object.entries(this.endpoints)) {
       x402Config[endpoint] = {
         accepts: {
@@ -97,19 +97,19 @@ export const pricingConfig = {
           network: config.network,
           payTo: config.payTo,
         },
-      };
+      }
     }
-    return x402Config;
+    return x402Config
   },
-};
+}
 
 // Build lookup maps for fast access
 Object.entries(pricingConfig.endpoints).forEach(([endpoint, info]) => {
-  pricingConfig.byEndpoint[endpoint] = info;
-  pricingConfig.byAgent[info.agent] = { endpoint, ...info };
-  const priceKey = info.price;
+  pricingConfig.byEndpoint[endpoint] = info
+  pricingConfig.byAgent[info.agent] = { endpoint, ...info }
+  const priceKey = info.price
   if (!pricingConfig.byPrice[priceKey]) {
-    pricingConfig.byPrice[priceKey] = [];
+    pricingConfig.byPrice[priceKey] = []
   }
-  pricingConfig.byPrice[priceKey].push({ endpoint, agent: info.agent });
-});
+  pricingConfig.byPrice[priceKey].push({ endpoint, agent: info.agent })
+})

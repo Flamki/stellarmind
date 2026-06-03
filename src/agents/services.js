@@ -1,10 +1,10 @@
-import Anthropic from '@anthropic-ai/sdk';
-import { config } from '../config.js';
+import Anthropic from '@anthropic-ai/sdk'
+import { config } from '../config.js'
 
-export let anthropic = new Anthropic({ apiKey: config.anthropicApiKey });
+export let anthropic = new Anthropic({ apiKey: config.anthropicApiKey })
 
 // Track whether Claude API is available
-let claudeAvailable = true;
+let claudeAvailable = true
 
 export const AGENT_MODELS = {
   research: 'claude-haiku-4-5-20251001',
@@ -12,14 +12,14 @@ export const AGENT_MODELS = {
   analysisPrimary: 'claude-sonnet-4-5-20250929',
   analysisFallback: 'claude-haiku-4-5-20251001',
   code: 'claude-haiku-4-5-20251001',
-};
+}
 
 export const MODEL_LABELS = {
   research: AGENT_MODELS.research,
   summary: AGENT_MODELS.summary,
   analysis: `${AGENT_MODELS.analysisPrimary} (fallback: ${AGENT_MODELS.analysisFallback})`,
   code: AGENT_MODELS.code,
-};
+}
 
 /**
  * Update the Anthropic API key at runtime.
@@ -27,15 +27,15 @@ export const MODEL_LABELS = {
  * Security: Key is stored in memory only, never logged or persisted.
  */
 export function setApiKey(newKey) {
-  anthropic = new Anthropic({ apiKey: newKey });
-  config.anthropicApiKey = newKey;
-  claudeAvailable = true;
+  anthropic = new Anthropic({ apiKey: newKey })
+  config.anthropicApiKey = newKey
+  claudeAvailable = true
   // Security: Never log the actual key, only confirm it was set
-  console.log('  🔑 Anthropic API key updated at runtime (ephemeral, session-only)');
+  console.log('  🔑 Anthropic API key updated at runtime (ephemeral, session-only)')
 }
 
 function sleep(ms) {
-  return new Promise((resolve) => setTimeout(resolve, ms));
+  return new Promise((resolve) => setTimeout(resolve, ms))
 }
 
 function withTimeout(promise, timeoutMs) {
@@ -43,78 +43,84 @@ function withTimeout(promise, timeoutMs) {
     promise,
     new Promise((_, reject) => {
       setTimeout(() => {
-        const err = new Error(`Anthropic request timed out after ${timeoutMs}ms`);
-        err.code = 'ANTHROPIC_TIMEOUT';
-        err.status = 408;
-        reject(err);
-      }, timeoutMs);
+        const err = new Error(`Anthropic request timed out after ${timeoutMs}ms`)
+        err.code = 'ANTHROPIC_TIMEOUT'
+        err.status = 408
+        reject(err)
+      }, timeoutMs)
     }),
-  ]);
+  ])
 }
 
 function isTransientAnthropicError(err) {
-  const status = err?.status;
-  if ([408, 409, 429, 500, 502, 503, 504].includes(status)) return true;
+  const status = err?.status
+  if ([408, 409, 429, 500, 502, 503, 504].includes(status)) return true
 
-  const msg = String(err?.message || '').toLowerCase();
+  const msg = String(err?.message || '').toLowerCase()
   return (
-    msg.includes('timeout')
-    || msg.includes('temporar')
-    || msg.includes('rate limit')
-    || msg.includes('overloaded')
-    || msg.includes('econnreset')
-    || msg.includes('etimedout')
-    || msg.includes('network')
-  );
+    msg.includes('timeout') ||
+    msg.includes('temporar') ||
+    msg.includes('rate limit') ||
+    msg.includes('overloaded') ||
+    msg.includes('econnreset') ||
+    msg.includes('etimedout') ||
+    msg.includes('network')
+  )
 }
 
 function formatAnthropicError(err) {
-  const status = err?.status ? `status ${err.status}` : 'no-status';
-  const code = err?.code ? `code ${err.code}` : 'no-code';
-  const message = err?.message || 'Unknown Anthropic error';
-  return `${status}, ${code}: ${message}`;
+  const status = err?.status ? `status ${err.status}` : 'no-status'
+  const code = err?.code ? `code ${err.code}` : 'no-code'
+  const message = err?.message || 'Unknown Anthropic error'
+  return `${status}, ${code}: ${message}`
 }
 
 export async function createAnthropicMessage(payload, options = {}) {
-  const timeoutMs = options.timeoutMs ?? config.anthropicRequestTimeoutMs;
-  const maxRetries = options.maxRetries ?? config.anthropicMaxRetries;
-  const baseDelayMs = options.baseDelayMs ?? config.anthropicRetryBaseDelayMs;
-  const onRetryAttempt = options.onRetryAttempt;
+  const timeoutMs = options.timeoutMs ?? config.anthropicRequestTimeoutMs
+  const maxRetries = options.maxRetries ?? config.anthropicMaxRetries
+  const baseDelayMs = options.baseDelayMs ?? config.anthropicRetryBaseDelayMs
+  const onRetryAttempt = options.onRetryAttempt
 
-  let attempt = 0;
+  let attempt = 0
   while (true) {
     try {
-      return await withTimeout(anthropic.messages.create(payload), timeoutMs);
+      return await withTimeout(anthropic.messages.create(payload), timeoutMs)
     } catch (err) {
-      const transient = isTransientAnthropicError(err);
+      const transient = isTransientAnthropicError(err)
       if (!transient) {
-        const fastFail = new Error(`Non-transient Anthropic API error (${formatAnthropicError(err)})`);
-        fastFail.status = err?.status;
-        fastFail.code = err?.code;
-        fastFail.cause = err;
-        throw fastFail;
+        const fastFail = new Error(
+          `Non-transient Anthropic API error (${formatAnthropicError(err)})`
+        )
+        fastFail.status = err?.status
+        fastFail.code = err?.code
+        fastFail.cause = err
+        throw fastFail
       }
 
       if (attempt >= maxRetries) {
-        const exhausted = new Error(`Anthropic API retries exhausted after ${attempt} retries (${formatAnthropicError(err)})`);
-        exhausted.status = err?.status;
-        exhausted.code = err?.code;
-        exhausted.cause = err;
-        throw exhausted;
+        const exhausted = new Error(
+          `Anthropic API retries exhausted after ${attempt} retries (${formatAnthropicError(err)})`
+        )
+        exhausted.status = err?.status
+        exhausted.code = err?.code
+        exhausted.cause = err
+        throw exhausted
       }
 
-      const nextAttempt = attempt + 1;
-      const delayMs = baseDelayMs * (2 ** attempt);
-      console.warn(`Anthropic transient error, retrying attempt ${nextAttempt}/${maxRetries} in ${delayMs}ms: ${err.message}`);
+      const nextAttempt = attempt + 1
+      const delayMs = baseDelayMs * 2 ** attempt
+      console.warn(
+        `Anthropic transient error, retrying attempt ${nextAttempt}/${maxRetries} in ${delayMs}ms: ${err.message}`
+      )
       onRetryAttempt?.({
         attempt: nextAttempt,
         maxRetries,
         delayMs,
         status: err?.status || null,
         error: err?.message || 'unknown error',
-      });
-      await sleep(delayMs);
-      attempt += 1;
+      })
+      await sleep(delayMs)
+      attempt += 1
     }
   }
 }
@@ -191,50 +197,66 @@ async function executeAgentPayment(senderSecret, recipientPublic, amount) {
 \`\`\`
 
 This function handles a basic Stellar payment operation suitable for agent-to-agent micropayments.`,
-};
+}
 
 /**
  * Try Claude API, fall back to cached/demo response if credits exhausted
  */
 async function callClaude(model, maxTokens, prompt, fallbackFn, fallbackInput, options = {}) {
   if (!config.anthropicApiKey) {
-    console.log('  ℹ️  No API key — using demo response');
-    return fallbackFn(fallbackInput);
+    console.log('  ℹ️  No API key — using demo response')
+    return fallbackFn(fallbackInput)
   }
 
   try {
-    const msg = await createAnthropicMessage({
-      model,
-      max_tokens: maxTokens,
-      messages: [{ role: 'user', content: prompt }],
-    }, {
-      onRetryAttempt: options.onRetryAttempt,
-    });
-    claudeAvailable = true;
-    return msg.content[0].type === 'text' ? msg.content[0].text : '';
-  } catch (err) {
-    console.error(`Claude API error: ${err.message}`);
-    if (err.message?.includes('credit balance') || err.message?.includes('rate_limit') || err.status === 429) {
-      if (claudeAvailable) {
-        console.log('  ⚠️  Claude API credits exhausted — switching to demo responses');
-        claudeAvailable = false;
+    const msg = await createAnthropicMessage(
+      {
+        model,
+        max_tokens: maxTokens,
+        messages: [{ role: 'user', content: prompt }],
+      },
+      {
+        onRetryAttempt: options.onRetryAttempt,
       }
-      return fallbackFn(fallbackInput);
+    )
+    claudeAvailable = true
+    return msg.content[0].type === 'text' ? msg.content[0].text : ''
+  } catch (err) {
+    console.error(`Claude API error: ${err.message}`)
+    if (
+      err.message?.includes('credit balance') ||
+      err.message?.includes('rate_limit') ||
+      err.status === 429
+    ) {
+      if (claudeAvailable) {
+        console.log('  ⚠️  Claude API credits exhausted — switching to demo responses')
+        claudeAvailable = false
+      }
+      return fallbackFn(fallbackInput)
     }
-    throw err;
+    throw err
   }
 }
 
-async function callClaudeWithModelFallback(primaryModel, fallbackModel, maxTokens, prompt, fallbackFn, fallbackInput, options = {}) {
+async function callClaudeWithModelFallback(
+  primaryModel,
+  fallbackModel,
+  maxTokens,
+  prompt,
+  fallbackFn,
+  fallbackInput,
+  options = {}
+) {
   try {
-    return await callClaude(primaryModel, maxTokens, prompt, fallbackFn, fallbackInput, options);
+    return await callClaude(primaryModel, maxTokens, prompt, fallbackFn, fallbackInput, options)
   } catch (err) {
-    const message = String(err?.message || '').toLowerCase();
-    const isModelResolutionError = message.includes('model') || message.includes('not found') || message.includes('unsupported');
-    if (!isModelResolutionError || !fallbackModel || fallbackModel === primaryModel) throw err;
+    const message = String(err?.message || '').toLowerCase()
+    const isModelResolutionError =
+      message.includes('model') || message.includes('not found') || message.includes('unsupported')
+    if (!isModelResolutionError || !fallbackModel || fallbackModel === primaryModel) throw err
 
-    console.warn(`  Primary model ${primaryModel} unavailable, retrying with ${fallbackModel}`);
-    return callClaude(fallbackModel, maxTokens, prompt, fallbackFn, fallbackInput, options);
+    console.warn(`  Primary model ${primaryModel} unavailable, retrying with ${fallbackModel}`)
+    return callClaude(fallbackModel, maxTokens, prompt, fallbackFn, fallbackInput, options)
   }
 }
 
@@ -242,7 +264,7 @@ async function callClaudeWithModelFallback(primaryModel, fallbackModel, maxToken
  * Check if Claude API is currently available
  */
 export function isClaudeAvailable() {
-  return claudeAvailable;
+  return claudeAvailable
 }
 
 /**
@@ -255,8 +277,8 @@ export async function runResearch(topic, options = {}) {
     `You are a research agent. Research this topic thoroughly but concisely (4-5 sentences with key facts and data points): ${topic}`,
     FALLBACKS.research,
     topic,
-    options,
-  );
+    options
+  )
 }
 
 /**
@@ -269,8 +291,8 @@ export async function runSummary(text, options = {}) {
     `You are a summarization agent. Summarize the following text in 2-3 clear, concise sentences capturing the key points:\n\n${text}`,
     FALLBACKS.summary,
     text,
-    options,
-  );
+    options
+  )
 }
 
 /**
@@ -289,8 +311,8 @@ export async function runAnalysis(topic, options = {}) {
 Topic: ${topic}`,
     FALLBACKS.analysis,
     topic,
-    options,
-  );
+    options
+  )
 }
 
 /**
@@ -303,6 +325,6 @@ export async function runCode(prompt, options = {}) {
     `You are a code assistant agent. Help with the following code task. Be concise and provide working code:\n\n${prompt}`,
     FALLBACKS.code,
     prompt,
-    options,
-  );
+    options
+  )
 }

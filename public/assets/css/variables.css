@@ -1,0 +1,47 @@
+/* ═══ CSS VARIABLES & RESET ═══ */
+:root {
+  --bg-body: #06070b;
+  --bg-sidebar: #0c0d14;
+  --bg-main: #0f1018;
+  --bg-card: #14151f;
+  --bg-card-alt: #191a26;
+  --bg-input: #1a1b28;
+  --bg-hover: #1e1f2e;
+  --border: rgba(255, 255, 255, 0.05);
+  --border-active: rgba(99, 102, 241, 0.4);
+  --text-primary: #eeeef4;
+  --text-secondary: #8b8da0;
+  --text-muted: #505268;
+  --accent: #6366f1;
+  --accent-light: #818cf8;
+  --accent-glow: rgba(99, 102, 241, 0.2);
+  --purple: #a855f7;
+  --cyan: #22d3ee;
+  --green: #34d399;
+  --amber: #fbbf24;
+  --red: #f87171;
+  --pink: #f472b6;
+  --gradient: linear-gradient(135deg, #6366f1 0%, #8b5cf6 50%, #a855f7 100%);
+  --gradient-subtle: linear-gradient(135deg, rgba(99,102,241,0.08), rgba(168,85,247,0.04));
+  --shadow-glow: 0 0 24px rgba(99,102,241,0.12);
+  --radius: 12px;
+  --radius-sm: 8px;
+  --radius-xs: 6px;
+  --sidebar-w: 250px;
+  --tr: 0.2s ease;
+}
+
+*, *::before, *::after {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+body {
+  font-family: 'Inter', -apple-system, sans-serif;
+  background: var(--bg-body);
+  color: var(--text-primary);
+  min-height: 100vh;
+  display: flex;
+  overflow: hidden;
+}
