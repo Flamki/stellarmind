@@ -42,6 +42,7 @@ app.use(requestId);
 const HEARTBEAT_INTERVAL_MS = 30_000;
 const STALE_CLIENT_THRESHOLD_MS = 90_000;
 const sseClients = new Map();
+let x402MiddlewareReady = false;
 
 function removeClient(clientId) {
   const client = sseClients.get(clientId);
@@ -87,6 +88,53 @@ setInterval(() => {
     writeSse(clientId, { type: 'heartbeat', timestamp: new Date(now).toISOString() });
   }
 }, HEARTBEAT_INTERVAL_MS);
+
+function buildReadinessPayload() {
+  const anthropicConfigured = !!config.anthropicApiKey;
+  const x402Enabled = !!config.serverAddress;
+  const components = {
+    app: {
+      ready: true,
+      description: 'Core HTTP server initialized',
+    },
+    anthropic: {
+      configured: anthropicConfigured,
+      ready: anthropicConfigured,
+      description: anthropicConfigured
+        ? 'Anthropic API key is configured for Claude-powered agents'
+        : 'Missing Anthropic API key; demo fallback responses are available',
+    },
+    x402: {
+      enabled: x402Enabled,
+      ready: !x402Enabled || (x402MiddlewareReady && !!config.facilitatorUrl),
+      description: x402Enabled
+        ? x402MiddlewareReady
+          ? 'x402 payment middleware initialized'
+          : 'x402 is enabled but middleware initialization failed'
+        : 'x402 paywall is disabled; premium endpoints are not protected by payments',
+    },
+  };
+  const ready = Object.values(components).every((component) => component.ready);
+  return {
+    status: ready ? 'ready' : 'not_ready',
+    ready,
+    timestamp: new Date().toISOString(),
+    components,
+  };
+}
+
+app.get('/healthz', (req, res) => {
+  res.json({
+    status: 'ok',
+    uptime: process.uptime(),
+    timestamp: new Date().toISOString(),
+  });
+});
+
+app.get('/readyz', (req, res) => {
+  const payload = buildReadinessPayload();
+  res.status(payload.ready ? 200 : 503).json(payload);
+});
 
 app.get('/api/events', (req, res) => {
   res.setHeader('Content-Type', 'text/event-stream');
