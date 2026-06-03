@@ -2,7 +2,8 @@
 
 ## Architecture Overview
 
-StellarMind uses a layered architecture where AI agents operate as autonomous services that charge for their work via the x402 payment protocol on Stellar.
+StellarMind uses a layered architecture where AI agents operate as autonomous services that charge
+for their work via the x402 payment protocol on Stellar.
 
 ### Payment Flow
 
@@ -22,18 +23,24 @@ User → Orchestrator (Claude plans tasks)
 
 ### Key Design Decisions
 
-1. **x402 over custom payments**: We use the official `@x402/express` middleware and `@x402/fetch` client rather than building custom payment verification. This ensures compatibility with the x402 ecosystem.
+1. **x402 over custom payments**: We use the official `@x402/express` middleware and `@x402/fetch`
+   client rather than building custom payment verification. This ensures compatibility with the x402
+   ecosystem.
 
-2. **Budget enforcement in the orchestrator**: The orchestrator checks `totalSpent + cost > budget` before each agent call. If exceeded, the agent is skipped. This demonstrates programmable spending policies.
+2. **Budget enforcement in the orchestrator**: The orchestrator checks `totalSpent + cost > budget`
+   before each agent call. If exceeded, the agent is skipped. This demonstrates programmable
+   spending policies.
 
-3. **Dual payment mode**: The system attempts x402 USDC payments first, then falls back to XLM direct transfers. Both produce real, verifiable on-chain transactions.
+3. **Dual payment mode**: The system attempts x402 USDC payments first, then falls back to XLM
+   direct transfers. Both produce real, verifiable on-chain transactions.
 
-4. **SSE for real-time updates**: Server-Sent Events stream every orchestration event to the dashboard, giving users real-time visibility into agent activity and payments.
+4. **SSE for real-time updates**: Server-Sent Events stream every orchestration event to the
+   dashboard, giving users real-time visibility into agent activity and payments.
 
 ### Adding a New Agent
 
 1. Add the agent definition in `src/agents/registry.js`
-2. Add the service function in `src/agents/services.js` 
+2. Add the service function in `src/agents/services.js`
 3. Add the premium endpoint in `src/server.js` (both middleware config and route handler)
 4. Map the agent ID to its endpoint in `src/agents/orchestrator.js`
 
@@ -50,6 +57,16 @@ npm test        # Same as demo
 - Use placeholders only in `.env.example`.
 - Before every push, run `git diff --staged` and verify no keys are present.
 - If a secret is exposed, rotate it immediately.
+
+### Formatting and linting
+
+This project uses ESLint and Prettier to keep code and docs consistent. Before opening a PR, run:
+
+```bash
+npm run lint
+npm run lint:fix
+npm run format
+```
 
 ### Environment Setup
 
@@ -106,6 +123,8 @@ Keep changes focused on the issue you claimed. Run locally to verify nothing bre
 
 ```bash
 npm install
+npm run lint
+npm run format
 npm run dev
 ```
 
