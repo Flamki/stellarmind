@@ -16,8 +16,9 @@
     "lint:fix": "eslint . --ext .js,.mjs,.cjs --fix",
     "format": "prettier --write \"**/*.{js,md,html,yaml,yml}\"",
     "format:check": "prettier --check \"**/*.{js,md,html,yaml,yml}\"",
-    "test": "node src/agents/settlement-header.test.js && node tests/premium-endpoints.integration.test.js",
+    "test": "node src/agents/settlement-header.test.js && node tests/orchestrator.budget.test.js && node tests/premium-endpoints.integration.test.js",
     "test:parser": "node src/agents/settlement-header.test.js",
+    "test:budget": "node tests/orchestrator.budget.test.js",
     "test:premium": "node tests/premium-endpoints.integration.test.js",
     "test:demo": "node src/demo.js"
   },

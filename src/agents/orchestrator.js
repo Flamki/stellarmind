@@ -13,6 +13,17 @@ import { logger } from '../logger.js'
 import { x402Client, x402HTTPClient, wrapFetchWithPayment } from '@x402/fetch'
 import { ExactStellarScheme, createEd25519Signer } from '@x402/stellar'
 import { parseSettlementHeader, extractTxHash } from './settlement-header.js'
+import {
+  agentCost,
+  exceedsBudget,
+  buildSkipResult,
+  buildBudgetLimitEvent,
+  paymentBucket,
+  paymentProtocolSummary,
+  isBudgetExhausted,
+  countUsed,
+  countSkipped,
+} from './budget.js'
 
 // const anthropic = ... (imported from services.js)
 
@@ -124,13 +135,6 @@ async function parseResponseBody(response) {
   } catch {
     return { result: text }
   }
-}
-
-function paymentProtocolSummary(x402Count, xlmFallbackCount) {
-  if (x402Count > 0 && xlmFallbackCount === 0) return 'x402'
-  if (x402Count === 0 && xlmFallbackCount > 0) return 'stellar-xlm'
-  if (x402Count > 0 && xlmFallbackCount > 0) return 'mixed'
-  return 'none'
 }
 
 async function callAgentViaX402(agent, input, broadcastFn, context = {}) {
@@ -420,21 +424,14 @@ Respond ONLY with valid JSON (no markdown, no code fences):
       continue
     }
 
-    const cost = parseFloat(agent.price)
+    const cost = agentCost(agent)
 
-    if (totalSpent + cost > budget) {
+    if (exceedsBudget(totalSpent, cost, budget)) {
       broadcastFn?.({
-        type: 'budget_limit',
-        agent: agent.name,
-        cost: agent.price,
-        remaining: (budget - totalSpent).toFixed(4),
+        ...buildBudgetLimitEvent(agent, budget, totalSpent),
         timestamp: new Date().toISOString(),
       })
-      results.push({
-        agentId: agent.id,
-        skipped: true,
-        reason: `Budget limit (${(budget - totalSpent).toFixed(4)} USDC remaining, need ${agent.price})`,
-      })
+      results.push(buildSkipResult(agent, budget, totalSpent))
       continue
     }
 
@@ -468,8 +465,9 @@ Respond ONLY with valid JSON (no markdown, no code fences):
     }
     totalSpent += cost
 
-    if (agentResponse.paidVia === 'x402') x402PaymentCount += 1
-    else if (agentResponse.paidVia === 'stellar-xlm-direct') xlmFallbackCount += 1
+    const bucket = paymentBucket(agentResponse.paidVia)
+    if (bucket === 'x402') x402PaymentCount += 1
+    else if (bucket === 'stellar-xlm') xlmFallbackCount += 1
     else unpaidCount += 1
 
     const agentResult = {
@@ -524,7 +522,7 @@ Respond ONLY with valid JSON (no markdown, no code fences):
   }
 
   const elapsed = Date.now() - startTime
-  const budgetExhausted = totalSpent >= budget
+  const budgetExhausted = isBudgetExhausted(totalSpent, budget)
   const paymentProtocol = paymentProtocolSummary(x402PaymentCount, xlmFallbackCount)
   const successfulPayments = payments.filter((p) => p.paymentSuccess)
   const successfulTxs = successfulPayments.filter((p) => p.txHash)
@@ -532,8 +530,8 @@ Respond ONLY with valid JSON (no markdown, no code fences):
   broadcastFn?.({
     type: 'orchestrator_complete',
     totalSpent: totalSpent.toFixed(4),
-    agentsUsed: results.filter((r) => !r.skipped).length,
-    agentsSkipped: results.filter((r) => r.skipped).length,
+    agentsUsed: countUsed(results),
+    agentsSkipped: countSkipped(results),
     elapsed: `${elapsed}ms`,
     budgetExhausted,
     paymentProtocol,
@@ -551,8 +549,8 @@ Respond ONLY with valid JSON (no markdown, no code fences):
     budget,
     totalSpent: totalSpent.toFixed(4),
     budgetExhausted,
-    agentsUsed: results.filter((r) => !r.skipped).length,
-    agentsSkipped: results.filter((r) => r.skipped).length,
+    agentsUsed: countUsed(results),
+    agentsSkipped: countSkipped(results),
     paymentProtocol,
     x402PaymentCount,
     xlmFallbackCount,
