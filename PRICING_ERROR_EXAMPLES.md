@@ -1,10 +1,12 @@
 # Pricing Configuration Error Examples
 
-This document provides real-world examples of common pricing configuration errors and how the validation system catches them.
+This document provides real-world examples of common pricing configuration errors and how the
+validation system catches them.
 
 ## Error Scenario 1: Missing Dollar Sign
 
 ### Problem
+
 ```javascript
 // In src/pricing.config.js
 'GET /api/premium/research': {
@@ -16,6 +18,7 @@ This document provides real-world examples of common pricing configuration error
 ```
 
 ### Error Output
+
 ```
 ❌ FATAL: Pricing configuration validation failed
 ❌ Pricing configuration validation failed:
@@ -25,6 +28,7 @@ Errors:
 ```
 
 ### Solution
+
 ```javascript
 'GET /api/premium/research': {
   price: '$0.01',  // ✅ Add '$' prefix
@@ -39,6 +43,7 @@ Errors:
 ## Error Scenario 2: Wrong Decimal Places
 
 ### Problem
+
 ```javascript
 // In src/pricing.config.js
 'GET /api/premium/research': {
@@ -50,6 +55,7 @@ Errors:
 ```
 
 ### Error Output
+
 ```
 ❌ FATAL: Pricing configuration validation failed
 ❌ Pricing configuration validation failed:
@@ -59,6 +65,7 @@ Errors:
 ```
 
 ### Solution
+
 ```javascript
 'GET /api/premium/research': {
   price: '$0.10',  // ✅ Use exactly 2 decimal places
@@ -73,6 +80,7 @@ Errors:
 ## Error Scenario 3: Negative Price
 
 ### Problem
+
 ```javascript
 // In src/pricing.config.js
 'GET /api/premium/research': {
@@ -84,6 +92,7 @@ Errors:
 ```
 
 ### Error Output
+
 ```
 ❌ FATAL: Pricing configuration validation failed
 ❌ Pricing configuration validation failed:
@@ -93,6 +102,7 @@ Errors:
 ```
 
 ### Solution
+
 ```javascript
 'GET /api/premium/research': {
   price: '$0.01',  // ✅ Use positive price
@@ -107,6 +117,7 @@ Errors:
 ## Error Scenario 4: Zero Price
 
 ### Problem
+
 ```javascript
 // In src/pricing.config.js
 'GET /api/premium/research': {
@@ -118,6 +129,7 @@ Errors:
 ```
 
 ### Error Output
+
 ```
 ❌ FATAL: Pricing configuration validation failed
 ❌ Pricing configuration validation failed:
@@ -127,6 +139,7 @@ Errors:
 ```
 
 ### Solution
+
 ```javascript
 'GET /api/premium/research': {
   price: '$0.01',  // ✅ Use minimum price of $0.01
@@ -141,6 +154,7 @@ Errors:
 ## Error Scenario 5: Missing Endpoint Field
 
 ### Problem
+
 ```javascript
 // In src/pricing.config.js
 'GET /api/premium/research': {
@@ -152,6 +166,7 @@ Errors:
 ```
 
 ### Error Output
+
 ```
 ❌ FATAL: Pricing configuration validation failed
 ❌ Pricing configuration validation failed:
@@ -161,6 +176,7 @@ Errors:
 ```
 
 ### Solution
+
 ```javascript
 'GET /api/premium/research': {
   price: '$0.01',
@@ -175,6 +191,7 @@ Errors:
 ## Error Scenario 6: Invalid Endpoint Format
 
 ### Problem
+
 ```javascript
 // In src/pricing.config.js
 'GET /api/research': {  // ❌ Missing '/premium/' in path
@@ -186,6 +203,7 @@ Errors:
 ```
 
 ### Error Output
+
 ```
 ❌ FATAL: Pricing configuration validation failed
 ❌ Pricing configuration validation failed:
@@ -195,6 +213,7 @@ Errors:
 ```
 
 ### Solution
+
 ```javascript
 'GET /api/premium/research': {  // ✅ Include '/premium/' in path
   price: '$0.01',
@@ -209,6 +228,7 @@ Errors:
 ## Error Scenario 7: Invalid HTTP Method
 
 ### Problem
+
 ```javascript
 // In src/pricing.config.js
 'INVALID /api/premium/research': {  // ❌ Invalid HTTP method
@@ -220,6 +240,7 @@ Errors:
 ```
 
 ### Error Output
+
 ```
 ❌ FATAL: Pricing configuration validation failed
 ❌ Pricing configuration validation failed:
@@ -229,6 +250,7 @@ Errors:
 ```
 
 ### Solution
+
 ```javascript
 'GET /api/premium/research': {  // ✅ Use valid HTTP method
   price: '$0.01',
@@ -243,27 +265,29 @@ Errors:
 ## Error Scenario 8: Duplicate Agent
 
 ### Problem
+
 ```javascript
 // In src/pricing.config.js
 export const pricingConfig = {
   endpoints: {
     'GET /api/premium/research': {
       price: '$0.01',
-      agent: 'research-bot',  // ← Same agent
+      agent: 'research-bot', // ← Same agent
       description: 'Research Agent',
       emoji: '🔬',
     },
     'GET /api/premium/analyze': {
       price: '$0.05',
-      agent: 'research-bot',  // ❌ Duplicate agent
+      agent: 'research-bot', // ❌ Duplicate agent
       description: 'Analysis Agent',
       emoji: '📊',
     },
   },
-};
+}
 ```
 
 ### Error Output
+
 ```
 ❌ FATAL: Pricing configuration validation failed
 ❌ Pricing configuration validation failed:
@@ -273,6 +297,7 @@ Errors:
 ```
 
 ### Solution
+
 ```javascript
 export const pricingConfig = {
   endpoints: {
@@ -284,12 +309,12 @@ export const pricingConfig = {
     },
     'GET /api/premium/analyze': {
       price: '$0.05',
-      agent: 'analyst-bot',  // ✅ Use unique agent name
+      agent: 'analyst-bot', // ✅ Use unique agent name
       description: 'Analysis Agent',
       emoji: '📊',
     },
   },
-};
+}
 ```
 
 ---
@@ -297,6 +322,7 @@ export const pricingConfig = {
 ## Error Scenario 9: Invalid Agent Name
 
 ### Problem
+
 ```javascript
 // In src/pricing.config.js
 'GET /api/premium/research': {
@@ -308,6 +334,7 @@ export const pricingConfig = {
 ```
 
 ### Error Output
+
 ```
 ❌ FATAL: Pricing configuration validation failed
 ❌ Pricing configuration validation failed:
@@ -317,6 +344,7 @@ Errors:
 ```
 
 ### Solution
+
 ```javascript
 'GET /api/premium/research': {
   price: '$0.01',
@@ -331,14 +359,16 @@ Errors:
 ## Error Scenario 10: Empty Endpoints
 
 ### Problem
+
 ```javascript
 // In src/pricing.config.js
 export const pricingConfig = {
-  endpoints: {},  // ❌ No endpoints defined
-};
+  endpoints: {}, // ❌ No endpoints defined
+}
 ```
 
 ### Error Output
+
 ```
 ❌ FATAL: Pricing configuration validation failed
 ❌ Pricing configuration validation failed:
@@ -348,6 +378,7 @@ Errors:
 ```
 
 ### Solution
+
 ```javascript
 export const pricingConfig = {
   endpoints: {
@@ -359,7 +390,7 @@ export const pricingConfig = {
     },
     // ... add more endpoints
   },
-};
+}
 ```
 
 ---
@@ -367,14 +398,16 @@ export const pricingConfig = {
 ## Error Scenario 11: Missing x402 Configuration
 
 ### Problem
+
 ```javascript
 // In src/server.js
 const pricingValidation = validateAll(pricingConfig, {
   // ❌ Missing 'network' and 'payTo'
-});
+})
 ```
 
 ### Error Output
+
 ```
 ❌ FATAL: Pricing configuration validation failed
 ❌ Pricing configuration validation failed:
@@ -385,12 +418,13 @@ Errors:
 ```
 
 ### Solution
+
 ```javascript
 // In src/server.js
 const pricingValidation = validateAll(pricingConfig, {
-  network: config.network,  // ✅ Add network
-  payTo: config.serverAddress,  // ✅ Add server address
-});
+  network: config.network, // ✅ Add network
+  payTo: config.serverAddress, // ✅ Add server address
+})
 ```
 
 ---
@@ -398,15 +432,17 @@ const pricingValidation = validateAll(pricingConfig, {
 ## Error Scenario 12: Invalid x402 Address
 
 ### Problem
+
 ```javascript
 // In src/server.js
 const pricingValidation = validateAll(pricingConfig, {
   network: 'stellar:testnet',
-  payTo: 123,  // ❌ Should be string
-});
+  payTo: 123, // ❌ Should be string
+})
 ```
 
 ### Error Output
+
 ```
 ❌ FATAL: Pricing configuration validation failed
 ❌ Pricing configuration validation failed:
@@ -416,12 +452,13 @@ Errors:
 ```
 
 ### Solution
+
 ```javascript
 // In src/server.js
 const pricingValidation = validateAll(pricingConfig, {
   network: 'stellar:testnet',
-  payTo: 'GBUQWP3BOUZX34ULNQG23RQ6F4BVWCIYU2IYJJQ7YCVROSNM4SQKVUC',  // ✅ Use string
-});
+  payTo: 'GBUQWP3BOUZX34ULNQG23RQ6F4BVWCIYU2IYJJQ7YCVROSNM4SQKVUC', // ✅ Use string
+})
 ```
 
 ---
@@ -429,6 +466,7 @@ const pricingValidation = validateAll(pricingConfig, {
 ## Error Scenario 13: Missing Description
 
 ### Problem
+
 ```javascript
 // In src/pricing.config.js
 'GET /api/premium/research': {
@@ -440,6 +478,7 @@ const pricingValidation = validateAll(pricingConfig, {
 ```
 
 ### Error Output
+
 ```
 ❌ FATAL: Pricing configuration validation failed
 ❌ Pricing configuration validation failed:
@@ -449,6 +488,7 @@ Errors:
 ```
 
 ### Solution
+
 ```javascript
 'GET /api/premium/research': {
   price: '$0.01',
@@ -463,6 +503,7 @@ Errors:
 ## Error Scenario 14: Non-String Price
 
 ### Problem
+
 ```javascript
 // In src/pricing.config.js
 'GET /api/premium/research': {
@@ -474,6 +515,7 @@ Errors:
 ```
 
 ### Error Output
+
 ```
 ❌ FATAL: Pricing configuration validation failed
 ❌ Pricing configuration validation failed:
@@ -483,6 +525,7 @@ Errors:
 ```
 
 ### Solution
+
 ```javascript
 'GET /api/premium/research': {
   price: '$0.01',  // ✅ Use string format
@@ -497,21 +540,24 @@ Errors:
 ## Error Scenario 15: Multiple Errors
 
 ### Problem
+
 ```javascript
 // In src/pricing.config.js
 export const pricingConfig = {
   endpoints: {
-    'GET /api/research': {  // ❌ Missing '/premium/'
-      price: '0.01',  // ❌ Missing '$'
-      agent: 'research bot',  // ❌ Contains space
+    'GET /api/research': {
+      // ❌ Missing '/premium/'
+      price: '0.01', // ❌ Missing '$'
+      agent: 'research bot', // ❌ Contains space
       // ❌ Missing 'description'
       emoji: '🔬',
     },
   },
-};
+}
 ```
 
 ### Error Output
+
 ```
 ❌ FATAL: Pricing configuration validation failed
 ❌ Pricing configuration validation failed:
@@ -524,17 +570,19 @@ Errors:
 ```
 
 ### Solution
+
 ```javascript
 export const pricingConfig = {
   endpoints: {
-    'GET /api/premium/research': {  // ✅ Add '/premium/'
-      price: '$0.01',  // ✅ Add '$' and correct format
-      agent: 'research-bot',  // ✅ Use hyphens
-      description: 'Research Agent - Web research and information gathering',  // ✅ Add description
+    'GET /api/premium/research': {
+      // ✅ Add '/premium/'
+      price: '$0.01', // ✅ Add '$' and correct format
+      agent: 'research-bot', // ✅ Use hyphens
+      description: 'Research Agent - Web research and information gathering', // ✅ Add description
       emoji: '🔬',
     },
   },
-};
+}
 ```
 
 ---
@@ -544,16 +592,21 @@ export const pricingConfig = {
 You can test these error scenarios using the validation functions directly:
 
 ```javascript
-import { validatePrice, validateEndpoint, validateEndpointInfo, validateAll } from './src/pricing.validator.js';
+import {
+  validatePrice,
+  validateEndpoint,
+  validateEndpointInfo,
+  validateAll,
+} from './src/pricing.validator.js'
 
 // Test invalid price
-const priceResult = validatePrice('0.01');
-console.log(priceResult);
+const priceResult = validatePrice('0.01')
+console.log(priceResult)
 // { valid: false, error: "Price must be in format '$X.XX', got '0.01'" }
 
 // Test invalid endpoint
-const endpointResult = validateEndpoint('GET /api/research');
-console.log(endpointResult);
+const endpointResult = validateEndpoint('GET /api/research')
+console.log(endpointResult)
 // { valid: false, error: "Endpoint must match pattern 'METHOD /api/premium/name', got 'GET /api/research'" }
 
 // Test invalid endpoint info
@@ -561,13 +614,13 @@ const infoResult = validateEndpointInfo('GET /api/premium/research', {
   price: '$0.01',
   agent: 'research bot',
   description: 'Research Agent',
-});
-console.log(infoResult);
+})
+console.log(infoResult)
 // { valid: false, errors: ["Agent name must be alphanumeric with hyphens..."] }
 
 // Test complete config
-const configResult = validateAll(badConfig, appConfig);
-console.log(configResult);
+const configResult = validateAll(badConfig, appConfig)
+console.log(configResult)
 // { valid: false, errors: [...], warnings: [] }
 ```
 
@@ -590,18 +643,17 @@ console.log(configResult);
 
 ## Quick Reference
 
-| Error | Cause | Solution |
-|-------|-------|----------|
-| `Price must be in format '$X.XX'` | Wrong format | Use `$X.XX` format (e.g., `$0.01`) |
-| `Price cannot be negative` | Negative price | Use positive price (e.g., `$0.01`) |
-| `Price cannot be zero` | Zero price | Use minimum price of `$0.01` |
-| `Price must be a string` | Non-string price | Use string format (e.g., `'$0.01'`) |
-| `Endpoint must match pattern` | Invalid endpoint | Use `METHOD /api/premium/name` format |
-| `Missing 'agent'` | Missing field | Add `agent` field with agent name |
-| `Missing 'description'` | Missing field | Add `description` field |
-| `Missing 'price'` | Missing field | Add `price` field in `$X.XX` format |
-| `Agent name must be alphanumeric` | Invalid agent name | Use alphanumeric with hyphens (e.g., `research-bot`) |
-| `Duplicate agent` | Same agent in multiple endpoints | Use unique agent names |
-| `Config must have "network"` | Missing network config | Add `network` to config object |
-| `Config must have "payTo"` | Missing server address | Add `payTo` (server address) to config |
-
+| Error                             | Cause                            | Solution                                             |
+| --------------------------------- | -------------------------------- | ---------------------------------------------------- |
+| `Price must be in format '$X.XX'` | Wrong format                     | Use `$X.XX` format (e.g., `$0.01`)                   |
+| `Price cannot be negative`        | Negative price                   | Use positive price (e.g., `$0.01`)                   |
+| `Price cannot be zero`            | Zero price                       | Use minimum price of `$0.01`                         |
+| `Price must be a string`          | Non-string price                 | Use string format (e.g., `'$0.01'`)                  |
+| `Endpoint must match pattern`     | Invalid endpoint                 | Use `METHOD /api/premium/name` format                |
+| `Missing 'agent'`                 | Missing field                    | Add `agent` field with agent name                    |
+| `Missing 'description'`           | Missing field                    | Add `description` field                              |
+| `Missing 'price'`                 | Missing field                    | Add `price` field in `$X.XX` format                  |
+| `Agent name must be alphanumeric` | Invalid agent name               | Use alphanumeric with hyphens (e.g., `research-bot`) |
+| `Duplicate agent`                 | Same agent in multiple endpoints | Use unique agent names                               |
+| `Config must have "network"`      | Missing network config           | Add `network` to config object                       |
+| `Config must have "payTo"`        | Missing server address           | Add `payTo` (server address) to config               |

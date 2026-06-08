@@ -18,7 +18,7 @@
  * @returns {number}
  */
 export function agentCost(agent) {
-  return parseFloat(agent?.price);
+  return parseFloat(agent?.price)
 }
 
 /**
@@ -28,7 +28,7 @@ export function agentCost(agent) {
  * @returns {number}
  */
 export function remainingBudget(budget, totalSpent) {
-  return budget - totalSpent;
+  return budget - totalSpent
 }
 
 /**
@@ -37,7 +37,7 @@ export function remainingBudget(budget, totalSpent) {
  * @returns {string}
  */
 export function formatAmount(value) {
-  return Number(value).toFixed(4);
+  return Number(value).toFixed(4)
 }
 
 /**
@@ -50,7 +50,7 @@ export function formatAmount(value) {
  * @returns {boolean}
  */
 export function exceedsBudget(totalSpent, cost, budget) {
-  return totalSpent + cost > budget;
+  return totalSpent + cost > budget
 }
 
 /**
@@ -66,7 +66,7 @@ export function buildSkipResult(agent, budget, totalSpent) {
     agentId: agent.id,
     skipped: true,
     reason: `Budget limit (${formatAmount(remainingBudget(budget, totalSpent))} USDC remaining, need ${agent.price})`,
-  };
+  }
 }
 
 /**
@@ -83,7 +83,7 @@ export function buildBudgetLimitEvent(agent, budget, totalSpent) {
     agent: agent.name,
     cost: agent.price,
     remaining: formatAmount(remainingBudget(budget, totalSpent)),
-  };
+  }
 }
 
 /**
@@ -93,9 +93,9 @@ export function buildBudgetLimitEvent(agent, budget, totalSpent) {
  * @returns {'x402' | 'stellar-xlm' | 'unpaid'}
  */
 export function paymentBucket(paidVia) {
-  if (paidVia === 'x402') return 'x402';
-  if (paidVia === 'stellar-xlm-direct') return 'stellar-xlm';
-  return 'unpaid';
+  if (paidVia === 'x402') return 'x402'
+  if (paidVia === 'stellar-xlm-direct') return 'stellar-xlm'
+  return 'unpaid'
 }
 
 /**
@@ -105,14 +105,14 @@ export function paymentBucket(paidVia) {
  * @returns {{ x402PaymentCount: number, xlmFallbackCount: number, unpaidCount: number }}
  */
 export function tallyPaymentOutcomes(paidViaList) {
-  const counts = { x402PaymentCount: 0, xlmFallbackCount: 0, unpaidCount: 0 };
+  const counts = { x402PaymentCount: 0, xlmFallbackCount: 0, unpaidCount: 0 }
   for (const paidVia of paidViaList || []) {
-    const bucket = paymentBucket(paidVia);
-    if (bucket === 'x402') counts.x402PaymentCount += 1;
-    else if (bucket === 'stellar-xlm') counts.xlmFallbackCount += 1;
-    else counts.unpaidCount += 1;
+    const bucket = paymentBucket(paidVia)
+    if (bucket === 'x402') counts.x402PaymentCount += 1
+    else if (bucket === 'stellar-xlm') counts.xlmFallbackCount += 1
+    else counts.unpaidCount += 1
   }
-  return counts;
+  return counts
 }
 
 /**
@@ -122,10 +122,10 @@ export function tallyPaymentOutcomes(paidViaList) {
  * @returns {'x402' | 'stellar-xlm' | 'mixed' | 'none'}
  */
 export function paymentProtocolSummary(x402Count, xlmFallbackCount) {
-  if (x402Count > 0 && xlmFallbackCount === 0) return 'x402';
-  if (x402Count === 0 && xlmFallbackCount > 0) return 'stellar-xlm';
-  if (x402Count > 0 && xlmFallbackCount > 0) return 'mixed';
-  return 'none';
+  if (x402Count > 0 && xlmFallbackCount === 0) return 'x402'
+  if (x402Count === 0 && xlmFallbackCount > 0) return 'stellar-xlm'
+  if (x402Count > 0 && xlmFallbackCount > 0) return 'mixed'
+  return 'none'
 }
 
 /**
@@ -135,7 +135,7 @@ export function paymentProtocolSummary(x402Count, xlmFallbackCount) {
  * @returns {boolean}
  */
 export function isBudgetExhausted(totalSpent, budget) {
-  return totalSpent >= budget;
+  return totalSpent >= budget
 }
 
 /**
@@ -146,7 +146,7 @@ export function isBudgetExhausted(totalSpent, budget) {
  * @returns {number}
  */
 export function countUsed(results) {
-  return results.filter((r) => !r.skipped).length;
+  return results.filter((r) => !r.skipped).length
 }
 
 /**
@@ -155,5 +155,5 @@ export function countUsed(results) {
  * @returns {number}
  */
 export function countSkipped(results) {
-  return results.filter((r) => r.skipped).length;
+  return results.filter((r) => r.skipped).length
 }
