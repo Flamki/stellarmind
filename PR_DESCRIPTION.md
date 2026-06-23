@@ -48,7 +48,7 @@ Closes #[Issue Number]
    - Stage the file (`git add <file>`) and commit. The file should be auto-formatted by Prettier and
      linted by ESLint before the commit succeeds.
 2. **Secret Scan test:**
-   - Create a dummy file or edit a tracked file and add `password='secretpassword123'`.
+   - Create a dummy file or edit a tracked file and add `pass_word='secret_value_123'`.
    - Stage the file and attempt to commit. The commit should be aborted with a `❌ SECRET DETECTED`
      error message.
 3. **Bypass test:**
