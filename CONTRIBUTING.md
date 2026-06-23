@@ -148,3 +148,23 @@ Go to your fork on GitHub, click **"Compare & pull request"**, then fill in:
 
 - **Title:** short description of what you did
 - **Description:** what changed, how to test it, and `Closes #44`
+
+## Pre-Commit Hooks
+
+This project uses pre-commit hooks to catch style and security issues before they reach CI.
+
+### What runs on commit
+- **Lint & format** — runs the project's existing linter/formatter on staged files only
+- **Secret scan** — blocks commits containing common credential patterns (API keys, private keys, tokens)
+
+### Setup
+After cloning, hooks are installed automatically via `npm install` (or run `pre-commit install` for Python projects).
+
+### Bypassing hooks (emergency use only)
+If you need to commit urgently and the hooks are blocking you for a legitimate reason:
+
+```bash
+git commit --no-verify -m "your message"
+```
+
+Use `--no-verify` sparingly. It disables **all** hooks. Document why you bypassed in the PR description so reviewers are aware.
