@@ -124,6 +124,38 @@ Open `http://localhost:3001`.
 Because `INTERNAL_BASE_URL` defaults to `http://localhost:$PORT`, local demo setup stays one-command
 simple: `npm run dev`.
 
+## API Quick Reference (curl)
+
+With the dev server running (`npm run dev`), copy-paste these local-first examples:
+
+**System status**
+
+```bash
+curl -s http://localhost:3001/api/status
+```
+
+**Agent registry**
+
+```bash
+curl -s http://localhost:3001/api/agents
+```
+
+**Orchestrate a task**
+
+```bash
+curl -s -X POST http://localhost:3001/api/orchestrate \
+  -H "Content-Type: application/json" \
+  -d '{"task":"Summarize why x402 on Stellar matters in one concise paragraph.","budget":0.15}'
+```
+
+Live agent calls require a configured `ANTHROPIC_API_KEY` and funded testnet wallets.
+
+**Wallet balances**
+
+```bash
+curl -s http://localhost:3001/api/wallet/balances
+```
+
 ## Deployment Notes
 
 The orchestrator uses `INTERNAL_BASE_URL` for its paid internal calls to `/api/premium/*`.
