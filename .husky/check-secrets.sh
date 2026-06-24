@@ -1,4 +1,4 @@
-#!/bin/sh
+#!/usr/bin/env bash
 # Lightweight secret pattern scanner for staged files
 # Blocks commits containing common credential patterns
 

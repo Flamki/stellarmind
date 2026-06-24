@@ -27,8 +27,6 @@ Docs-only change — no source or runtime behavior is affected. Related: #36
 
 # feat: add pre-commit hooks for linting and secret scanning
 
-Closes #[Issue Number]
-
 ## What changed
 
 - **Configured Husky & lint-staged:** Added a pre-commit framework to ensure code quality before
@@ -48,7 +46,7 @@ Closes #[Issue Number]
    - Stage the file (`git add <file>`) and commit. The file should be auto-formatted by Prettier and
      linted by ESLint before the commit succeeds.
 2. **Secret Scan test:**
-   - Create a dummy file or edit a tracked file and add `pass_word='secret_value_123'`.
+   - Create a dummy file or edit a tracked file and add `password="secret_value_123"`.
    - Stage the file and attempt to commit. The commit should be aborted with a `❌ SECRET DETECTED`
      error message.
 3. **Bypass test:**
