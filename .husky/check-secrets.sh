@@ -22,6 +22,12 @@ PATTERNS=(
 FOUND=0
 for FILE in $STAGED_FILES; do
   if [ ! -f "$FILE" ]; then continue; fi
+  
+  # Skip scanning the documentation and the scanner itself, which legitimately contain example patterns
+  if [[ "$FILE" == *"PR_DESCRIPTION.md" ]] || [[ "$FILE" == *"CONTRIBUTING.md" ]] || [[ "$FILE" == *".husky/check-secrets.sh" ]]; then
+    continue
+  fi
+
   for PATTERN in "${PATTERNS[@]}"; do
     if grep -qEi "$PATTERN" "$FILE" 2>/dev/null; then
       echo "❌ SECRET DETECTED in $FILE"
