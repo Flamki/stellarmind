@@ -1,0 +1,4 @@
+#!/usr/bin/env sh
+set -e
+npx lint-staged
+bash .husky/check-secrets.sh

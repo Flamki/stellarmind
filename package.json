@@ -12,17 +12,17 @@
     "record:narrated": "node src/render-narrated-demo.js",
     "setup": "node src/setup-wallets.js",
     "setup:usdc": "node src/setup-usdc.js",
-    "test": "node src/agents/settlement-header.test.js && node tests/api.validation.test.js",
+    "test": "node src/agents/settlement-header.test.js && node tests/orchestrator.budget.test.js && node tests/premium-endpoints.integration.test.js",
     "test:validation": "node tests/api.validation.test.js",
     "lint": "eslint . --ext .js,.mjs,.cjs",
     "lint:fix": "eslint . --ext .js,.mjs,.cjs --fix",
     "format": "prettier --write \"**/*.{js,md,html,yaml,yml}\"",
     "format:check": "prettier --check \"**/*.{js,md,html,yaml,yml}\"",
-    "test": "node src/agents/settlement-header.test.js && node tests/orchestrator.budget.test.js && node tests/premium-endpoints.integration.test.js",
     "test:parser": "node src/agents/settlement-header.test.js",
     "test:budget": "node tests/orchestrator.budget.test.js",
     "test:premium": "node tests/premium-endpoints.integration.test.js",
-    "test:demo": "node src/demo.js"
+    "test:demo": "node src/demo.js",
+    "prepare": "husky"
   },
   "keywords": [
     "stellar",
@@ -54,7 +54,18 @@
     "eslint-config-prettier": "^9.0.0",
     "eslint-plugin-prettier": "^5.1.0",
     "globals": "^17.6.0",
+    "husky": "^9.1.7",
+    "lint-staged": "^16.4.0",
     "playwright": "^1.59.1",
     "prettier": "^3.8.3"
+  },
+  "lint-staged": {
+    "*.{js,ts,jsx,tsx}": [
+      "eslint --fix --max-warnings=0",
+      "prettier --write"
+    ],
+    "*.{json,md,yml,yaml}": [
+      "prettier --write"
+    ]
   }
 }
