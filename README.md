@@ -308,6 +308,45 @@ public/
       orchestration.js         # Task execution
       pages.js                 # Page loading
       init.js                  # App startup
+---
+
+## 📁 Repository Map (Quick Guide)
+
+A simplified guide to help new contributors understand where to make changes:
+
+### 🔙 Backend & Core Logic
+- `src/agents/` → orchestration and agent logic
+- `src/stellar/` → Stellar wallet and payments
+- `src/server.js` → main backend entry point
+
+### 🌐 Frontend (UI)
+- `public/index.html` → main structure
+- `public/assets/css/` → styles and layout
+- `public/assets/js/` → frontend logic
+
+### ⚙️ Configuration
+- `src/config.js` → app configuration
+- `.env` → environment variables
+
+### 🧪 Scripts
+- `src/demo.js` → demo pipeline
+- `src/setup-wallets.js` → wallet setup
+- `src/setup-usdc.js` → USDC setup
+
+### 📚 Docs
+- `README.md` → main docs
+- `CONTRIBUTING.md` → contribution rules
+- `docs/` → architecture docs
+
+---
+
+### 🛠️ Where to contribute
+
+- Backend → `src/`
+- Frontend → `public/assets`
+- Docs → markdown files
+
+> Tip: Keep contributions small and focused.
 ```
 
 ### Frontend Architecture
