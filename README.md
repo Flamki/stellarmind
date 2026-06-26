@@ -43,8 +43,8 @@ Orchestrator (plan, select agents, enforce spend limits)
 Agent execution + streamed updates + tx proof links
 ```
 
-For a deeper, standalone walkthrough — components plus the request, payment, and
-orchestration flows — see [docs/architecture.md](docs/architecture.md).
+For a deeper, standalone walkthrough — components plus the request, payment, and orchestration flows
+— see [docs/architecture.md](docs/architecture.md).
 
 ## Quick Start
 
@@ -120,6 +120,12 @@ npm run dev
 ```
 
 Open `http://localhost:3001`.
+
+> [!NOTE] **Mobile UI Limitations**: The dashboard is currently optimized for desktop viewports.
+> Mobile responsiveness improvements are planned (see
+> [#34](https://github.com/Flamki/stellarmind/issues/34)), but elements like the sidebar navigation
+> are currently hidden on screens narrower than 768px. For the best experience, we recommend using a
+> desktop browser with a viewport width of 1024px or wider during development and testing.
 
 Because `INTERNAL_BASE_URL` defaults to `http://localhost:$PORT`, local demo setup stays one-command
 simple: `npm run dev`.
@@ -215,7 +221,8 @@ Example `/readyz` response:
 - Every API request is assigned a correlation ID (`x-correlation-id`).
 - Incoming `x-correlation-id` / `x-request-id` headers are reused when provided.
 - Response always includes `x-correlation-id`.
-- Structured logs default to JSON (`LOG_FORMAT=json`) and include correlation data for request lifecycle, orchestrator flow, and payment events.
+- Structured logs default to JSON (`LOG_FORMAT=json`) and include correlation data for request
+  lifecycle, orchestrator flow, and payment events.
 
 ## Audit Run History
 
@@ -319,6 +326,7 @@ The UI has been refactored from a monolithic 1,300-line HTML file into a modular
 - **JavaScript**: 9 focused modules (~810 lines) organized by feature
 
 See [FRONTEND_STRUCTURE.md](FRONTEND_STRUCTURE.md) for detailed documentation on:
+
 - CSS organization and design tokens
 - JavaScript module dependencies
 - API integration points
