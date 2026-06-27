@@ -43,8 +43,8 @@ Orchestrator (plan, select agents, enforce spend limits)
 Agent execution + streamed updates + tx proof links
 ```
 
-For a deeper, standalone walkthrough — components plus the request, payment, and
-orchestration flows — see [docs/architecture.md](docs/architecture.md).
+For a deeper, standalone walkthrough — components plus the request, payment, and orchestration flows
+— see [docs/architecture.md](docs/architecture.md).
 
 ## Quick Start
 
@@ -215,7 +215,8 @@ Example `/readyz` response:
 - Every API request is assigned a correlation ID (`x-correlation-id`).
 - Incoming `x-correlation-id` / `x-request-id` headers are reused when provided.
 - Response always includes `x-correlation-id`.
-- Structured logs default to JSON (`LOG_FORMAT=json`) and include correlation data for request lifecycle, orchestrator flow, and payment events.
+- Structured logs default to JSON (`LOG_FORMAT=json`) and include correlation data for request
+  lifecycle, orchestrator flow, and payment events.
 
 ## Audit Run History
 
@@ -310,6 +311,17 @@ public/
       init.js                  # App startup
 ```
 
+### Current UI Limitations
+
+The dashboard is currently designed and tested for **desktop viewports (1024px+)**. While basic
+responsive behavior is in place for tablet and mobile sizes, the experience on smaller screens has
+not yet been fully polished.
+
+- **Recommended setup**: Open the dashboard on a screen at least 1024px wide, or use your browser's
+  device toolbar with a desktop viewport selected.
+- Mobile layout improvements, including sidebar navigation, card wrapping, and touch-friendly
+  interactions, are tracked in [#34](https://github.com/Flamki/stellarmind/issues/34).
+
 ### Frontend Architecture
 
 The UI has been refactored from a monolithic 1,300-line HTML file into a modular structure:
@@ -319,6 +331,7 @@ The UI has been refactored from a monolithic 1,300-line HTML file into a modular
 - **JavaScript**: 9 focused modules (~810 lines) organized by feature
 
 See [FRONTEND_STRUCTURE.md](FRONTEND_STRUCTURE.md) for detailed documentation on:
+
 - CSS organization and design tokens
 - JavaScript module dependencies
 - API integration points
