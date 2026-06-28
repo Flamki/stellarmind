@@ -308,7 +308,7 @@ public/
       orchestration.js         # Task execution
       pages.js                 # Page loading
       init.js                  # App startup
----
+```
 
 ## 📁 Repository Map (Quick Guide)
 
@@ -338,8 +338,6 @@ A simplified guide to help new contributors understand where to make changes:
 - `CONTRIBUTING.md` → contribution rules
 - `docs/` → architecture docs
 
----
-
 ### 🛠️ Where to contribute
 
 - Backend → `src/`
@@ -347,7 +345,6 @@ A simplified guide to help new contributors understand where to make changes:
 - Docs → markdown files
 
 > Tip: Keep contributions small and focused.
-```
 
 ### Frontend Architecture
 
