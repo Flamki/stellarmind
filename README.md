@@ -1,7 +1,7 @@
 # StellarMind
 
 [![License: MIT](https://img.shields.io/badge/license-MIT-0f172a.svg)](LICENSE)
-![Node](https://img.shields.io/badge/node-%3E%3D18-0f172a.svg)
+![Node](https://img.shields.io/badge/node-%3E%3D20.19-0f172a.svg)
 ![Stellar](https://img.shields.io/badge/network-Stellar%20Testnet-0f172a.svg)
 ![x402](https://img.shields.io/badge/payments-x402-0f172a.svg)
 
@@ -53,7 +53,23 @@ For a deeper, standalone walkthrough — components plus the request, payment, a
 ```bash
 git clone https://github.com/Flamki/stellarmind.git
 cd stellarmind
+nvm install
+nvm use
 npm install
+```
+
+The project pins its contributor runtime in `.nvmrc` (`20.19.0`) so local development matches the
+Node version expected by the Stellar SDK, lint tooling, and CI.
+
+Windows alternatives:
+
+```powershell
+# nvm-windows
+nvm install 20.19.0
+nvm use 20.19.0
+
+# Volta
+volta install node@20.19.0
 ```
 
 ### 2) Configure environment
@@ -120,6 +136,12 @@ npm run dev
 ```
 
 Open `http://localhost:3001`.
+
+> [!NOTE] **Mobile UI Limitations**: The dashboard is currently optimized for desktop viewports.
+> Mobile responsiveness improvements are planned (see
+> [#34](https://github.com/Flamki/stellarmind/issues/34)), but elements like the sidebar navigation
+> are currently hidden on screens narrower than 768px. For the best experience, we recommend using a
+> desktop browser with a viewport width of 1024px or wider during development and testing.
 
 Because `INTERNAL_BASE_URL` defaults to `http://localhost:$PORT`, local demo setup stays one-command
 simple: `npm run dev`.
@@ -311,16 +333,7 @@ public/
       init.js                  # App startup
 ```
 
-### Current UI Limitations
 
-The dashboard is currently designed and tested for **desktop viewports (1024px+)**. While basic
-responsive behavior is in place for tablet and mobile sizes, the experience on smaller screens has
-not yet been fully polished.
-
-- **Recommended setup**: Open the dashboard on a screen at least 1024px wide, or use your browser's
-  device toolbar with a desktop viewport selected.
-- Mobile layout improvements, including sidebar navigation, card wrapping, and touch-friendly
-  interactions, are tracked in [#34](https://github.com/Flamki/stellarmind/issues/34).
 
 ### Frontend Architecture
 

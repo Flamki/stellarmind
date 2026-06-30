@@ -80,6 +80,32 @@ npm run dev          # Start the server
 
 ## Contributor workflow
 
+### Node version
+
+Use the Node version pinned in `.nvmrc` before installing dependencies. This keeps local development
+aligned with the runtime expectations of the Stellar SDK, ESLint, and CI.
+
+macOS/Linux with `nvm`:
+
+```bash
+nvm install
+nvm use
+npm install
+```
+
+Windows alternatives:
+
+```powershell
+# nvm-windows
+nvm install 20.19.0
+nvm use 20.19.0
+npm install
+
+# Volta
+volta install node@20.19.0
+npm install
+```
+
 ### 1. Claim an issue
 
 Before writing any code, comment on the issue you want to work on:
