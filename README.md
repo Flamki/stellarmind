@@ -1,7 +1,7 @@
 # StellarMind
 
 [![License: MIT](https://img.shields.io/badge/license-MIT-0f172a.svg)](LICENSE)
-![Node](https://img.shields.io/badge/node-%3E%3D18-0f172a.svg)
+![Node](https://img.shields.io/badge/node-%3E%3D20.19-0f172a.svg)
 ![Stellar](https://img.shields.io/badge/network-Stellar%20Testnet-0f172a.svg)
 ![x402](https://img.shields.io/badge/payments-x402-0f172a.svg)
 
@@ -43,8 +43,8 @@ Orchestrator (plan, select agents, enforce spend limits)
 Agent execution + streamed updates + tx proof links
 ```
 
-For a deeper, standalone walkthrough — components plus the request, payment, and
-orchestration flows — see [docs/architecture.md](docs/architecture.md).
+For a deeper, standalone walkthrough — components plus the request, payment, and orchestration flows
+— see [docs/architecture.md](docs/architecture.md).
 
 ## Quick Start
 
@@ -53,7 +53,23 @@ orchestration flows — see [docs/architecture.md](docs/architecture.md).
 ```bash
 git clone https://github.com/Flamki/stellarmind.git
 cd stellarmind
+nvm install
+nvm use
 npm install
+```
+
+The project pins its contributor runtime in `.nvmrc` (`20.19.0`) so local development matches the
+Node version expected by the Stellar SDK, lint tooling, and CI.
+
+Windows alternatives:
+
+```powershell
+# nvm-windows
+nvm install 20.19.0
+nvm use 20.19.0
+
+# Volta
+volta install node@20.19.0
 ```
 
 ### 2) Configure environment
@@ -215,7 +231,8 @@ Example `/readyz` response:
 - Every API request is assigned a correlation ID (`x-correlation-id`).
 - Incoming `x-correlation-id` / `x-request-id` headers are reused when provided.
 - Response always includes `x-correlation-id`.
-- Structured logs default to JSON (`LOG_FORMAT=json`) and include correlation data for request lifecycle, orchestrator flow, and payment events.
+- Structured logs default to JSON (`LOG_FORMAT=json`) and include correlation data for request
+  lifecycle, orchestrator flow, and payment events.
 
 ## Audit Run History
 
@@ -355,6 +372,7 @@ The UI has been refactored from a monolithic 1,300-line HTML file into a modular
 - **JavaScript**: 9 focused modules (~810 lines) organized by feature
 
 See [FRONTEND_STRUCTURE.md](FRONTEND_STRUCTURE.md) for detailed documentation on:
+
 - CSS organization and design tokens
 - JavaScript module dependencies
 - API integration points
