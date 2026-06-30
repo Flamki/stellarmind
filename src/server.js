@@ -5,7 +5,7 @@ import path from 'node:path'
 
 import { config } from './config.js'
 import { pricingConfig } from './pricing.config.js'
-import { validateAll, throwIfInvalid, formatValidationErrors } from './pricing.validator.js'
+import { validateAll, formatValidationErrors } from './pricing.validator.js'
 import { AGENTS, discoverAgents, getAgentById } from './agents/registry.js'
 import {
   runResearch,
@@ -16,9 +16,9 @@ import {
   MODEL_LABELS,
 } from './agents/services.js'
 import { orchestrate } from './agents/orchestrator.js'
-import { getBalance, getTransactions, sendPayment } from './stellar/wallet.js'
+import { getBalance, getTransactions } from './stellar/wallet.js'
 import { requestId, requestLogger, errorHandler } from './middleware/errorHandler.js'
-import { orchestrateLimiter, apikeyLimiter } from './middleware/rateLimiter.js'
+import { apikeyLimiter } from './middleware/rateLimiter.js'
 import { logger } from './logger.js'
 import { adminAuth } from './middleware/auth.js'
 import { registerPremiumRoutes } from './routes/premium-routes.js'
@@ -164,59 +164,142 @@ if (config.serverAddress) {
 // ─── Premium x402-Protected Endpoints ────────────────────────
 app.get('/api/premium/research', validatePremiumQuery, async (req, res, next) => {
   try {
-    const topic = req.validated.topic;
-    const priceInfo = pricingConfig.getEndpointInfo('GET /api/premium/research');
-    const cost = priceInfo.price.slice(1); // Remove '$' for display
-    broadcast({ type: 'agent_call', agent: `${priceInfo.emoji} Research Agent`, agentId: 'research-bot', input: topic, cost, timestamp: new Date().toISOString() });
-    const result = await runResearch(topic);
-    broadcast({ type: 'agent_response', agent: `${priceInfo.emoji} Research Agent`, agentId: 'research-bot', resultPreview: result.substring(0, 150), cost, timestamp: new Date().toISOString() });
-    res.json({ agent: 'research-bot', topic, result, model: MODEL_LABELS.research, cost: `${cost} USDC`, paidVia: 'x402' });
+    const topic = req.validated.topic
+    const priceInfo = pricingConfig.getEndpointInfo('GET /api/premium/research')
+    const cost = priceInfo.price.slice(1) // Remove '$' for display
+    broadcast({
+      type: 'agent_call',
+      agent: `${priceInfo.emoji} Research Agent`,
+      agentId: 'research-bot',
+      input: topic,
+      cost,
+      timestamp: new Date().toISOString(),
+    })
+    const result = await runResearch(topic)
+    broadcast({
+      type: 'agent_response',
+      agent: `${priceInfo.emoji} Research Agent`,
+      agentId: 'research-bot',
+      resultPreview: result.substring(0, 150),
+      cost,
+      timestamp: new Date().toISOString(),
+    })
+    res.json({
+      agent: 'research-bot',
+      topic,
+      result,
+      model: MODEL_LABELS.research,
+      cost: `${cost} USDC`,
+      paidVia: 'x402',
+    })
   } catch (err) {
-    next(err);
+    next(err)
   }
-});
+})
 
 app.get('/api/premium/summarize', validatePremiumQuery, async (req, res, next) => {
   try {
-    const text = req.query.text || 'Please provide text to summarize via ?text= parameter';
-    const priceInfo = pricingConfig.getEndpointInfo('GET /api/premium/summarize');
-    const cost = priceInfo.price.slice(1);
-    broadcast({ type: 'agent_call', agent: `${priceInfo.emoji} Summary Agent`, agentId: 'summary-bot', input: text.substring(0, 100), cost, timestamp: new Date().toISOString() });
-    const result = await runSummary(text);
-    broadcast({ type: 'agent_response', agent: `${priceInfo.emoji} Summary Agent`, agentId: 'summary-bot', resultPreview: result.substring(0, 150), cost, timestamp: new Date().toISOString() });
-    res.json({ agent: 'summary-bot', result, model: MODEL_LABELS.summary, cost: `${cost} USDC`, paidVia: 'x402' });
+    const text = req.query.text || 'Please provide text to summarize via ?text= parameter'
+    const priceInfo = pricingConfig.getEndpointInfo('GET /api/premium/summarize')
+    const cost = priceInfo.price.slice(1)
+    broadcast({
+      type: 'agent_call',
+      agent: `${priceInfo.emoji} Summary Agent`,
+      agentId: 'summary-bot',
+      input: text.substring(0, 100),
+      cost,
+      timestamp: new Date().toISOString(),
+    })
+    const result = await runSummary(text)
+    broadcast({
+      type: 'agent_response',
+      agent: `${priceInfo.emoji} Summary Agent`,
+      agentId: 'summary-bot',
+      resultPreview: result.substring(0, 150),
+      cost,
+      timestamp: new Date().toISOString(),
+    })
+    res.json({
+      agent: 'summary-bot',
+      result,
+      model: MODEL_LABELS.summary,
+      cost: `${cost} USDC`,
+      paidVia: 'x402',
+    })
   } catch (err) {
-    next(err);
+    next(err)
   }
-});
+})
 
 app.get('/api/premium/analyze', validatePremiumQuery, async (req, res, next) => {
   try {
-    const topic = req.validated.topic;
-    const priceInfo = pricingConfig.getEndpointInfo('GET /api/premium/analyze');
-    const cost = priceInfo.price.slice(1);
-    broadcast({ type: 'agent_call', agent: `${priceInfo.emoji} Analysis Agent`, agentId: 'analyst-bot', input: topic, cost, timestamp: new Date().toISOString() });
-    const result = await runAnalysis(topic);
-    broadcast({ type: 'agent_response', agent: `${priceInfo.emoji} Analysis Agent`, agentId: 'analyst-bot', resultPreview: result.substring(0, 150), cost, timestamp: new Date().toISOString() });
-    res.json({ agent: 'analyst-bot', topic, result, model: MODEL_LABELS.analysis, cost: `${cost} USDC`, paidVia: 'x402' });
+    const topic = req.validated.topic
+    const priceInfo = pricingConfig.getEndpointInfo('GET /api/premium/analyze')
+    const cost = priceInfo.price.slice(1)
+    broadcast({
+      type: 'agent_call',
+      agent: `${priceInfo.emoji} Analysis Agent`,
+      agentId: 'analyst-bot',
+      input: topic,
+      cost,
+      timestamp: new Date().toISOString(),
+    })
+    const result = await runAnalysis(topic)
+    broadcast({
+      type: 'agent_response',
+      agent: `${priceInfo.emoji} Analysis Agent`,
+      agentId: 'analyst-bot',
+      resultPreview: result.substring(0, 150),
+      cost,
+      timestamp: new Date().toISOString(),
+    })
+    res.json({
+      agent: 'analyst-bot',
+      topic,
+      result,
+      model: MODEL_LABELS.analysis,
+      cost: `${cost} USDC`,
+      paidVia: 'x402',
+    })
   } catch (err) {
-    next(err);
+    next(err)
   }
-});
+})
 
 app.get('/api/premium/code', validatePremiumQuery, async (req, res, next) => {
   try {
-    const prompt = req.validated.prompt;
-    const priceInfo = pricingConfig.getEndpointInfo('GET /api/premium/code');
-    const cost = priceInfo.price.slice(1);
-    broadcast({ type: 'agent_call', agent: `${priceInfo.emoji} Code Agent`, agentId: 'code-bot', input: prompt.substring(0, 100), cost, timestamp: new Date().toISOString() });
-    const result = await runCode(prompt);
-    broadcast({ type: 'agent_response', agent: `${priceInfo.emoji} Code Agent`, agentId: 'code-bot', resultPreview: result.substring(0, 150), cost, timestamp: new Date().toISOString() });
-    res.json({ agent: 'code-bot', prompt, result, model: MODEL_LABELS.code, cost: `${cost} USDC`, paidVia: 'x402' });
+    const prompt = req.validated.prompt
+    const priceInfo = pricingConfig.getEndpointInfo('GET /api/premium/code')
+    const cost = priceInfo.price.slice(1)
+    broadcast({
+      type: 'agent_call',
+      agent: `${priceInfo.emoji} Code Agent`,
+      agentId: 'code-bot',
+      input: prompt.substring(0, 100),
+      cost,
+      timestamp: new Date().toISOString(),
+    })
+    const result = await runCode(prompt)
+    broadcast({
+      type: 'agent_response',
+      agent: `${priceInfo.emoji} Code Agent`,
+      agentId: 'code-bot',
+      resultPreview: result.substring(0, 150),
+      cost,
+      timestamp: new Date().toISOString(),
+    })
+    res.json({
+      agent: 'code-bot',
+      prompt,
+      result,
+      model: MODEL_LABELS.code,
+      cost: `${cost} USDC`,
+      paidVia: 'x402',
+    })
   } catch (err) {
-    next(err);
+    next(err)
   }
-});
+})
 registerPremiumRoutes(app, {
   pricingConfig,
   broadcast,
@@ -283,19 +366,10 @@ app.get('/api/code', async (req, res, next) => {
 // ─── Orchestrator Endpoint ───────────────────────────────────
 app.post('/api/orchestrate', validateOrchestrate, async (req, res, next) => {
   try {
-    const { task, budget } = req.validated;
-    const result = await orchestrate(task, budget, broadcast);
-    const { task, budget } = req.body;
-    if (!task) {
-      const err = new Error('Missing "task" in request body')
-      err.status = 400
-      err.code = 'MISSING_FIELD'
-      return next(err)
-    }
-    const budgetNum = parseFloat(budget) || 0.15
+    const { task, budget } = req.validated
     const run = await runHistoryStore.createRun({
       task,
-      budget: budgetNum,
+      budget,
       source: 'POST /api/orchestrate',
     })
     const runBroadcast = (event) => {
@@ -308,7 +382,7 @@ app.post('/api/orchestrate', validateOrchestrate, async (req, res, next) => {
 
     let result
     try {
-      result = await orchestrate(task, budgetNum, runBroadcast, { correlationId: req.requestId })
+      result = await orchestrate(task, budget, runBroadcast, { correlationId: req.requestId })
       await runHistoryStore.completeRun(run.id, result)
     } catch (err) {
       await runHistoryStore.failRun(run.id, err)
@@ -325,8 +399,7 @@ app.post('/api/orchestrate', validateOrchestrate, async (req, res, next) => {
 // Also support GET for easy testing
 app.get('/api/orchestrate', validateOrchestrate, async (req, res, next) => {
   try {
-    const task = req.query.task || 'Research AI payments'
-    const budget = parseFloat(req.query.budget) || 0.15
+    const { task, budget } = req.validated
     const run = await runHistoryStore.createRun({
       task,
       budget,
@@ -422,9 +495,7 @@ app.get('/api/wallet/balances', async (req, res, next) => {
 
 app.get('/api/wallet/transactions', validateWalletTransactions, async (req, res, next) => {
   try {
-    const address = req.validated?.address || config.orchestratorAddress || config.serverAddress;
-    if (!address) return res.json([]);
-    const address = req.query.address || config.orchestratorAddress || config.serverAddress
+    const address = req.validated?.address || config.orchestratorAddress || config.serverAddress
     if (!address) return res.json([])
 
     // 1. Validate & clamp "limit"

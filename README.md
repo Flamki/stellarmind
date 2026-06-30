@@ -137,6 +137,12 @@ npm run dev
 
 Open `http://localhost:3001`.
 
+> [!NOTE] **Mobile UI Limitations**: The dashboard is currently optimized for desktop viewports.
+> Mobile responsiveness improvements are planned (see
+> [#34](https://github.com/Flamki/stellarmind/issues/34)), but elements like the sidebar navigation
+> are currently hidden on screens narrower than 768px. For the best experience, we recommend using a
+> desktop browser with a viewport width of 1024px or wider during development and testing.
+
 Because `INTERNAL_BASE_URL` defaults to `http://localhost:$PORT`, local demo setup stays one-command
 simple: `npm run dev`.
 
