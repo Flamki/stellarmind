@@ -1,0 +1,24 @@
+## Security Checklist
+
+Before opening a pull request, please ensure:
+
+* Your local repository is up-to-date: `git status`
+* Your changes are staged: `git diff --staged`
+* You haven't accidentally committed secrets: `grep -rnE 'your_secret_key_here'`
+
+For more information on security, please refer to our [SECURITY.md](SECURITY.md).
+
+## Before Opening a Pull Request
+
+1. Make sure you have followed the security checklist above.
+2. Ensure that your code adheres to our coding standards and guidelines.
+3. Write a clear and concise commit message that describes the changes you have made.
+4. Include relevant tests and documentation for your changes.
+5. Verify that your changes do not introduce any security vulnerabilities.
+
+## After Opening a Pull Request
+
+1. Respond to any feedback or comments from reviewers in a timely manner.
+2. Make any necessary changes to address reviewer feedback.
+3. Verify that your changes do not introduce any security vulnerabilities.
+4. Merge the pull request once all changes have been reviewed and approved.

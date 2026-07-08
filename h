@@ -1,0 +1,1 @@
+git commit -m "Add security checklist to CONTRIBUTING.md"
