@@ -14,6 +14,7 @@
     "setup:usdc": "node src/setup-usdc.js",
     "test": "node src/agents/settlement-header.test.js && node tests/orchestrator.budget.test.js && node tests/premium-endpoints.integration.test.js",
     "test:validation": "node tests/api.validation.test.js",
+    "smoke": "node tests/smoke.test.js",
     "lint": "eslint . --ext .js,.mjs,.cjs",
     "lint:fix": "eslint . --ext .js,.mjs,.cjs --fix",
     "format": "prettier --write \"**/*.{js,md,html,yaml,yml}\"",
