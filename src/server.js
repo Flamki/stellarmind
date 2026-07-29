@@ -19,6 +19,11 @@ import { orchestrate } from './agents/orchestrator.js'
 import { getBalance, getTransactions } from './stellar/wallet.js'
 import { requestId, requestLogger, errorHandler } from './middleware/errorHandler.js'
 import { apikeyLimiter } from './middleware/rateLimiter.js'
+import {
+  validatePremiumQuery,
+  validateOrchestrate,
+  validateWalletTransactions,
+} from './requestValidation.js'
 import { logger } from './logger.js'
 import { adminAuth } from './middleware/auth.js'
 import { registerPremiumRoutes } from './routes/premium-routes.js'
