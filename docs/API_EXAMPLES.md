@@ -201,9 +201,9 @@ curl -s http://localhost:3001/api/status | jq
     "flow": "402 → wrapFetchWithPayment signs USDC tx → retry with X-PAYMENT → facilitator settles on-chain → 200"
   },
   "wallets": {
-    "server": "GABCDEF1...",
-    "orchestrator": "GHIJKL2...",
-    "buyer": "GMNOPQ3..."
+    "server": "$SERVER_STELLAR_PUBLIC_KEY",
+    "orchestrator": "$ORCHESTRATOR_STELLAR_PUBLIC_KEY",
+    "buyer": "$BUYER_STELLAR_PUBLIC_KEY"
   },
   "claudeEnabled": true,
   "runHistory": {
@@ -231,7 +231,7 @@ curl -N http://localhost:3001/api/events
 
 **Stream output (each line is a separate event):**
 
-```
+```text
 data: {"type":"connected","timestamp":"2026-07-30T12:00:00.000Z"}
 
 data: {"type":"agent_call","agent":"🔬 Research Agent","agentId":"research-bot","input":"What is the future of AI payments?","cost":"0.01","timestamp":"2026-07-30T12:00:01.000Z"}
@@ -468,25 +468,55 @@ curl -s "http://localhost:3001/api/code?prompt=Write+a+Stellar+payment+function+
 
 ## Premium Agent Endpoints (x402-protected)
 
-Premium endpoints are protected by the x402 payment middleware. A client must first receive a
-`402 Payment Required` challenge, then retry with a signed USDC payment in the `X-PAYMENT` header.
-The examples below show the happy-path response after successful payment.
+Premium endpoints are protected by the x402 payment middleware. Each endpoint requires a
+two-step flow:
+1. **Initial challenge probe** — A plain HTTP request returns `402 Payment Required` with a
+   payment challenge in the response headers.
+2. **Client-side retry** — The client signs the challenge and retries with the `X-PAYMENT`
+   header. The server settles the payment via the facilitator and returns `200 OK`.
+
+The examples below demonstrate both steps for each premium endpoint.
 
 ### `GET /api/premium/research`
 
 Premium research with x402 payment enforcement. Cost: **$0.01 USDC**.
 
-**Request:**
+**Step 1 — Initial challenge probe (returns `402 Payment Required`):**
 
 ```bash
 curl -s "http://localhost:3001/api/premium/research?topic=x402+protocol+scalability" | jq
 ```
 
-> **x402 flow:** The first request returns `402` with a payment challenge. The x402 client library
-> signs the challenge, attaches the `X-PAYMENT` header, and retries. The response below is returned
-> on successful settlement.
+This plain curl request hits the x402 middleware and returns a `402` status with a payment
+challenge payload in the `X-Payment` response header.
 
-**Response `200 OK` (after x402 payment):**
+**Step 2 — Client-side retry with `X-PAYMENT` (returns `200 OK`):**
+
+Save the following as `premium-client.js` and run it with `node premium-client.js`:
+
+```javascript
+import { ExactStellarScheme, createEd25519Signer } from '@x402/stellar';
+import { x402Client, wrapFetchWithPayment } from '@x402/fetch';
+
+const STELLAR_SECRET_KEY = process.env.STELLAR_SECRET_KEY;
+const NETWORK = 'stellar:testnet';
+const URL = 'http://localhost:3001/api/premium/research?topic=x402+protocol+scalability';
+
+const signer = createEd25519Signer(STELLAR_SECRET_KEY, NETWORK);
+const scheme = new ExactStellarScheme(signer);
+const client = new x402Client().register('stellar:*', scheme);
+const paidFetch = wrapFetchWithPayment(fetch, client);
+
+const response = await paidFetch(URL);
+const data = await response.json();
+console.log(JSON.stringify(data, null, 2));
+```
+
+> **How it works:** The `wrapFetchWithPayment` wrapper detects the `402` response, extracts the
+> payment challenge, signs a USDC transfer authorization with your secret key, attaches it as
+> the `X-PAYMENT` header, and retries. On settlement, the server returns `200 OK`.
+
+**Response `200 OK` (after successful x402 payment):**
 
 ```json
 {
@@ -503,13 +533,18 @@ curl -s "http://localhost:3001/api/premium/research?topic=x402+protocol+scalabil
 
 Premium summarization with x402 payment enforcement. Cost: **$0.01 USDC**.
 
-**Request:**
+**Step 1 — Initial challenge probe (returns `402 Payment Required`):**
 
 ```bash
 curl -s "http://localhost:3001/api/premium/summarize?text=Autonomous+AI+agents+require+programmable+payment+infrastructure+to+operate+at+scale" | jq
 ```
 
-**Response `200 OK` (after x402 payment):**
+**Step 2 — Client-side retry with `X-PAYMENT` (returns `200 OK`):**
+
+Use the same `wrapFetchWithPayment` approach shown above, replacing the URL with the premium
+summarize endpoint. See the [research example](#get-apipremiumresearch) for the full client code.
+
+**Response `200 OK` (after successful x402 payment):**
 
 ```json
 {
@@ -525,13 +560,18 @@ curl -s "http://localhost:3001/api/premium/summarize?text=Autonomous+AI+agents+r
 
 Premium strategic analysis. Cost: **$0.05 USDC**.
 
-**Request:**
+**Step 1 — Initial challenge probe (returns `402 Payment Required`):**
 
 ```bash
 curl -s "http://localhost:3001/api/premium/analyze?topic=Tokenized+agent+marketplaces" | jq
 ```
 
-**Response `200 OK` (after x402 payment):**
+**Step 2 — Client-side retry with `X-PAYMENT` (returns `200 OK`):**
+
+Use the same `wrapFetchWithPayment` approach shown above, replacing the URL with the premium
+analyze endpoint. See the [research example](#get-apipremiumresearch) for the full client code.
+
+**Response `200 OK` (after successful x402 payment):**
 
 ```json
 {
@@ -548,13 +588,18 @@ curl -s "http://localhost:3001/api/premium/analyze?topic=Tokenized+agent+marketp
 
 Premium code generation with x402 payment enforcement. Cost: **$0.03 USDC**.
 
-**Request:**
+**Step 1 — Initial challenge probe (returns `402 Payment Required`):**
 
 ```bash
 curl -s "http://localhost:3001/api/premium/code?prompt=Create+an+x402+payment+wrapper+for+fetch" | jq
 ```
 
-**Response `200 OK` (after x402 payment):**
+**Step 2 — Client-side retry with `X-PAYMENT` (returns `200 OK`):**
+
+Use the same `wrapFetchWithPayment` approach shown above, replacing the URL with the premium
+code endpoint. See the [research example](#get-apipremiumresearch) for the full client code.
+
+**Response `200 OK` (after successful x402 payment):**
 
 ````json
 {
@@ -755,12 +800,17 @@ Retrieve USDC and XLM balances for configured wallets.
 curl -s http://localhost:3001/api/wallet/balances | jq
 ```
 
+> **Note:** The addresses below are placeholders. Replace each `$WALLET_PUBLIC_KEY` with a real
+> Stellar testnet address funded via [Stellar Lab's Friendbot](https://lab.stellar.org/account/fund).
+> The USDC issuer for Stellar testnet is
+> `GBBD47IF6LWK7P7MDEVSCWR7DPUWV3NY3DTQEVFL4NAT4AQH3ZLLFLA5` (per the [x402 Quickstart Guide](https://developers.stellar.org/docs/build/agentic-payments/x402/quickstart-guide)).
+
 **Response `200 OK`:**
 
 ```json
 {
   "server": {
-    "address": "GABCDEF1234567890ABCDEF1234567890ABCDEF1234567890ABCDEF123456789",
+    "address": "$SERVER_STELLAR_PUBLIC_KEY",
     "balances": [
       {
         "asset": "XLM",
@@ -770,12 +820,12 @@ curl -s http://localhost:3001/api/wallet/balances | jq
       {
         "asset": "USDC",
         "balance": "100.0000000",
-        "issuer": "GBBD47IF6W3V3N6ZEYJ4THM6UJ7PZ3Q2QH7Y5Q6O4R2JQ7Q7Q7Q7Q7Q7"
+        "issuer": "GBBD47IF6LWK7P7MDEVSCWR7DPUWV3NY3DTQEVFL4NAT4AQH3ZLLFLA5"
       }
     ]
   },
   "orchestrator": {
-    "address": "GHIJKL1234567890GHIJKL1234567890GHIJKL1234567890GHIJKL123456789",
+    "address": "$ORCHESTRATOR_STELLAR_PUBLIC_KEY",
     "balances": [
       {
         "asset": "XLM",
@@ -785,12 +835,12 @@ curl -s http://localhost:3001/api/wallet/balances | jq
       {
         "asset": "USDC",
         "balance": "50.0000000",
-        "issuer": "GBBD47IF6W3V3N6ZEYJ4THM6UJ7PZ3Q2QH7Y5Q6O4R2JQ7Q7Q7Q7Q7Q7"
+        "issuer": "GBBD47IF6LWK7P7MDEVSCWR7DPUWV3NY3DTQEVFL4NAT4AQH3ZLLFLA5"
       }
     ]
   },
   "buyer": {
-    "address": "GMNOPQ1234567890GMNOPQ1234567890GMNOPQ1234567890GMNOPQ123456789",
+    "address": "$BUYER_STELLAR_PUBLIC_KEY",
     "balances": [
       {
         "asset": "XLM",
@@ -800,7 +850,7 @@ curl -s http://localhost:3001/api/wallet/balances | jq
       {
         "asset": "USDC",
         "balance": "200.0000000",
-        "issuer": "GBBD47IF6W3V3N6ZEYJ4THM6UJ7PZ3Q2QH7Y5Q6O4R2JQ7Q7Q7Q7Q7Q7"
+        "issuer": "GBBD47IF6LWK7P7MDEVSCWR7DPUWV3NY3DTQEVFL4NAT4AQH3ZLLFLA5"
       }
     ]
   }
@@ -825,7 +875,7 @@ Fetch recent transactions for a wallet address with pagination support.
 **Request:**
 
 ```bash
-curl -s "http://localhost:3001/api/wallet/transactions?address=GABCDEF1234567890ABCDEF1234567890ABCDEF1234567890ABCDEF123456789&limit=2&order=desc" | jq
+curl -s "http://localhost:3001/api/wallet/transactions?address=\$STELLAR_PUBLIC_KEY&limit=2&order=desc" | jq
 ```
 
 **Response `200 OK`:**
@@ -850,8 +900,8 @@ curl -s "http://localhost:3001/api/wallet/transactions?address=GABCDEF1234567890
         "type": "payment",
         "amount": "0.0100000",
         "asset_code": "XLM",
-        "from": "GHIJKL1234567890...",
-        "to": "GABCDEF1234567890..."
+        "from": "$SENDER_STELLAR_PUBLIC_KEY",
+        "to": "$RECIPIENT_STELLAR_PUBLIC_KEY"
       }
     ],
     "explorerUrl": "https://stellar.expert/explorer/testnet/tx/abc123def4567890abc123def4567890abc123def4567890abc123def4567890"
