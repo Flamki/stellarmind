@@ -178,6 +178,10 @@ Live agent calls require a configured `ANTHROPIC_API_KEY` and funded testnet wal
 curl -s http://localhost:3001/api/wallet/balances
 ```
 
+> For full request/response examples of **every** endpoint — including premium (x402-protected)
+> endpoints, agent registry, wallet transactions, run history, event stream, and the orchestrator —
+> see [docs/API_EXAMPLES.md](docs/API_EXAMPLES.md).
+
 ## Deployment Notes
 
 The orchestrator uses `INTERNAL_BASE_URL` for its paid internal calls to `/api/premium/*`.
@@ -332,8 +336,6 @@ public/
       pages.js                 # Page loading
       init.js                  # App startup
 ```
-
-
 
 ### Frontend Architecture
 
