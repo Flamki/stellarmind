@@ -201,9 +201,9 @@ curl -s http://localhost:3001/api/status | jq
     "flow": "402 → wrapFetchWithPayment signs USDC tx → retry with X-PAYMENT → facilitator settles on-chain → 200"
   },
   "wallets": {
-    "server": "$SERVER_STELLAR_PUBLIC_KEY",
-    "orchestrator": "$ORCHESTRATOR_STELLAR_PUBLIC_KEY",
-    "buyer": "$BUYER_STELLAR_PUBLIC_KEY"
+    "server": "GABCDEF1...",
+    "orchestrator": "G2345678...",
+    "buyer": "GA987654..."
   },
   "claudeEnabled": true,
   "runHistory": {
@@ -213,6 +213,9 @@ curl -s http://localhost:3001/api/status | jq
   }
 }
 ```
+
+> **Note:** Wallet addresses in `/api/status` are redacted. Configured wallets are masked to their
+> first eight characters followed by `...`; unconfigured wallets report `"not configured"`.
 
 ---
 
@@ -484,7 +487,21 @@ Premium research with x402 payment enforcement. Cost: **$0.01 USDC**.
 **Step 1 — Initial challenge probe (returns `402 Payment Required`):**
 
 ```bash
-curl -s "http://localhost:3001/api/premium/research?topic=x402+protocol+scalability" | jq
+# Print the response headers — note the `402 Payment Required` status and the
+# base64url-encoded payment challenge in the `X-Payment` header:
+curl -sS -D - -o /dev/null "http://localhost:3001/api/premium/research?topic=x402+protocol+scalability"
+
+# Or inspect the JSON error body (same request, piped to jq):
+curl -sS "http://localhost:3001/api/premium/research?topic=x402+protocol+scalability" | jq
+```
+
+**Probe output (headers only):**
+
+```text
+HTTP/1.1 402 Payment Required
+X-Payment: <base64url-encoded payment challenge>
+content-type: application/json
+x-correlation-id: 5f9c1e2a-8b3d-4c5e-9f01-234567890abc
 ```
 
 This plain curl request hits the x402 middleware and returns a `402` status with a payment
@@ -495,7 +512,8 @@ challenge payload in the `X-Payment` response header.
 Save the following as `premium-client.js` and run it with `node premium-client.js`:
 
 ```javascript
-import { ExactStellarScheme, createEd25519Signer } from '@x402/stellar';
+import { createEd25519Signer } from '@x402/stellar';
+import { ExactStellarScheme } from '@x402/stellar/exact/client';
 import { x402Client, wrapFetchWithPayment } from '@x402/fetch';
 
 const STELLAR_SECRET_KEY = process.env.STELLAR_SECRET_KEY;
@@ -605,7 +623,7 @@ code endpoint. See the [research example](#get-apipremiumresearch) for the full 
 {
   "agent": "code-bot",
   "prompt": "Create an x402 payment wrapper for fetch",
-  "result": "[Code Agent — Powered by Claude Haiku]\n\n```javascript\nimport { ExactStellarScheme, createEd25519Signer } from '@x402/stellar';\nimport { x402Client, x402HTTPClient, wrapFetchWithPayment } from '@x402/fetch';\n\nexport function createPaidFetch(secretKey, network) {\n  const signer = createEd25519Signer(secretKey, network);\n  const scheme = new ExactStellarScheme(signer);\n  const client = x402Client.fromConfig({\n    schemes: [{ network, client: scheme }],\n  });\n  const httpClient = new x402HTTPClient(client);\n  return wrapFetchWithPayment(fetch, httpClient);\n}\n```",
+  "result": "[Code Agent — Powered by Claude Haiku]\n\n```javascript\nimport { createEd25519Signer } from '@x402/stellar';\nimport { ExactStellarScheme } from '@x402/stellar/exact/client';\nimport { x402Client, wrapFetchWithPayment } from '@x402/fetch';\n\nexport function createPaidFetch(secretKey, network) {\n  const signer = createEd25519Signer(secretKey, network);\n  const scheme = new ExactStellarScheme(signer);\n  const client = new x402Client().register(network, scheme);\n  return wrapFetchWithPayment(fetch, client);\n}\n```",
   "model": "claude-haiku-4-5-20251001",
   "cost": "0.03 USDC",
   "paidVia": "x402"
@@ -800,8 +818,9 @@ Retrieve USDC and XLM balances for configured wallets.
 curl -s http://localhost:3001/api/wallet/balances | jq
 ```
 
-> **Note:** The addresses below are placeholders. Replace each `$WALLET_PUBLIC_KEY` with a real
-> Stellar testnet address funded via [Stellar Lab's Friendbot](https://lab.stellar.org/account/fund).
+> **Note:** The addresses below are placeholders. Replace each `$SERVER_STELLAR_PUBLIC_KEY`,
+> `$ORCHESTRATOR_STELLAR_PUBLIC_KEY`, and `$BUYER_STELLAR_PUBLIC_KEY` with a real Stellar
+> testnet address funded via [Stellar Lab's Friendbot](https://lab.stellar.org/account/fund).
 > The USDC issuer for Stellar testnet is
 > `GBBD47IF6LWK7P7MDEVSCWR7DPUWV3NY3DTQEVFL4NAT4AQH3ZLLFLA5` (per the [x402 Quickstart Guide](https://developers.stellar.org/docs/build/agentic-payments/x402/quickstart-guide)).
 
@@ -875,7 +894,7 @@ Fetch recent transactions for a wallet address with pagination support.
 **Request:**
 
 ```bash
-curl -s "http://localhost:3001/api/wallet/transactions?address=\$STELLAR_PUBLIC_KEY&limit=2&order=desc" | jq
+curl -s "http://localhost:3001/api/wallet/transactions?address=${STELLAR_PUBLIC_KEY}&limit=2&order=desc" | jq
 ```
 
 **Response `200 OK`:**
