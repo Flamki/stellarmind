@@ -17,6 +17,8 @@
     "smoke": "node tests/smoke.test.js",
     "lint": "eslint . --ext .js,.mjs,.cjs",
     "lint:fix": "eslint . --ext .js,.mjs,.cjs --fix",
+    "lint:md": "markdownlint-cli2",
+    "lint:md:fix": "markdownlint-cli2 --fix",
     "format": "prettier --write \"**/*.{js,md,html,yaml,yml}\"",
     "format:check": "prettier --check \"**/*.{js,md,html,yaml,yml}\"",
     "test:parser": "node src/agents/settlement-header.test.js",
@@ -56,6 +58,7 @@
     "globals": "^17.6.0",
     "husky": "^9.1.7",
     "lint-staged": "^16.4.0",
+    "markdownlint-cli2": "^0.23.2",
     "prettier": "^3.8.3"
   },
   "lint-staged": {
@@ -63,8 +66,12 @@
       "eslint --fix --max-warnings=0",
       "prettier --write"
     ],
-    "*.{json,md,yml,yaml}": [
+    "*.{json,yml,yaml}": [
       "prettier --write"
+    ],
+    "*.md": [
+      "prettier --write",
+      "markdownlint-cli2 --fix"
     ]
   }
 }

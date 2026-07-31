@@ -19,7 +19,7 @@ validation system catches them.
 
 ### Error Output
 
-```
+```text
 ❌ FATAL: Pricing configuration validation failed
 ❌ Pricing configuration validation failed:
 
@@ -56,7 +56,7 @@ Errors:
 
 ### Error Output
 
-```
+```text
 ❌ FATAL: Pricing configuration validation failed
 ❌ Pricing configuration validation failed:
 
@@ -93,7 +93,7 @@ Errors:
 
 ### Error Output
 
-```
+```text
 ❌ FATAL: Pricing configuration validation failed
 ❌ Pricing configuration validation failed:
 
@@ -130,7 +130,7 @@ Errors:
 
 ### Error Output
 
-```
+```text
 ❌ FATAL: Pricing configuration validation failed
 ❌ Pricing configuration validation failed:
 
@@ -167,7 +167,7 @@ Errors:
 
 ### Error Output
 
-```
+```text
 ❌ FATAL: Pricing configuration validation failed
 ❌ Pricing configuration validation failed:
 
@@ -204,7 +204,7 @@ Errors:
 
 ### Error Output
 
-```
+```text
 ❌ FATAL: Pricing configuration validation failed
 ❌ Pricing configuration validation failed:
 
@@ -241,7 +241,7 @@ Errors:
 
 ### Error Output
 
-```
+```text
 ❌ FATAL: Pricing configuration validation failed
 ❌ Pricing configuration validation failed:
 
@@ -288,7 +288,7 @@ export const pricingConfig = {
 
 ### Error Output
 
-```
+```text
 ❌ FATAL: Pricing configuration validation failed
 ❌ Pricing configuration validation failed:
 
@@ -335,7 +335,7 @@ export const pricingConfig = {
 
 ### Error Output
 
-```
+```text
 ❌ FATAL: Pricing configuration validation failed
 ❌ Pricing configuration validation failed:
 
@@ -369,7 +369,7 @@ export const pricingConfig = {
 
 ### Error Output
 
-```
+```text
 ❌ FATAL: Pricing configuration validation failed
 ❌ Pricing configuration validation failed:
 
@@ -408,7 +408,7 @@ const pricingValidation = validateAll(pricingConfig, {
 
 ### Error Output
 
-```
+```text
 ❌ FATAL: Pricing configuration validation failed
 ❌ Pricing configuration validation failed:
 
@@ -443,7 +443,7 @@ const pricingValidation = validateAll(pricingConfig, {
 
 ### Error Output
 
-```
+```text
 ❌ FATAL: Pricing configuration validation failed
 ❌ Pricing configuration validation failed:
 
@@ -479,7 +479,7 @@ const pricingValidation = validateAll(pricingConfig, {
 
 ### Error Output
 
-```
+```text
 ❌ FATAL: Pricing configuration validation failed
 ❌ Pricing configuration validation failed:
 
@@ -516,7 +516,7 @@ Errors:
 
 ### Error Output
 
-```
+```text
 ❌ FATAL: Pricing configuration validation failed
 ❌ Pricing configuration validation failed:
 
@@ -558,7 +558,7 @@ export const pricingConfig = {
 
 ### Error Output
 
-```
+```text
 ❌ FATAL: Pricing configuration validation failed
 ❌ Pricing configuration validation failed:
 

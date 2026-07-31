@@ -5,11 +5,11 @@
 
 async function loadAgents() {
   try {
-    const agents = await (await fetch('/api/agents')).json();
-    document.getElementById('nav-cnt').textContent = agents.length;
+    const agents = await (await fetch('/api/agents')).json()
+    document.getElementById('nav-cnt').textContent = agents.length
     document.getElementById('sb-agents').innerHTML = agents
       .map(
-        a => `
+        (a) => `
       <div class="sb-agent" id="agent-${a.id}">
         <span class="dot-on"></span>
         <div class="sb-agent-info">
@@ -19,16 +19,16 @@ async function loadAgents() {
       </div>
     `
       )
-      .join('');
+      .join('')
   } catch {}
 }
 
 async function loadAgentPage() {
   try {
-    const agents = await (await fetch('/api/agents')).json();
+    const agents = await (await fetch('/api/agents')).json()
     document.getElementById('agent-cards').innerHTML = agents
       .map(
-        a => `
+        (a) => `
       <div class="ac">
         <div class="ac-head">
           <div class="ac-name">${a.name}</div>
@@ -43,14 +43,14 @@ async function loadAgentPage() {
       </div>
     `
       )
-      .join('');
+      .join('')
   } catch {}
 }
 
 function highlightAgent(id) {
-  const c = document.getElementById(`agent-${id}`);
+  const c = document.getElementById(`agent-${id}`)
   if (c) {
-    c.querySelector('.dot-on')?.classList.add('pulse');
-    setTimeout(() => c.querySelector('.dot-on')?.classList.remove('pulse'), 3000);
+    c.querySelector('.dot-on')?.classList.add('pulse')
+    setTimeout(() => c.querySelector('.dot-on')?.classList.remove('pulse'), 3000)
   }
 }

@@ -117,7 +117,7 @@ This single change automatically updates:
 },
 ```
 
-2. Add endpoint handler in `src/server.js`:
+1. Add endpoint handler in `src/server.js`:
 
 ```javascript
 app.get('/api/premium/translate', async (req, res) => {
@@ -199,7 +199,7 @@ node tests/pricing.validator.test.js
 
 **Output:**
 
-```
+```text
 ✅ Price validation tests passed
 ✅ Endpoint validation tests passed
 ✅ Endpoint info validation tests passed
@@ -222,7 +222,7 @@ node tests/pricing.integration.test.js
 
 **Output:**
 
-```
+```text
 ✅ Pricing config structure tests passed
 ✅ Pricing consistency tests passed
 ✅ Pricing maps tests passed
@@ -307,7 +307,7 @@ Agent names must be alphanumeric with hyphens.
 
 If pricing configuration is invalid, the server will fail to start with a clear error message:
 
-```
+```text
 ❌ FATAL: Pricing configuration validation failed
 ❌ Pricing configuration validation failed:
 

@@ -34,14 +34,6 @@ function assertEqual(actual, expected, message) {
   }
 }
 
-function assertDeepEqual(actual, expected, message) {
-  if (JSON.stringify(actual) !== JSON.stringify(expected)) {
-    throw new Error(
-      `Assertion failed: ${message}\nExpected: ${JSON.stringify(expected)}\nActual: ${JSON.stringify(actual)}`
-    )
-  }
-}
-
 function assertArrayIncludes(array, item, message) {
   if (!array.includes(item)) {
     throw new Error(`Assertion failed: ${message}\nArray does not include: ${item}`)
@@ -355,7 +347,7 @@ result = validateAll(config, appConfig)
 try {
   throwIfInvalid(result)
   // Should not throw
-} catch (err) {
+} catch {
   throw new Error('Should not throw for valid config')
 }
 

@@ -1,20 +1,18 @@
 # StellarMind Architecture
 
-This document gives a standalone, at-a-glance view of how StellarMind is put
-together: the runtime components, and the three flows that matter most —
-**request**, **payment**, and **orchestration**.
+This document gives a standalone, at-a-glance view of how StellarMind is put together: the runtime
+components, and the three flows that matter most — **request**, **payment**, and **orchestration**.
 
-It complements the high-level summary in the [README](../README.md) and the
-design rationale in [CONTRIBUTING.md](../CONTRIBUTING.md), and reflects the
-current implementation under [`src/`](../src).
+It complements the high-level summary in the [README](../README.md) and the design rationale in
+[CONTRIBUTING.md](../CONTRIBUTING.md), and reflects the current implementation under
+[`src/`](../src).
 
 ## At a Glance
 
-StellarMind is a single Express service that exposes a marketplace of
-Claude-powered AI agents. Premium agent endpoints are protected by the
-[`x402`](https://www.x402.org) payment protocol, an orchestrator decomposes
-tasks and hires agents under a spending budget, and every paid step settles as a
-real, verifiable transaction on the Stellar testnet.
+StellarMind is a single Express service that exposes a marketplace of Claude-powered AI agents.
+Premium agent endpoints are protected by the [`x402`](https://www.x402.org) payment protocol, an
+orchestrator decomposes tasks and hires agents under a spending budget, and every paid step settles
+as a real, verifiable transaction on the Stellar testnet.
 
 ```text
                          ┌──────────────────────────────────────┐
@@ -61,25 +59,24 @@ real, verifiable transaction on the Stellar testnet.
 
 ### Components
 
-| Component | File | Responsibility |
-| --- | --- | --- |
-| HTTP server | [`src/server.js`](../src/server.js) | Routes, SSE hub, health checks, mounts the x402 paywall |
-| Config | [`src/config.js`](../src/config.js) | Env-driven config (network, wallets, Anthropic, rate limits) |
-| Pricing config | [`src/pricing.config.js`](../src/pricing.config.js) | Single source of truth for premium prices; generates x402 config |
-| Pricing validator | [`src/pricing.validator.js`](../src/pricing.validator.js) | Fails startup fast on invalid pricing |
-| Agent registry | [`src/agents/registry.js`](../src/agents/registry.js) | Catalog of the 4 priced agents + discovery helpers |
-| Agent services | [`src/agents/services.js`](../src/agents/services.js) | Claude calls with timeout/retry, model fallback, demo fallbacks |
-| Orchestrator | [`src/agents/orchestrator.js`](../src/agents/orchestrator.js) | Task planning, budget enforcement, paid agent calls |
-| Settlement header | [`src/agents/settlement-header.js`](../src/agents/settlement-header.js) | Decodes the x402 settlement header → transaction hash |
-| Stellar wallet | [`src/stellar/wallet.js`](../src/stellar/wallet.js) | Horizon testnet balances, payments, transaction history |
-| Middleware | [`src/middleware/`](../src/middleware) | `requestId`, centralized `errorHandler`, rate limiters |
-| Dashboard | [`public/index.html`](../public/index.html) | Browser UI; calls the API and subscribes to the SSE stream |
+| Component         | File                                                                    | Responsibility                                                   |
+| ----------------- | ----------------------------------------------------------------------- | ---------------------------------------------------------------- |
+| HTTP server       | [`src/server.js`](../src/server.js)                                     | Routes, SSE hub, health checks, mounts the x402 paywall          |
+| Config            | [`src/config.js`](../src/config.js)                                     | Env-driven config (network, wallets, Anthropic, rate limits)     |
+| Pricing config    | [`src/pricing.config.js`](../src/pricing.config.js)                     | Single source of truth for premium prices; generates x402 config |
+| Pricing validator | [`src/pricing.validator.js`](../src/pricing.validator.js)               | Fails startup fast on invalid pricing                            |
+| Agent registry    | [`src/agents/registry.js`](../src/agents/registry.js)                   | Catalog of the 4 priced agents + discovery helpers               |
+| Agent services    | [`src/agents/services.js`](../src/agents/services.js)                   | Claude calls with timeout/retry, model fallback, demo fallbacks  |
+| Orchestrator      | [`src/agents/orchestrator.js`](../src/agents/orchestrator.js)           | Task planning, budget enforcement, paid agent calls              |
+| Settlement header | [`src/agents/settlement-header.js`](../src/agents/settlement-header.js) | Decodes the x402 settlement header → transaction hash            |
+| Stellar wallet    | [`src/stellar/wallet.js`](../src/stellar/wallet.js)                     | Horizon testnet balances, payments, transaction history          |
+| Middleware        | [`src/middleware/`](../src/middleware)                                  | `requestId`, centralized `errorHandler`, rate limiters           |
+| Dashboard         | [`public/index.html`](../public/index.html)                             | Browser UI; calls the API and subscribes to the SSE stream       |
 
 ## Request Flow
 
-The lifecycle of any HTTP request through the server. Every request gets a
-`requestId`, and all errors are normalized by a single error handler into a
-`{ code, message, requestId }` envelope.
+The lifecycle of any HTTP request through the server. Every request gets a `requestId`, and all
+errors are normalized by a single error handler into a `{ code, message, requestId }` envelope.
 
 ```text
 Browser / Client                       Express app (src/server.js)
@@ -106,20 +103,19 @@ Browser / Client                       Express app (src/server.js)
 
 Notes:
 
-- The x402 paywall middleware only guards `/api/premium/*`; all other routes are
-  free. If `SERVER_STELLAR_ADDRESS` is unset, the paywall is disabled and premium
-  endpoints respond without payment (useful for local demos).
-- `/api/orchestrate` and `/api/config/apikey` sit behind in-memory fixed-window
-  rate limiters ([`rateLimiter.js`](../src/middleware/rateLimiter.js)).
-- `GET /api/events` is the SSE hub: the orchestrator and premium routes
-  `broadcast()` live events (`agent_call`, `agent_response`, `payment`, …) to
-  every connected dashboard.
+- The x402 paywall middleware only guards `/api/premium/*`; all other routes are free. If
+  `SERVER_STELLAR_ADDRESS` is unset, the paywall is disabled and premium endpoints respond without
+  payment (useful for local demos).
+- `/api/orchestrate` and `/api/config/apikey` sit behind in-memory fixed-window rate limiters
+  ([`rateLimiter.js`](../src/middleware/rateLimiter.js)).
+- `GET /api/events` is the SSE hub: the orchestrator and premium routes `broadcast()` live events
+  (`agent_call`, `agent_response`, `payment`, …) to every connected dashboard.
 
 ## Payment Flow
 
-How a paid premium call is settled with x402. This is the
-`402 → sign → settle → 200` path; if x402 is unavailable, the orchestrator falls
-back to a direct XLM transfer that is still a real on-chain transaction.
+How a paid premium call is settled with x402. This is the `402 → sign → settle → 200` path; if x402
+is unavailable, the orchestrator falls back to a direct XLM transfer that is still a real on-chain
+transaction.
 
 ```text
 Caller (orchestrator x402Fetch — @x402/fetch + ExactStellarScheme + Ed25519 signer)
@@ -155,19 +151,18 @@ Result: { result, paidVia: "x402", txHash, explorerUrl }
 
 Notes:
 
-- Prices live only in [`pricing.config.js`](../src/pricing.config.js). It is
-  validated at startup and generates both the x402 middleware config and the
-  `/api/status` output, so pricing never drifts between layers.
-- The orchestrator's x402 client requires `ORCHESTRATOR_STELLAR_SECRET` plus a
-  funded USDC trustline; readiness is checked at boot and surfaced via
-  `x402WalletReady` / `x402WalletHint`.
-- A 200 without a decodable settlement header is treated as an *unverified*
-  success (flagged via a `warning`), not a failure.
+- Prices live only in [`pricing.config.js`](../src/pricing.config.js). It is validated at startup
+  and generates both the x402 middleware config and the `/api/status` output, so pricing never
+  drifts between layers.
+- The orchestrator's x402 client requires `ORCHESTRATOR_STELLAR_SECRET` plus a funded USDC
+  trustline; readiness is checked at boot and surfaced via `x402WalletReady` / `x402WalletHint`.
+- A 200 without a decodable settlement header is treated as an _unverified_ success (flagged via a
+  `warning`), not a failure.
 
 ## Orchestration Flow
 
-How `POST /api/orchestrate { task, budget }` turns one task into a budget-bounded,
-multi-agent workflow. The default budget is `0.15` USDC.
+How `POST /api/orchestrate { task, budget }` turns one task into a budget-bounded, multi-agent
+workflow. The default budget is `0.15` USDC.
 
 ```text
 POST /api/orchestrate { task, budget }          (orchestrateLimiter → rate limit)
@@ -202,30 +197,29 @@ JSON response  +  orchestrator_complete (SSE)
 
 ### Agent Catalog
 
-The orchestrator hires from a fixed catalog defined in
-[`registry.js`](../src/agents/registry.js); prices are enforced by
-[`pricing.config.js`](../src/pricing.config.js).
+The orchestrator hires from a fixed catalog defined in [`registry.js`](../src/agents/registry.js);
+prices are enforced by [`pricing.config.js`](../src/pricing.config.js).
 
-| Agent | ID | Price (USDC) | Model |
-| --- | --- | --- | --- |
-| 🔬 Research | `research-bot` | 0.01 | Claude Haiku |
-| 📝 Summary | `summary-bot` | 0.01 | Claude Haiku |
-| 📊 Analysis | `analyst-bot` | 0.05 | Claude Sonnet (Haiku fallback) |
-| 💻 Code | `code-bot` | 0.03 | Claude Haiku |
+| Agent       | ID             | Price (USDC) | Model                          |
+| ----------- | -------------- | ------------ | ------------------------------ |
+| 🔬 Research | `research-bot` | 0.01         | Claude Haiku                   |
+| 📝 Summary  | `summary-bot`  | 0.01         | Claude Haiku                   |
+| 📊 Analysis | `analyst-bot`  | 0.05         | Claude Sonnet (Haiku fallback) |
+| 💻 Code     | `code-bot`     | 0.03         | Claude Haiku                   |
 
 ## Key Configuration
 
 Driven by environment variables (see [`.env.example`](../.env.example) and
 [`src/config.js`](../src/config.js)):
 
-| Variable | Purpose |
-| --- | --- |
-| `ANTHROPIC_API_KEY` | Enables live Claude calls; without it, demo fallbacks are used |
-| `SERVER_STELLAR_ADDRESS` / `_SECRET` | Receives payments; presence enables the x402 paywall |
-| `ORCHESTRATOR_STELLAR_ADDRESS` / `_SECRET` | Pays for agent calls (x402 + XLM fallback) |
-| `NETWORK` | Stellar network (default `stellar:testnet`) |
-| `FACILITATOR_URL` | x402 facilitator that verifies and settles payments |
-| `INTERNAL_BASE_URL` | Origin the orchestrator uses to reach `/api/premium/*` |
+| Variable                                   | Purpose                                                        |
+| ------------------------------------------ | -------------------------------------------------------------- |
+| `ANTHROPIC_API_KEY`                        | Enables live Claude calls; without it, demo fallbacks are used |
+| `SERVER_STELLAR_ADDRESS` / `_SECRET`       | Receives payments; presence enables the x402 paywall           |
+| `ORCHESTRATOR_STELLAR_ADDRESS` / `_SECRET` | Pays for agent calls (x402 + XLM fallback)                     |
+| `NETWORK`                                  | Stellar network (default `stellar:testnet`)                    |
+| `FACILITATOR_URL`                          | x402 facilitator that verifies and settles payments            |
+| `INTERNAL_BASE_URL`                        | Origin the orchestrator uses to reach `/api/premium/*`         |
 
 ## Related
 

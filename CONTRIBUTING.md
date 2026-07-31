@@ -7,7 +7,7 @@ for their work via the x402 payment protocol on Stellar.
 
 ### Payment Flow
 
-```
+```text
 User → Orchestrator (Claude plans tasks)
          ↓
     Orchestrator → GET /api/premium/{agent}
@@ -133,7 +133,7 @@ git remote add upstream https://github.com/Flamki/stellarmind.git
 
 Never work directly on `master`. Name your branch after your issue:
 
-```
+```text
 docs/issue-44-contributor-workflow
 fix/issue-12-short-description
 feat/issue-27-short-description

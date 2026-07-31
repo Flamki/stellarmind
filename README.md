@@ -150,19 +150,19 @@ simple: `npm run dev`.
 
 With the dev server running (`npm run dev`), copy-paste these local-first examples:
 
-**System status**
+**System status:**
 
 ```bash
 curl -s http://localhost:3001/api/status
 ```
 
-**Agent registry**
+**Agent registry:**
 
 ```bash
 curl -s http://localhost:3001/api/agents
 ```
 
-**Orchestrate a task**
+**Orchestrate a task:**
 
 ```bash
 curl -s -X POST http://localhost:3001/api/orchestrate \
@@ -172,11 +172,15 @@ curl -s -X POST http://localhost:3001/api/orchestrate \
 
 Live agent calls require a configured `ANTHROPIC_API_KEY` and funded testnet wallets.
 
-**Wallet balances**
+**Wallet balances:**
 
 ```bash
 curl -s http://localhost:3001/api/wallet/balances
 ```
+
+> For full request/response examples of **every** endpoint — including premium (x402-protected)
+> endpoints, agent registry, wallet transactions, run history, event stream, and the orchestrator —
+> see [docs/API_EXAMPLES.md](docs/API_EXAMPLES.md).
 
 ## Deployment Notes
 
@@ -332,8 +336,6 @@ public/
       pages.js                 # Page loading
       init.js                  # App startup
 ```
-
-
 
 ### Frontend Architecture
 

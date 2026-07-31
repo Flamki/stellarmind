@@ -363,7 +363,7 @@ const endpointsAt001 = pricingConfig.byPrice['$0.01']
 
 **Error at startup:**
 
-```
+```text
 ❌ FATAL: Pricing configuration validation failed
 ❌ Pricing configuration validation failed:
 
@@ -385,7 +385,7 @@ Errors:
 
 **Error at startup:**
 
-```
+```text
 ❌ FATAL: Pricing configuration validation failed
 ❌ Pricing configuration validation failed:
 
@@ -413,7 +413,7 @@ Errors:
 
 **Error at startup:**
 
-```
+```text
 ❌ FATAL: Pricing configuration validation failed
 ❌ Pricing configuration validation failed:
 
@@ -435,7 +435,7 @@ Errors:
 
 **Error at startup:**
 
-```
+```text
 ❌ FATAL: Pricing configuration validation failed
 ❌ Pricing configuration validation failed:
 
@@ -457,7 +457,7 @@ Errors:
 
 **Error at startup:**
 
-```
+```text
 ❌ FATAL: Pricing configuration validation failed
 ❌ Pricing configuration validation failed:
 
@@ -475,7 +475,7 @@ node tests/pricing.validator.test.js
 
 **Output:**
 
-```
+```text
 📋 Testing Price Validation...
 ✅ Price validation tests passed
 
@@ -513,7 +513,7 @@ node tests/pricing.integration.test.js
 
 **Output:**
 
-```
+```text
 📋 Testing Pricing Config Structure...
 ✅ Found 4 premium endpoints
 

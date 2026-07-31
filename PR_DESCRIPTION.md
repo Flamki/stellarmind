@@ -25,9 +25,9 @@ Docs-only change — no source or runtime behavior is affected. Related: #36
 
 ---
 
-# feat: add pre-commit hooks for linting and secret scanning
+## feat: add pre-commit hooks for linting and secret scanning
 
-## What changed
+### What changed
 
 - **Configured Husky & lint-staged:** Added a pre-commit framework to ensure code quality before
   pushing. `lint-staged` is configured to run the project's existing ESLint and Prettier setups
@@ -39,7 +39,7 @@ Docs-only change — no source or runtime behavior is affected. Related: #36
   detailing the hook behaviors, automatic setup via `npm install`, and instructions on how to bypass
   them (`--no-verify`) in emergencies.
 
-## How to verify
+### How to verify
 
 1. **Lint/Format test:**
    - Modify a tracked `.js` or `.md` file to contain a minor formatting issue.
@@ -53,7 +53,7 @@ Docs-only change — no source or runtime behavior is affected. Related: #36
    - Run `git commit --no-verify -m "test bypass"` to confirm the emergency bypass functionality
      works as documented.
 
-## Definition of Done
+### Definition of Done
 
 - [x] Hooks execute quickly (under 5 seconds)
 - [x] Only staged files are scanned
