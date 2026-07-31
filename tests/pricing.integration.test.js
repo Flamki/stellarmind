@@ -10,7 +10,7 @@
  */
 
 import { pricingConfig } from '../src/pricing.config.js'
-import { validateAll, throwIfInvalid } from '../src/pricing.validator.js'
+import { validateAll } from '../src/pricing.validator.js'
 
 // ─── Test Utilities ──────────────────────────────────────────
 function assert(condition, message) {

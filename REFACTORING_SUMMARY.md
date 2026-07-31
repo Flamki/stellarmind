@@ -212,7 +212,7 @@ const x402Config = pricingConfig.getX402Config({
 
 ### Unit Tests
 
-```
+```text
 ✅ Price validation tests passed
 ✅ Endpoint validation tests passed
 ✅ Endpoint info validation tests passed
@@ -225,7 +225,7 @@ const x402Config = pricingConfig.getX402Config({
 
 ### Integration Tests
 
-```
+```text
 ✅ Pricing config structure tests passed
 ✅ Pricing consistency tests passed
 ✅ Pricing maps tests passed
@@ -300,7 +300,7 @@ pricingConfig.getAllPricingInfo()
 
 ### Invalid Price Format
 
-```
+```text
 ❌ FATAL: Pricing configuration validation failed
 Errors:
   1. Invalid price for 'GET /api/premium/research': Price must be in format '$X.XX', got '0.01'
@@ -308,7 +308,7 @@ Errors:
 
 ### Duplicate Agent
 
-```
+```text
 ❌ FATAL: Pricing configuration validation failed
 Errors:
   1. Duplicate agent: 'research-bot' used in multiple endpoints
@@ -316,7 +316,7 @@ Errors:
 
 ### Missing Required Field
 
-```
+```text
 ❌ FATAL: Pricing configuration validation failed
 Errors:
   1. Missing 'agent' for endpoint 'GET /api/premium/research'

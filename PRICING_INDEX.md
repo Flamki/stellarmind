@@ -94,7 +94,7 @@ node tests/pricing.validator.test.js
 
 **Expected Output:**
 
-```
+```text
 ✅ All pricing validator tests passed!
 ```
 
@@ -123,7 +123,7 @@ node tests/pricing.integration.test.js
 
 **Expected Output:**
 
-```
+```text
 ✅ All pricing integration tests passed!
 
 Pricing Summary:
@@ -258,7 +258,7 @@ Pricing Summary:
 
 ## 🎯 Quick Navigation
 
-### I want to...
+### I want to
 
 #### Change a Price
 
@@ -340,7 +340,7 @@ Pricing Summary:
 
 ### Unit Tests
 
-```
+```text
 ✅ Price validation tests passed
 ✅ Endpoint validation tests passed
 ✅ Endpoint info validation tests passed
@@ -353,7 +353,7 @@ Pricing Summary:
 
 ### Integration Tests
 
-```
+```text
 ✅ Pricing config structure tests passed
 ✅ Pricing consistency tests passed
 ✅ Pricing maps tests passed
@@ -419,7 +419,7 @@ curl http://localhost:3001/api/status | jq '.x402.pricing'
 
 ## 📚 Documentation Map
 
-```
+```text
 PRICING_INDEX.md (You are here)
 ├── PRICING_QUICK_START.md (Start here for quick reference)
 ├── PRICING_REFACTOR.md (Detailed documentation)
@@ -489,7 +489,7 @@ npm start 2>&1 | grep -i pricing
 
 ## 📞 Support
 
-### For Questions About...
+### For Questions About
 
 | Topic                  | File                              |
 | ---------------------- | --------------------------------- |

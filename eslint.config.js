@@ -26,4 +26,17 @@ export default [
       'prettier/prettier': ['error', { endOfLine: 'lf' }],
     },
   },
+  {
+    // Vanilla browser scripts (loaded via <script> tags) share the global scope:
+    // functions defined in one file are called from others (e.g. init.js calls
+    // loadAgents/loadWallets/connectSSE). ESLint analyzes files in isolation, so
+    // suppress the unused-vars check for these non-module scripts.
+    files: ['public/assets/js/**/*.js'],
+    languageOptions: {
+      sourceType: 'script',
+    },
+    rules: {
+      'no-unused-vars': 'off',
+    },
+  },
 ]

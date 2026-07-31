@@ -19,11 +19,13 @@ We will acknowledge receipt and prioritize triage.
 
 ## Configuration Security
 
-Certain internal configuration routes (like `POST /api/config/apikey`) are protected by an `ADMIN_TOKEN`.
+Certain internal configuration routes (like `POST /api/config/apikey`) are protected by an
+`ADMIN_TOKEN`.
 
 - To secure these routes, set `ADMIN_TOKEN` in your `.env` file.
 - Authenticate requests by providing the `X-Admin-Token` header.
-- **Developer Bypass**: If `ADMIN_TOKEN` is not configured, the routes remain accessible without authentication (for local development ease only).
+- **Developer Bypass**: If `ADMIN_TOKEN` is not configured, the routes remain accessible without
+  authentication (for local development ease only).
 - In a shared or public environment, **always** configure an `ADMIN_TOKEN`.
 
 ## Secret Handling Rules

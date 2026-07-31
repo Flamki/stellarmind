@@ -471,12 +471,13 @@ curl -s "http://localhost:3001/api/code?prompt=Write+a+Stellar+payment+function+
 
 ## Premium Agent Endpoints (x402-protected)
 
-Premium endpoints are protected by the x402 payment middleware. Each endpoint requires a
-two-step flow:
-1. **Initial challenge probe** — A plain HTTP request returns `402 Payment Required` with a
-   payment challenge in the response headers.
-2. **Client-side retry** — The client signs the challenge and retries with the `X-PAYMENT`
-   header. The server settles the payment via the facilitator and returns `200 OK`.
+Premium endpoints are protected by the x402 payment middleware. Each endpoint requires a two-step
+flow:
+
+1. **Initial challenge probe** — A plain HTTP request returns `402 Payment Required` with a payment
+   challenge in the response headers.
+2. **Client-side retry** — The client signs the challenge and retries with the `X-PAYMENT` header.
+   The server settles the payment via the facilitator and returns `200 OK`.
 
 The examples below demonstrate both steps for each premium endpoint.
 
@@ -504,35 +505,35 @@ content-type: application/json
 x-correlation-id: 5f9c1e2a-8b3d-4c5e-9f01-234567890abc
 ```
 
-This plain curl request hits the x402 middleware and returns a `402` status with a payment
-challenge payload in the `X-Payment` response header.
+This plain curl request hits the x402 middleware and returns a `402` status with a payment challenge
+payload in the `X-Payment` response header.
 
 **Step 2 — Client-side retry with `X-PAYMENT` (returns `200 OK`):**
 
 Save the following as `premium-client.js` and run it with `node premium-client.js`:
 
 ```javascript
-import { createEd25519Signer } from '@x402/stellar';
-import { ExactStellarScheme } from '@x402/stellar/exact/client';
-import { x402Client, wrapFetchWithPayment } from '@x402/fetch';
+import { createEd25519Signer } from '@x402/stellar'
+import { ExactStellarScheme } from '@x402/stellar/exact/client'
+import { x402Client, wrapFetchWithPayment } from '@x402/fetch'
 
-const STELLAR_SECRET_KEY = process.env.STELLAR_SECRET_KEY;
-const NETWORK = 'stellar:testnet';
-const URL = 'http://localhost:3001/api/premium/research?topic=x402+protocol+scalability';
+const STELLAR_SECRET_KEY = process.env.STELLAR_SECRET_KEY
+const NETWORK = 'stellar:testnet'
+const URL = 'http://localhost:3001/api/premium/research?topic=x402+protocol+scalability'
 
-const signer = createEd25519Signer(STELLAR_SECRET_KEY, NETWORK);
-const scheme = new ExactStellarScheme(signer);
-const client = new x402Client().register('stellar:*', scheme);
-const paidFetch = wrapFetchWithPayment(fetch, client);
+const signer = createEd25519Signer(STELLAR_SECRET_KEY, NETWORK)
+const scheme = new ExactStellarScheme(signer)
+const client = new x402Client().register('stellar:*', scheme)
+const paidFetch = wrapFetchWithPayment(fetch, client)
 
-const response = await paidFetch(URL);
-const data = await response.json();
-console.log(JSON.stringify(data, null, 2));
+const response = await paidFetch(URL)
+const data = await response.json()
+console.log(JSON.stringify(data, null, 2))
 ```
 
 > **How it works:** The `wrapFetchWithPayment` wrapper detects the `402` response, extracts the
-> payment challenge, signs a USDC transfer authorization with your secret key, attaches it as
-> the `X-PAYMENT` header, and retries. On settlement, the server returns `200 OK`.
+> payment challenge, signs a USDC transfer authorization with your secret key, attaches it as the
+> `X-PAYMENT` header, and retries. On settlement, the server returns `200 OK`.
 
 **Response `200 OK` (after successful x402 payment):**
 
@@ -586,8 +587,8 @@ curl -s "http://localhost:3001/api/premium/analyze?topic=Tokenized+agent+marketp
 
 **Step 2 — Client-side retry with `X-PAYMENT` (returns `200 OK`):**
 
-Use the same `wrapFetchWithPayment` approach shown above, replacing the URL with the premium
-analyze endpoint. See the [research example](#get-apipremiumresearch) for the full client code.
+Use the same `wrapFetchWithPayment` approach shown above, replacing the URL with the premium analyze
+endpoint. See the [research example](#get-apipremiumresearch) for the full client code.
 
 **Response `200 OK` (after successful x402 payment):**
 
@@ -614,8 +615,8 @@ curl -s "http://localhost:3001/api/premium/code?prompt=Create+an+x402+payment+wr
 
 **Step 2 — Client-side retry with `X-PAYMENT` (returns `200 OK`):**
 
-Use the same `wrapFetchWithPayment` approach shown above, replacing the URL with the premium
-code endpoint. See the [research example](#get-apipremiumresearch) for the full client code.
+Use the same `wrapFetchWithPayment` approach shown above, replacing the URL with the premium code
+endpoint. See the [research example](#get-apipremiumresearch) for the full client code.
 
 **Response `200 OK` (after successful x402 payment):**
 
@@ -819,10 +820,10 @@ curl -s http://localhost:3001/api/wallet/balances | jq
 ```
 
 > **Note:** The addresses below are placeholders. Replace each `$SERVER_STELLAR_PUBLIC_KEY`,
-> `$ORCHESTRATOR_STELLAR_PUBLIC_KEY`, and `$BUYER_STELLAR_PUBLIC_KEY` with a real Stellar
-> testnet address funded via [Stellar Lab's Friendbot](https://lab.stellar.org/account/fund).
-> The USDC issuer for Stellar testnet is
-> `GBBD47IF6LWK7P7MDEVSCWR7DPUWV3NY3DTQEVFL4NAT4AQH3ZLLFLA5` (per the [x402 Quickstart Guide](https://developers.stellar.org/docs/build/agentic-payments/x402/quickstart-guide)).
+> `$ORCHESTRATOR_STELLAR_PUBLIC_KEY`, and `$BUYER_STELLAR_PUBLIC_KEY` with a real Stellar testnet
+> address funded via [Stellar Lab's Friendbot](https://lab.stellar.org/account/fund). The USDC
+> issuer for Stellar testnet is `GBBD47IF6LWK7P7MDEVSCWR7DPUWV3NY3DTQEVFL4NAT4AQH3ZLLFLA5` (per the
+> [x402 Quickstart Guide](https://developers.stellar.org/docs/build/agentic-payments/x402/quickstart-guide)).
 
 **Response `200 OK`:**
 

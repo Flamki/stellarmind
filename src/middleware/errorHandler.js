@@ -77,7 +77,7 @@ export function errorHandler(err, req, res, _next) {
   }
 
   if (Array.isArray(err.details) && err.details.length > 0) {
-    body.details = err.details;
+    body.details = err.details
   }
 
   // Expose stack only in development

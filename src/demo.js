@@ -7,7 +7,7 @@
 import { config } from './config.js'
 import { AGENTS } from './agents/registry.js'
 import { orchestrate } from './agents/orchestrator.js'
-import { getBalance, getTransactions } from './stellar/wallet.js'
+import { getBalance } from './stellar/wallet.js'
 
 async function main() {
   console.log(`

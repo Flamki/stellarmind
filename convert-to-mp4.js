@@ -32,8 +32,6 @@ try {
 
     if (chunkId === 'ANMF') {
       // ANMF chunk: 16 bytes header, then frame data
-      const frameX = webpData.readUInt16LE(offset + 8) * 2
-      const frameY = webpData.readUInt16LE(offset + 11) * 2
       const frameWidth = (webpData.readUInt16LE(offset + 14) & 0x3fff) + 1
       const frameHeight = (webpData.readUInt16LE(offset + 17) & 0x3fff) + 1
       const duration = webpData.readUInt16LE(offset + 20) | (webpData[offset + 22] << 16)
