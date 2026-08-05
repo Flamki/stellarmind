@@ -199,3 +199,16 @@ git commit --no-verify -m "your message"
 
 Use `--no-verify` sparingly. It disables **all** hooks. Document why you bypassed in the PR
 description so reviewers are aware.
+
+## Code Ownership
+
+This repository uses a [CODEOWNERS](.github/CODEOWNERS) file to automatically request reviews
+from the appropriate maintainers when pull requests are opened. The ownership is organized as follows:
+
+- **All files**: `@Flamki` — default owner for the entire repository
+- **Documentation** (`*.md`, `docs/`): `@Flamki`
+- **Source code** (`src/`, `public/`): `@Flamki`
+- **CI/CD and configuration** (`.github/`, `package.json`, `eslint.config.js`): `@Flamki`
+
+When you open a pull request, GitHub automatically assigns reviewers based on the paths you modified.
+This ensures PRs are reviewed by the maintainers most familiar with the affected code.

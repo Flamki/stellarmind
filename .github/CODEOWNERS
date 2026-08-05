@@ -1,0 +1,15 @@
+# Default owners for everything in the repo
+*       @Flamki
+
+# Documentation
+*.md    @Flamki
+docs/   @Flamki
+
+# Source code
+src/        @Flamki
+public/     @Flamki
+
+# CI/CD and configuration
+.github/        @Flamki
+package.json    @Flamki
+eslint.config.js @Flamki
