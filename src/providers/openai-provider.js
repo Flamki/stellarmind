@@ -8,7 +8,13 @@ export const capabilities = {
   analysis: { model: 'gpt-4o', fallback: 'gpt-4o-mini', label: 'GPT-4o' },
   code: { model: 'gpt-4o-mini', label: 'GPT-4o Mini' },
 }
-function notYet(mode) { return async () => { throw new Error(`OpenAI ${mode} not implemented. Use PROVIDER=anthropic.`) } }
+function notYet(mode) {
+  return async () => {
+    throw new Error(
+      `OpenAI ${mode} not implemented. Use PROVIDER=anthropic.`
+    )
+  }
+}
 export const research = notYet('research')
 export const summary = notYet('summary')
 export const analysis = notYet('analysis')
