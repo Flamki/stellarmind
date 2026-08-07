@@ -199,3 +199,56 @@ git commit --no-verify -m "your message"
 
 Use `--no-verify` sparingly. It disables **all** hooks. Document why you bypassed in the PR
 description so reviewers are aware.
+
+## Repository Map
+
+Quick reference for new contributors — "where things live":
+
+### Core Source (`src/`)
+
+| Path | Purpose |
+|------|---------|
+| `src/server.js` | Express server, premium endpoints, SSE stream |
+| `src/agents/orchestrator.js` | Claude-powered task planner and agent dispatcher |
+| `src/agents/registry.js` | Agent definitions and metadata |
+| `src/agents/services.js` | Agent service implementations |
+| `src/x402/` | x402 payment protocol integration (middleware, client) |
+| `src/stellar/` | Stellar SDK wrappers, key management, transaction helpers |
+| `src/db/` | SQLite persistence layer for events and state |
+
+### Frontend (`src/`)
+
+| Path | Purpose |
+|------|---------|
+| `src/pages/` | Next.js page routes (dashboard, history) |
+| `src/components/` | Reusable React components |
+| `src/hooks/` | Custom React hooks (SSE subscription, wallet state) |
+| `src/lib/` | Shared utilities, API client, types |
+
+### Configuration & Tooling
+
+| Path | Purpose |
+|------|---------|
+| `.env.example` | Required environment variables template |
+| `.nvmrc` | Pinned Node.js version (20.19.0) |
+| `vercel.json` | Vercel deployment configuration |
+| `package.json` | Dependencies and scripts |
+| `eslint.config.js` | Linting rules |
+
+### Documentation & Process
+
+| Path | Purpose |
+|------|---------|
+| `docs/architecture.md` | Deep architectural walkthrough |
+| `docs/API_EXAMPLES.md` | Premium endpoint usage examples |
+| `CONTRIBUTING.md` | This guide — how to contribute |
+| `SECURITY.md` | Vulnerability reporting and security policy |
+| `.github/pull_request_template.md` | PR description template |
+| `tests/` | Test suite and demo automation |
+
+### CI/CD (`.github/workflows/`)
+
+| Path | Purpose |
+|------|---------|
+| `ci.yml` | Main CI pipeline (lint, test, build) |
+| `vercel-deploy.yml` | Automated Vercel deployment on PR merge |
