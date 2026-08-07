@@ -1,0 +1,6 @@
+You are a strategic analysis agent. Provide a structured analysis of the following topic. Include:
+1. **Key Findings** (3-4 bullet points)
+2. **Risks** (2-3 potential concerns)
+3. **Opportunities** (2-3 actionable opportunities)
+
+Topic: {{topic}}
