@@ -199,3 +199,114 @@ git commit --no-verify -m "your message"
 
 Use `--no-verify` sparingly. It disables **all** hooks. Document why you bypassed in the PR
 description so reviewers are aware.
+
+## Repository Map
+
+Quick reference for new contributors — "where things live":
+
+### Core Source (`src/`)
+
+| Path | Purpose |
+|------|---------|
+| `src/server.js` | Express server, premium endpoints, SSE stream |
+| `src/agents/orchestrator.js` | Claude-powered task planner and agent dispatcher |
+| `src/agents/registry.js` | Agent definitions and metadata |
+| `src/agents/services.js` | Agent service implementations |
+| `src/x402/` | x402 payment protocol integration (middleware, client) |
+| `src/stellar/` | Stellar SDK wrappers, key management, transaction helpers |
+| `src/db/` | SQLite persistence layer for events and state |
+
+### Frontend (`src/`)
+
+| Path | Purpose |
+|------|---------|
+| `src/pages/` | Next.js page routes (dashboard, history) |
+| `src/components/` | Reusable React components |
+| `src/hooks/` | Custom React hooks (SSE subscription, wallet state) |
+| `src/lib/` | Shared utilities, API client, types |
+
+### Configuration & Tooling
+
+| Path | Purpose |
+|------|---------|
+| `.env.example` | Required environment variables template |
+| `.nvmrc` | Pinned Node.js version (20.19.0) |
+| `vercel.json` | Vercel deployment configuration |
+| `package.json` | Dependencies and scripts |
+| `eslint.config.js` | Linting rules |
+
+### Documentation & Process
+
+| Path | Purpose |
+|------|---------|
+| `docs/architecture.md` | Deep architectural walkthrough |
+| `docs/API_EXAMPLES.md` | Premium endpoint usage examples |
+| `CONTRIBUTING.md` | This guide — how to contribute |
+| `SECURITY.md` | Vulnerability reporting and security policy |
+| `.github/pull_request_template.md` | PR description template |
+| `tests/` | Test suite and demo automation |
+
+### CI/CD (`.github/workflows/`)
+
+| Path | Purpose |
+|------|---------|
+| `ci.yml` | Main CI pipeline (lint, test, build) |
+| `vercel-deploy.yml` | Automated Vercel deployment on PR merge |
+
+## Task Checklist Template
+
+When opening a new issue or PR, copy the relevant checklist below to help reviewers
+understand what's been done and what remains.
+
+### Feature / Enhancement
+
+```markdown
+## Setup
+- [ ] Local environment configured (`.env` based on `.env.example`)
+- [ ] Dependencies installed (`npm install`)
+- [ ] Related issues linked
+
+## Implementation
+- [ ] Core logic implemented
+- [ ] Edge cases handled
+- [ ] x402 payment flow verified (if applicable)
+- [ ] SSE stream remains functional (if orchestrator changes)
+
+## Tests
+- [ ] `npm run demo` passes
+- [ ] Manual test steps documented
+- [ ] On-chain transactions verified on Stellar Testnet
+
+## Documentation
+- [ ] `README.md` updated if public API changed
+- [ ] `docs/architecture.md` updated if flow changed
+- [ ] PR description includes acceptance criteria evidence
+```
+
+### Bug Fix
+
+```markdown
+- [ ] Bug reproduced before fix
+- [ ] Root cause identified
+- [ ] Fix implemented with minimal scope
+- [ ] Regression test added or manual test documented
+- [ ] No new lint errors introduced
+```
+
+### Documentation
+
+```markdown
+- [ ] Content accurate for current codebase
+- [ ] Links verified
+- [ ] No secrets or private keys in examples
+- [ ] Screenshots/logs sanitized
+```
+
+### Security
+
+```markdown
+- [ ] No `.env` or private keys committed
+- [ ] No sensitive data in screenshots or logs
+- [ ] Private keys/codes generated on Stellar Testnet only
+- [ ] Vulnerability reported privately per `SECURITY.md`
+```
