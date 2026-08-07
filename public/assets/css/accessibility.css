@@ -1,0 +1,168 @@
+/* ═════════════════════════════════════════════════════════════
+   StellarMind Accessibility Enhancements
+   Keyboard navigation, focus states, ARIA support, skip link
+   Closes #35
+   ═════════════════════════════════════════════════════════════ */
+
+/* ── Skip Navigation Link ─────────────────────────────────── */
+.skip-link {
+  position: absolute;
+  top: -100%;
+  left: 8px;
+  z-index: 9999;
+  padding: 10px 18px;
+  background: var(--accent);
+  color: #fff;
+  font-weight: 600;
+  font-size: 14px;
+  border-radius: var(--radius-sm);
+  text-decoration: none;
+  transition: top 0.15s ease;
+}
+
+.skip-link:focus {
+  top: 8px;
+  outline: 3px solid var(--accent-light);
+  outline-offset: 2px;
+}
+
+/* ── Focus Indicators (WCAG 2.1 AA — 2.4.7) ───────────────── */
+*:focus-visible {
+  outline: 2px solid var(--accent-light);
+  outline-offset: 2px;
+  border-radius: 3px;
+}
+
+/* Remove default focus for mouse users, keep for keyboard */
+*:focus:not(:focus-visible) {
+  outline: none;
+}
+
+/* ── Interactive Controls ─────────────────────────────────── */
+button:focus-visible,
+a:focus-visible,
+[role="button"]:focus-visible,
+input:focus-visible,
+select:focus-visible,
+textarea:focus-visible,
+[tabindex]:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 3px;
+  box-shadow: 0 0 0 4px var(--accent-glow);
+}
+
+/* ── Sidebar Navigation ───────────────────────────────────── */
+.sidebar nav a:focus-visible {
+  outline: 2px solid var(--accent-light);
+  outline-offset: -2px;
+  border-radius: var(--radius-xs);
+  background: var(--bg-hover);
+}
+
+/* ── Modal / Panel Focus Trap ─────────────────────────────── */
+.modal:focus,
+.panel:focus,
+[role="dialog"]:focus {
+  outline: none;
+}
+
+.modal[aria-modal="true"] :focus-visible,
+[role="dialog"] :focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+/* ── Reduced Motion ───────────────────────────────────────── */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}
+
+/* ── High Contrast Mode ───────────────────────────────────── */
+@media (forced-colors: active) {
+  .sidebar {
+    border-right: 1px solid ButtonText;
+  }
+
+  button,
+  [role="button"],
+  .card {
+    border: 1px solid ButtonText;
+  }
+
+  *:focus-visible {
+    outline: 3px solid Highlight;
+  }
+}
+
+/* ── Screen Reader Only ───────────────────────────────────── */
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+/* ── Live Region Announcer ────────────────────────────────── */
+[aria-live="polite"] {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+}
+
+/* ── Form Field Labels ────────────────────────────────────── */
+label {
+  display: block;
+  font-weight: 500;
+  margin-bottom: 6px;
+  color: var(--text-secondary);
+}
+
+input[aria-invalid="true"],
+textarea[aria-invalid="true"],
+select[aria-invalid="true"] {
+  border-color: var(--red);
+  box-shadow: 0 0 0 3px rgba(248, 113, 113, 0.15);
+}
+
+[role="alert"] {
+  color: var(--red);
+  font-size: 13px;
+  margin-top: 4px;
+}
+
+/* ── Color Contrast ───────────────────────────────────────── */
+.text-muted {
+  color: var(--text-secondary);  /* Was #505268 — bumped for AA compliance */
+}
+
+/* ── Tooltip / Disclosure ─────────────────────────────────── */
+[aria-expanded]::after {
+  content: '';
+  display: inline-block;
+  width: 0;
+  height: 0;
+  margin-left: 6px;
+  border-left: 5px solid transparent;
+  border-right: 5px solid transparent;
+  border-top: 5px solid currentColor;
+  vertical-align: middle;
+  transition: transform var(--tr);
+}
+
+[aria-expanded="true"]::after {
+  transform: rotate(180deg);
+}
