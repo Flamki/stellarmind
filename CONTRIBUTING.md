@@ -212,3 +212,24 @@ from the appropriate maintainers when pull requests are opened. The ownership is
 
 When you open a pull request, GitHub automatically assigns reviewers based on the paths you modified.
 This ensures PRs are reviewed by the maintainers most familiar with the affected code.
+
+
+## CI/CD Pipeline
+
+Every pull request triggers automated lint, test, and secret-scan checks via GitHub Actions.
+All three must pass before a PR can be merged. If a check fails, expand the job log
+in the Checks tab on your PR for the full diagnostic output.
+
+## PR Review Checklist
+
+Before marking your pull request as ready for review, verify:
+
+- Lint and format checks pass locally
+- Tests pass
+- No secrets or keys in the diff
+- Issue reference in description (Closes #NN)
+- Branch is up-to-date with upstream master
+- New files follow the existing directory structure
+- Commit messages use conventional commits format
+
+Maintainers will use CODEOWNERS assignments to route your PR to the right reviewer automatically.
