@@ -1,0 +1,45 @@
+version: "3.9"
+
+services:
+  stellarmind:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: stellarmind
+    ports:
+      - "3001:3001"
+    env_file:
+      - .env
+    environment:
+      - NODE_ENV=production
+      - PORT=3001
+    volumes:
+      - ./data:/app/data
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "wget", "--spider", "http://localhost:3001/healthz"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+
+  # Optional: development service with hot-reload
+  stellarmind-dev:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: build
+    container_name: stellarmind-dev
+    ports:
+      - "3002:3001"
+    env_file:
+      - .env
+    environment:
+      - NODE_ENV=development
+      - PORT=3001
+    volumes:
+      - ./src:/app/src
+      - ./public:/app/public
+    command: ["node", "--watch", "src/server.js"]
+    profiles:
+      - dev
