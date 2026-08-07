@@ -1,0 +1,282 @@
+/* ═════════════════════════════════════════════════════════════
+   StellarMind Mobile Responsiveness
+   Breakpoints, sidebar collapse, table/card wrapping, nav menu
+   Closes #34
+   ═════════════════════════════════════════════════════════════ */
+
+/* ── Breakpoint System ────────────────────────────────────── */
+/* Mobile-first: base styles assume <640px */
+
+/* Tablet: 640px+ */
+@media (min-width: 640px) {
+  :root {
+    --sidebar-w: 200px;
+  }
+}
+
+/* Desktop: 1024px+ */
+@media (min-width: 1024px) {
+  :root {
+    --sidebar-w: 250px;
+  }
+}
+
+/* Wide: 1440px+ */
+@media (min-width: 1440px) {
+  :root {
+    --sidebar-w: 280px;
+  }
+}
+
+/* ── Mobile Sidebar (<768px) ──────────────────────────────── */
+@media (max-width: 767px) {
+  body {
+    flex-direction: column;
+    overflow-y: auto;
+  }
+
+  .sidebar {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: auto;
+    max-height: 100vh;
+    overflow-y: auto;
+    z-index: 100;
+    transform: translateX(-100%);
+    transition: transform 0.3s ease;
+    border-right: none;
+    border-bottom: 1px solid var(--border);
+  }
+
+  .sidebar.open {
+    transform: translateX(0);
+  }
+
+  /* Hamburger toggle */
+  .mobile-nav-toggle {
+    display: flex;
+    position: fixed;
+    top: 12px;
+    left: 12px;
+    z-index: 110;
+    width: 40px;
+    height: 40px;
+    align-items: center;
+    justify-content: center;
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-sm);
+    color: var(--text-primary);
+    cursor: pointer;
+    font-size: 20px;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
+  }
+
+  /* Sidebar overlay */
+  .sidebar-overlay {
+    display: none;
+    position: fixed;
+    inset: 0;
+    background: rgba(0, 0, 0, 0.5);
+    z-index: 99;
+  }
+
+  .sidebar-overlay.visible {
+    display: block;
+  }
+
+  .main-content {
+    margin-left: 0 !important;
+    padding-top: 56px; /* space for hamburger */
+    width: 100%;
+  }
+}
+
+/* Hide hamburger on desktop */
+@media (min-width: 768px) {
+  .mobile-nav-toggle,
+  .sidebar-overlay {
+    display: none !important;
+  }
+}
+
+/* ── Table / Card Wrapping ────────────────────────────────── */
+@media (max-width: 640px) {
+  /* Card layout for tables on small screens */
+  table.responsive,
+  .data-table {
+    display: block;
+    width: 100%;
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  table.responsive thead {
+    display: none; /* Hide header on mobile */
+  }
+
+  table.responsive tbody,
+  table.responsive tr,
+  table.responsive td {
+    display: block;
+    width: 100%;
+  }
+
+  table.responsive tr {
+    margin-bottom: 12px;
+    border: 1px solid var(--border);
+    border-radius: var(--radius-sm);
+    background: var(--bg-card);
+  }
+
+  table.responsive td {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 10px 14px;
+    border-bottom: 1px solid var(--border);
+    text-align: right;
+  }
+
+  table.responsive td::before {
+    content: attr(data-label);
+    font-weight: 600;
+    color: var(--text-secondary);
+    text-align: left;
+    margin-right: 12px;
+    flex-shrink: 0;
+  }
+
+  table.responsive td:last-child {
+    border-bottom: none;
+  }
+
+  /* Card grid: single column on mobile */
+  .card-grid,
+  .agent-grid,
+  .dashboard-grid {
+    grid-template-columns: 1fr !important;
+    gap: 12px !important;
+  }
+}
+
+/* ── Horizontal Scroll Prevention ─────────────────────────── */
+img,
+video,
+canvas,
+svg,
+pre,
+code,
+iframe,
+.table-wrapper {
+  max-width: 100%;
+  height: auto;
+}
+
+pre,
+code {
+  overflow-x: auto;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+/* ── Typography Scaling ───────────────────────────────────── */
+@media (max-width: 480px) {
+  html {
+    font-size: 15px;
+  }
+
+  h1 { font-size: 1.6rem; }
+  h2 { font-size: 1.3rem; }
+  h3 { font-size: 1.1rem; }
+
+  .card-title {
+    font-size: 1rem;
+  }
+
+  .sb-logo span {
+    font-size: 0.9rem;
+  }
+}
+
+/* ── Form Elements ────────────────────────────────────────── */
+@media (max-width: 640px) {
+  input,
+  select,
+  textarea,
+  button {
+    font-size: 16px; /* Prevents iOS zoom on focus */
+    padding: 10px 14px;
+  }
+
+  .form-row {
+    flex-direction: column;
+    gap: 10px;
+  }
+
+  .form-row > * {
+    width: 100%;
+  }
+}
+
+/* ── Modal / Dialog ───────────────────────────────────────── */
+@media (max-width: 640px) {
+  .modal,
+  [role="dialog"],
+  .panel {
+    width: 95vw !important;
+    max-width: 95vw !important;
+    margin: 10px auto;
+    border-radius: var(--radius-sm);
+    padding: 16px;
+  }
+}
+
+/* ── Touch Targets ────────────────────────────────────────── */
+@media (max-width: 768px) {
+  button,
+  [role="button"],
+  .nav-link,
+  .sidebar nav a {
+    min-height: 44px;
+    min-width: 44px;
+    padding: 10px 14px;
+  }
+
+  /* Spacing between touch targets */
+  .sidebar nav a + a,
+  .nav-link + .nav-link {
+    margin-top: 4px;
+  }
+}
+
+/* ── Print Styles ─────────────────────────────────────────── */
+@media print {
+  .sidebar,
+  .mobile-nav-toggle,
+  .sidebar-overlay,
+  .skip-link {
+    display: none !important;
+  }
+
+  body {
+    display: block;
+    overflow: visible;
+    background: #fff;
+    color: #000;
+    font-size: 12pt;
+  }
+
+  .main-content {
+    margin: 0 !important;
+    width: 100% !important;
+  }
+
+  a[href]::after {
+    content: ' (' attr(href) ')';
+    font-size: 0.8em;
+    color: #666;
+  }
+}
