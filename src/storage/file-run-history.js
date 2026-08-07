@@ -34,12 +34,14 @@ function toAuditEvent(event) {
 /**
  * FileRunHistoryStore — durable run history persisted to a JSON file.
  *
- * Survives process restarts. Uses atomic file writes (write tmp → rename)
+ * Survives process restarts. Uses atomic file writes (write tmp -> rename)
  * to prevent corruption from concurrent or interrupted writes.
  */
 export class FileRunHistoryStore {
   constructor({ filePath, maxRuns = 200 }) {
-    this.filePath = filePath || path.join(__dirname, '..', '..', 'data', 'run-history.json')
+    this.filePath =
+      filePath ||
+      path.join(__dirname, '..', '..', 'data', 'run-history.json')
     this.maxRuns = Math.max(10, maxRuns)
     this.runs = []
   }
@@ -51,11 +53,13 @@ export class FileRunHistoryStore {
       const raw = await fs.readFile(this.filePath, 'utf-8')
       const parsed = JSON.parse(raw)
       this.runs = Array.isArray(parsed) ? parsed : []
-      console.log(`[run-history] Loaded ${this.runs.length} runs from ${this.filePath}`)
+      console.log(
+        `[run-history] Loaded ${this.runs.length} runs from ${this.filePath}`
+      )
     } catch (err) {
       if (err.code === 'ENOENT') {
         this.runs = []
-        console.log(`[run-history] No existing history file, starting fresh`)
+        console.log('[run-history] No existing history file, starting fresh')
       } else {
         console.error(`[run-history] Failed to load: ${err.message}`)
         this.runs = []
@@ -67,7 +71,11 @@ export class FileRunHistoryStore {
     const dir = path.dirname(this.filePath)
     await fs.mkdir(dir, { recursive: true })
     const tmp = `${this.filePath}.tmp`
-    await fs.writeFile(tmp, JSON.stringify(this.runs, null, 2), 'utf-8')
+    await fs.writeFile(
+      tmp,
+      JSON.stringify(this.runs, null, 2),
+      'utf-8'
+    )
     await fs.rename(tmp, this.filePath)
   }
 
