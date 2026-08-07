@@ -1,0 +1,44 @@
+---
+name: Feature Request
+about: Propose a new feature or enhancement
+title: "[Feature]: "
+labels: [enhancement, triage]
+assignees: []
+---
+
+## Motivation
+
+Why is this feature needed? What problem does it solve?
+
+## Proposed Solution
+
+A clear description of what you want to happen.
+
+## Acceptance Criteria
+
+- [ ] 
+- [ ] 
+- [ ] 
+
+## Scope
+
+Which part of the system does this touch?
+
+- [ ] Backend (orchestrator, agents, endpoints)
+- [ ] Frontend (dashboard, UI)
+- [ ] Payment (x402, Stellar integration)
+- [ ] Documentation
+- [ ] CI/Infrastructure
+
+## Alternatives Considered
+
+Any alternative approaches you've thought about.
+
+## Additional Context
+
+Add any other context, mockups, or references.
+
+### Security Note
+
+Per our [Security Policy](../SECURITY.md): do NOT include `.env` values, private keys, 
+or Stellar secret seeds.
