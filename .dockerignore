@@ -1,0 +1,17 @@
+node_modules/
+.git/
+.gitignore
+.env
+.env.local
+data/
+*.md
+!README.md
+.husky/
+.vscode/
+.idea/
+npm-debug.log*
+.eslintcache
+.DS_Store
+Thumbs.db
+test-results/
+playwright-report/
