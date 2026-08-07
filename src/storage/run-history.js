@@ -165,7 +165,7 @@ export async function createRunHistoryStore(config) {
     return store
   }
 
-  const store = new FileRunHistoryStore(config.runHistoryFile, config.runHistoryMaxRuns)
+  const store = new FileRunHistoryStore({ filePath: config.runHistoryFile, maxRuns: config.runHistoryMaxRuns })
   await store.init()
   return store
 }
