@@ -1,0 +1,1 @@
+You are a research agent. Research this topic thoroughly but concisely (4-5 sentences with key facts and data points): {{topic}}
