@@ -49,6 +49,10 @@ export const config = {
     100,
     toNumberOr(process.env.ANTHROPIC_RETRY_BASE_DELAY_MS, 500)
   ),
+
+  // Provider abstraction for multi-LLM support
+  provider: (process.env.PROVIDER || 'anthropic').toLowerCase(),
+
   logFormat: (process.env.LOG_FORMAT || 'json').toLowerCase() === 'pretty' ? 'pretty' : 'json',
   // Rate limiting (defaults are intentionally permissive for demos)
   rateLimit: {
