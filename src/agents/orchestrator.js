@@ -1,6 +1,6 @@
 import { config } from '../config.js'
 import { AGENTS, getAgentById } from './registry.js'
-import { getProvider, listProviders, PROVIDER_MODES } from '../providers/index.js'
+import { getProvider, listProviders } from '../providers/index.js'
 
 // Legacy imports — kept for backward compatibility
 // New code should use getProvider() from the provider layer
