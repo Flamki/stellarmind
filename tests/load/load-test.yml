@@ -1,0 +1,97 @@
+# StellarMind Artillery Load Test Configuration
+# Usage: artillery run tests/load/load-test.yml
+# Closes #38
+
+config:
+  target: "http://localhost:3001"
+  phases:
+    - duration: 30
+      arrivalRate: 1
+      rampTo: 5
+      name: "Warm up"
+    - duration: 60
+      arrivalRate: 5
+      rampTo: 20
+      name: "Ramp up"
+    - duration: 60
+      arrivalRate: 20
+      name: "Sustained load"
+    - duration: 30
+      arrivalRate: 20
+      rampTo: 0
+      name: "Cool down"
+  processor: "./load-test-processor.js"
+  ensure:
+    thresholds:
+      - http.response_time.p95: 2000
+      - http.response_time.p99: 4000
+      - errors.rate: 0.05
+  variables:
+    taskTemplates:
+      - "Research DeFi protocol {{ $randomString() }}"
+      - "Summarize market trends for Q{{ $randomNumber(1,4) }}"
+      - "Analyze competitor strategy for {{ $randomString() }}"
+      - "Generate code for {{ $randomString() }} integration"
+
+scenarios:
+  # Health baseline
+  - name: "Health check"
+    flow:
+      - get:
+          url: "/healthz"
+          expect:
+            - statusCode: 200
+            - contentType: json
+            - hasProperty: status
+
+  # Orchestrator POST
+  - name: "Orchestrate POST"
+    flow:
+      - post:
+          url: "/api/orchestrate"
+          json:
+            task: "{{ $processEnvironment.TASK_TEMPLATE }}"
+            budget: "{{ $randomNumber(10, 100) }}"
+          expect:
+            - statusCode:
+                - 200
+                - 207
+            - contentType: json
+
+  # Orchestrator GET
+  - name: "Orchestrate GET"
+    flow:
+      - get:
+          url: "/api/orchestrate?task=test-task&budget=25"
+          expect:
+            - statusCode:
+                - 200
+                - 207
+
+  # SSE Event stream
+  - name: "SSE Events"
+    flow:
+      - get:
+          url: "/api/events"
+          headers:
+            Accept: "text/event-stream"
+          expect:
+            - statusCode: 200
+
+  # Agent registry (read-heavy)
+  - name: "Agent registry"
+    flow:
+      - get:
+          url: "/api/agents"
+          expect:
+            - statusCode: 200
+            - contentType: json
+            - hasProperty: agents
+
+  # Agent lookup (individual)
+  - name: "Agent lookup"
+    flow:
+      - get:
+          url: "/api/agents/discover/research"
+          expect:
+            - statusCode: 200
