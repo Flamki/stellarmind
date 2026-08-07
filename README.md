@@ -360,3 +360,16 @@ Read [CONTRIBUTING.md](CONTRIBUTING.md) before opening a PR.
 ## License
 
 MIT. See [LICENSE](LICENSE).
+
+
+## 🚀 Enhanced by Bounty Hunter
+
+### Quick Start
+```bash
+git clone https://github.com/Flamki/stellarmind.git
+cd stellarmind
+# Follow instructions above
+```
+
+### CI Status
+Automated testing and linting configured via GitHub Actions.
