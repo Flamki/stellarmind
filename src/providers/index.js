@@ -29,8 +29,17 @@ export function getProvider() {
 }
 
 export function listProviders() {
-  return NAMES.map((n) => { const p = REGISTRY[n](); return { name: n, available: p.isAvailable ? p.isAvailable() : true, capabilities: p.capabilities } })
+  return NAMES.map((n) => {
+    const p = REGISTRY[n]()
+    return {
+      name: n,
+      available: p.isAvailable ? p.isAvailable() : true,
+      capabilities: p.capabilities,
+    }
+  })
 }
 
-export function resetProvider() { _cached = null }
+export function resetProvider() {
+  _cached = null
+}
 export { validateProvider, PROVIDER_MODES } from './interface.js'
