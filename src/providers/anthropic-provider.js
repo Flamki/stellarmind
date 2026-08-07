@@ -5,7 +5,8 @@ import Anthropic from '@anthropic-ai/sdk'
 import { config } from '../config.js'
 
 export const name = 'anthropic'
-let anthropicClient = new Anthropic({ apiKey: config.anthropicApiKey })
+// eslint-disable-next-line no-unused-vars
+const _anthropicClient = new Anthropic({ apiKey: config.anthropicApiKey })
 let available = true
 
 export const capabilities = {
@@ -16,7 +17,7 @@ export const capabilities = {
 }
 
 export function setApiKey(newKey) {
-  anthropicClient = new Anthropic({ apiKey: newKey })
+  _anthropicClient = new Anthropic({ apiKey: newKey })
   config.anthropicApiKey = newKey
   available = true
 }
