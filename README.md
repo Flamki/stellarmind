@@ -353,6 +353,49 @@ See [FRONTEND_STRUCTURE.md](FRONTEND_STRUCTURE.md) for detailed documentation on
 - Responsive design approach
 - Testing and maintenance guidelines
 
+
+## Environment Variables
+
+Every variable from `.env.example` is documented below. See [SECURITY.md](SECURITY.md) for secret handling policy.
+
+| Variable | Required | Default | Description |
+|:---------|:---------|:--------|:------------|
+| **Stellar Testnet Keypairs** ||||
+| `SERVER_STELLAR_ADDRESS` | Yes | — | Server wallet public key — receives payments for agent services |
+| `SERVER_STELLAR_SECRET` | Yes | — | Server wallet secret key — keep private |
+| `ORCHESTRATOR_STELLAR_ADDRESS` | Yes | — | Orchestrator agent wallet — pays for services on behalf of users |
+| `ORCHESTRATOR_STELLAR_SECRET` | Yes | — | Orchestrator wallet secret key — keep private |
+| `BUYER_STELLAR_ADDRESS` | Yes | — | Buyer agent demo wallet public key |
+| `BUYER_STELLAR_SECRET` | Yes | — | Buyer agent demo wallet secret key — keep private |
+| **Anthropic Claude API** ||||
+| `ANTHROPIC_API_KEY` | Yes | — | API key from [console.anthropic.com](https://console.anthropic.com) |
+| `ANTHROPIC_REQUEST_TIMEOUT_MS` | No | `20000` | Request timeout in milliseconds |
+| `ANTHROPIC_MAX_RETRIES` | No | `2` | Max retries for transient errors |
+| `ANTHROPIC_RETRY_BASE_DELAY_MS` | No | `500` | Base retry delay in ms (exponential backoff) |
+| **Network** ||||
+| `NETWORK` | No | `stellar:testnet` | Stellar network identifier |
+| `FACILITATOR_URL` | No | `https://www.x402.org/facilitator` | x402 facilitator endpoint |
+| `STELLAR_RPC_URL` | No | `https://soroban-testnet.stellar.org` | Stellar RPC endpoint |
+| **Server** ||||
+| `PORT` | No | `3001` | HTTP server port |
+| `INTERNAL_BASE_URL` | No | — | Internal base URL for orchestrator → premium endpoint calls |
+| **Logging** ||||
+| `LOG_FORMAT` | No | `json` | Log format: `json` (structured) or `pretty` (human-friendly) |
+| **Rate Limiting** ||||
+| `RATE_LIMIT_DEFAULT_WINDOW_SEC` | No | `60` | Default rate limit window (seconds) |
+| `RATE_LIMIT_DEFAULT_MAX` | No | `60` | Default max requests per window |
+| `RATE_LIMIT_ORCHESTRATE_WINDOW_SEC` | No | `60` | Orchestrate endpoint rate limit window |
+| `RATE_LIMIT_ORCHESTRATE_MAX` | No | `10` | Orchestrate endpoint max requests per window |
+| `RATE_LIMIT_APIKEY_WINDOW_SEC` | No | `60` | API key config endpoint rate limit window |
+| `RATE_LIMIT_APIKEY_MAX` | No | `5` | API key config endpoint max requests per window |
+| **Run History** ||||
+| `RUN_HISTORY_STORAGE` | No | `file` | Storage mode: `file` (durable) or `memory` (ephemeral) |
+| `RUN_HISTORY_FILE` | No | `./data/run-history.json` | File path when `RUN_HISTORY_STORAGE=file` |
+| `RUN_HISTORY_MAX_RUNS` | No | `200` | Max number of recent runs to keep |
+
+> **Security**: Secret keys (`*_STELLAR_SECRET`, `ANTHROPIC_API_KEY`) must never be committed to version control. Use `.env.example` as a template and keep real values in `.env`. See [SECURITY.md](SECURITY.md) for the full security policy and reporting process.
+
+
 ## Contributing
 
 Read [CONTRIBUTING.md](CONTRIBUTING.md) before opening a PR.
