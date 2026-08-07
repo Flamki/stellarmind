@@ -1,0 +1,764 @@
+openapi: "3.0.3"
+info:
+  title: StellarMind API
+  description: |
+    AI Agent Marketplace with x402 Micropayments on Stellar.
+
+    StellarMind provides a marketplace of Claude-powered AI agents accessible through
+    x402-protected premium endpoints. The orchestrator decomposes tasks and routes work
+    to specialized agents, with every paid step verifiable on-chain.
+
+    ## Authentication
+
+    - **Premium endpoints** (`/api/premium/*`) are protected by
+      [x402](https://x402.org/) — a protocol-level payment challenge.
+      Clients must use `@x402/fetch` with `wrapFetchWithPayment` and an
+      `ExactStellarScheme` signer. The server responds with `402 Payment Required`,
+      the client auto-signs a Stellar USDC transaction, retries with `X-PAYMENT`
+      header, and the facilitator settles on-chain before returning `200`.
+
+    - **Free endpoints** (`/api/research`, `/api/summarize`, `/api/analyze`,
+      `/api/code`) do not require authentication.
+
+    - **Admin endpoints** (`POST /api/config/apikey`) require an `X-Admin-Key` header.
+
+    ## Payment Flow
+
+    ```text
+    Client → GET /api/premium/research?topic=... → 402 Payment Required
+      → wrapFetchWithPayment auto-signs USDC tx
+      → Retry with X-PAYMENT header
+      → Facilitator verifies → settles on-chain
+      → 200 + agent response
+    ```
+  version: "1.0.0"
+  contact:
+    name: StellarMind Maintainers
+
+servers:
+  - url: http://localhost:{port}
+    description: Local development server
+    variables:
+      port:
+        default: "3000"
+        description: Server port (configured via PORT env var)
+
+tags:
+  - name: Health
+    description: Liveness and readiness probes
+  - name: SSE
+    description: Server-Sent Events stream
+  - name: Premium Agents
+    description: x402-protected AI agent endpoints (paid)
+  - name: Free Agents
+    description: Unauthenticated AI agent endpoints (internal/demo use)
+  - name: Orchestrator
+    description: Multi-agent task orchestration
+  - name: Run History
+    description: Orchestration run history and events
+  - name: Agent Registry
+    description: Agent discovery and metadata
+  - name: Wallet
+    description: Stellar wallet balances and transactions
+  - name: System
+    description: Server status and configuration
+  - name: Admin
+    description: API key management (requires X-Admin-Key)
+
+paths:
+  # ─── Health ───
+  /healthz:
+    get:
+      tags: [Health]
+      summary: Liveness probe
+      description: Returns basic server health. No dependencies checked.
+      responses:
+        "200":
+          description: Server is running
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    example: ok
+                  uptime:
+                    type: number
+                    description: Process uptime in seconds
+                    example: 123.45
+                  timestamp:
+                    type: string
+                    format: date-time
+
+  /readyz:
+    get:
+      tags: [Health]
+      summary: Readiness probe
+      description: |
+        Returns component-level readiness status. Checks Anthropic API key
+        configuration and x402 middleware initialization.
+      responses:
+        "200":
+          description: All critical components ready
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ReadinessResponse"
+        "503":
+          description: One or more components not ready
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ReadinessResponse"
+
+  # ─── SSE ───
+  /api/events:
+    get:
+      tags: [SSE]
+      summary: Real-time event stream
+      description: |
+        Server-Sent Events stream of orchestration activity.
+        Events include:
+        - `connected` — initial connection confirmed
+        - `agent_call` — an agent is being invoked
+        - `agent_response` — an agent returned a result
+        - `orchestration_start` — task decomposition begins
+        - `orchestration_complete` — all agents finished
+        - `budget_event` — spending limit events
+        - `payment_event` — on-chain settlement events
+      responses:
+        "200":
+          description: SSE stream opened
+          content:
+            text/event-stream:
+              schema:
+                type: string
+                description: Stream of JSON-encoded events, one per `data:` line
+
+  # ─── Premium Agents ───
+  /api/premium/research:
+    get:
+      tags: [Premium Agents]
+      summary: Research agent (x402-protected)
+      description: |
+        Researches a topic using Claude. Protected by x402 payment protocol.
+        Client must handle 402 → sign payment → retry flow.
+      parameters:
+        - name: topic
+          in: query
+          required: true
+          schema:
+            type: string
+            maxLength: 500
+          description: Research topic
+          example: AI agent marketplaces
+      responses:
+        "200":
+          description: Research completed and payment settled
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AgentResponse"
+        "400":
+          $ref: "#/components/responses/ValidationError"
+        "402":
+          $ref: "#/components/responses/PaymentRequired"
+
+  /api/premium/summarize:
+    get:
+      tags: [Premium Agents]
+      summary: Summary agent (x402-protected)
+      parameters:
+        - name: text
+          in: query
+          required: true
+          schema:
+            type: string
+            maxLength: 5000
+          description: Text to summarize
+      responses:
+        "200":
+          description: Summary completed
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AgentResponse"
+        "400":
+          $ref: "#/components/responses/ValidationError"
+        "402":
+          $ref: "#/components/responses/PaymentRequired"
+
+  /api/premium/analyze:
+    get:
+      tags: [Premium Agents]
+      summary: Analysis agent (x402-protected)
+      parameters:
+        - name: topic
+          in: query
+          required: true
+          schema:
+            type: string
+            maxLength: 500
+      responses:
+        "200":
+          description: Analysis completed
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AgentResponse"
+        "400":
+          $ref: "#/components/responses/ValidationError"
+        "402":
+          $ref: "#/components/responses/PaymentRequired"
+
+  /api/premium/code:
+    get:
+      tags: [Premium Agents]
+      summary: Code agent (x402-protected)
+      parameters:
+        - name: prompt
+          in: query
+          required: true
+          schema:
+            type: string
+            maxLength: 2000
+          description: Coding prompt
+      responses:
+        "200":
+          description: Code generation completed
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AgentResponse"
+        "400":
+          $ref: "#/components/responses/ValidationError"
+        "402":
+          $ref: "#/components/responses/PaymentRequired"
+
+  # ─── Free Agents ───
+  /api/research:
+    get:
+      tags: [Free Agents]
+      summary: Research agent (free)
+      description: Internal/demo endpoint — not x402-protected.
+      parameters:
+        - name: topic
+          in: query
+          schema:
+            type: string
+          example: AI payments
+      responses:
+        "200":
+          description: Research result
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AgentResponse"
+
+  /api/summarize:
+    get:
+      tags: [Free Agents]
+      summary: Summary agent (free)
+      parameters:
+        - name: text
+          in: query
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Summary result
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AgentResponse"
+
+  /api/analyze:
+    get:
+      tags: [Free Agents]
+      summary: Analysis agent (free)
+      parameters:
+        - name: topic
+          in: query
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Analysis result
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AgentResponse"
+
+  /api/code:
+    get:
+      tags: [Free Agents]
+      summary: Code agent (free)
+      parameters:
+        - name: prompt
+          in: query
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Code generation result
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AgentResponse"
+
+  # ─── Orchestrator ───
+  /api/orchestrate:
+    post:
+      tags: [Orchestrator]
+      summary: Run multi-agent orchestration
+      description: |
+        Decomposes a task and routes sub-tasks to appropriate agents.
+        Enforces budget limits. Returns results with on-chain payment proofs.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [task, budget]
+              properties:
+                task:
+                  type: string
+                  description: Task description for the orchestrator
+                  example: Research AI agent marketplaces and summarize findings
+                budget:
+                  type: number
+                  description: Maximum USDC budget for agent calls
+                  example: 0.15
+      responses:
+        "200":
+          description: Orchestration completed
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/OrchestrationResponse"
+        "400":
+          $ref: "#/components/responses/ValidationError"
+    get:
+      tags: [Orchestrator]
+      summary: Run orchestration (GET convenience)
+      parameters:
+        - name: task
+          in: query
+          required: true
+          schema:
+            type: string
+        - name: budget
+          in: query
+          required: true
+          schema:
+            type: number
+      responses:
+        "200":
+          description: Orchestration completed
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/OrchestrationResponse"
+        "400":
+          $ref: "#/components/responses/ValidationError"
+
+  # ─── Run History ───
+  /api/runs:
+    get:
+      tags: [Run History]
+      summary: List recent orchestration runs
+      parameters:
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            default: 20
+          description: Max number of runs to return
+      responses:
+        "200":
+          description: Run history
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  storage:
+                    type: string
+                  file:
+                    type: string
+                    nullable: true
+                  count:
+                    type: integer
+                  runs:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/RunSummary"
+
+  # ─── Agent Registry ───
+  /api/agents:
+    get:
+      tags: [Agent Registry]
+      summary: List all registered agents
+      responses:
+        "200":
+          description: Agent list
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/AgentInfo"
+
+  /api/agents/discover/{capability}:
+    get:
+      tags: [Agent Registry]
+      summary: Find agents by capability
+      parameters:
+        - name: capability
+          in: path
+          required: true
+          schema:
+            type: string
+          description: Capability to match (e.g., "research", "code")
+      responses:
+        "200":
+          description: Matching agents
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/AgentInfo"
+
+  /api/agents/{id}:
+    get:
+      tags: [Agent Registry]
+      summary: Get agent by ID
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+          description: Agent ID (e.g., "research-bot", "code-bot")
+      responses:
+        "200":
+          description: Agent details
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AgentInfo"
+        "404":
+          description: Agent not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  # ─── Wallet ───
+  /api/wallet/balances:
+    get:
+      tags: [Wallet]
+      summary: Get Stellar wallet balances
+      description: Returns balances for all configured addresses (server, orchestrator, buyer).
+      responses:
+        "200":
+          description: Wallet balances
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties:
+                  type: object
+                  properties:
+                    address:
+                      type: string
+                    balances:
+                      type: array
+                      items:
+                        type: object
+                        properties:
+                          asset_type:
+                            type: string
+                          balance:
+                            type: string
+
+  /api/wallet/transactions:
+    get:
+      tags: [Wallet]
+      summary: List Stellar transactions
+      parameters:
+        - name: address
+          in: query
+          schema:
+            type: string
+          description: Stellar address (defaults to orchestrator or server address)
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 200
+            default: 20
+        - name: direction
+          in: query
+          schema:
+            type: string
+            enum: [asc, desc]
+            default: desc
+        - name: cursor
+          in: query
+          schema:
+            type: string
+          description: Pagination cursor (alias: page)
+      responses:
+        "200":
+          description: Transaction list
+          content:
+            application/json:
+              schema:
+                type: array
+        "400":
+          $ref: "#/components/responses/ValidationError"
+
+  # ─── System ───
+  /api/status:
+    get:
+      tags: [System]
+      summary: System status
+      description: Returns full server status including version, network, agents, x402 config, and wallet info.
+      responses:
+        "200":
+          description: System status
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SystemStatus"
+
+  # ─── Admin ───
+  /api/config/apikey:
+    get:
+      tags: [Admin]
+      summary: Check API key configuration
+      description: Rate-limited. Returns masked key if configured.
+      responses:
+        "200":
+          description: API key status
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  configured:
+                    type: boolean
+                  masked:
+                    type: string
+                    nullable: true
+    post:
+      tags: [Admin]
+      summary: Set Anthropic API key
+      description: Requires `X-Admin-Key` header. Rate-limited.
+      security:
+        - AdminKey: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [apiKey]
+              properties:
+                apiKey:
+                  type: string
+                  pattern: "^sk-ant-"
+                  maxLength: 128
+                  description: Anthropic API key (must start with sk-ant-)
+      responses:
+        "200":
+          description: Key updated
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    example: true
+                  masked:
+                    type: string
+        "400":
+          $ref: "#/components/responses/ValidationError"
+
+components:
+  schemas:
+    ReadinessResponse:
+      type: object
+      properties:
+        status:
+          type: string
+          enum: [ready, not_ready]
+        ready:
+          type: boolean
+        timestamp:
+          type: string
+          format: date-time
+        components:
+          type: object
+          properties:
+            app:
+              type: object
+            anthropic:
+              type: object
+            x402:
+              type: object
+
+    AgentResponse:
+      type: object
+      properties:
+        agent:
+          type: string
+          description: Agent ID
+          example: research-bot
+        result:
+          type: string
+          description: Agent output
+        model:
+          type: string
+          description: Claude model label
+        cost:
+          type: string
+          description: Cost charged
+          example: 0.01 USDC
+        paidVia:
+          type: string
+          enum: [x402]
+        topic:
+          type: string
+          description: Input topic/prompt (varies by agent)
+        prompt:
+          type: string
+
+    OrchestrationResponse:
+      type: object
+      properties:
+        runId:
+          type: string
+        task:
+          type: string
+        results:
+          type: array
+          items:
+            type: object
+        totalSpent:
+          type: number
+        budget:
+          type: number
+        transactions:
+          type: array
+          items:
+            type: object
+            properties:
+              txHash:
+                type: string
+              explorerUrl:
+                type: string
+                format: uri
+
+    AgentInfo:
+      type: object
+      properties:
+        id:
+          type: string
+        name:
+          type: string
+        description:
+          type: string
+        capabilities:
+          type: array
+          items:
+            type: string
+        model:
+          type: string
+        cost:
+          type: string
+
+    RunSummary:
+      type: object
+      properties:
+        id:
+          type: string
+        task:
+          type: string
+        status:
+          type: string
+          enum: [pending, running, completed, failed]
+        createdAt:
+          type: string
+          format: date-time
+        totalSpent:
+          type: number
+
+    SystemStatus:
+      type: object
+      properties:
+        name:
+          type: string
+          example: StellarMind
+        version:
+          type: string
+          example: 1.0.0
+        status:
+          type: string
+          example: online
+        network:
+          type: string
+          example: testnet
+        agents:
+          type: integer
+        x402:
+          type: object
+        wallets:
+          type: object
+        claudeEnabled:
+          type: boolean
+
+    ErrorResponse:
+      type: object
+      properties:
+        error:
+          type: object
+          properties:
+            message:
+              type: string
+            code:
+              type: string
+            status:
+              type: integer
+            details:
+              type: array
+              items:
+                type: object
+
+  responses:
+    ValidationError:
+      description: Invalid request parameters
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorResponse"
+    PaymentRequired:
+      description: x402 payment required
+      headers:
+        X-PAYMENT-REQUIRED:
+          schema:
+            type: string
+          description: Payment challenge details
+
+  securitySchemes:
+    AdminKey:
+      type: apiKey
+      in: header
+      name: X-Admin-Key
+      description: Admin key for configuration endpoints
