@@ -55,8 +55,27 @@ npm test        # Same as demo
 
 - Never commit `.env` or generated wallet secrets.
 - Use placeholders only in `.env.example`.
-- Before every push, run `git diff --staged` and verify no keys are present.
 - If a secret is exposed, rotate it immediately.
+
+### Before Push Security Checklist
+
+Run these commands before every push to avoid accidental secret leaks:
+
+```bash
+# 1. Verify you're on the right branch
+git status
+
+# 2. Review staged changes for secrets
+git diff --staged
+
+# 3. Scan for common credential patterns
+git diff --staged | grep -E '(api_key|API_KEY|secret|SECRET|token|TOKEN|password|PASSWORD|private.key|PRIVATE.KEY)'
+
+# 4. If no secrets found, proceed with push
+git push
+```
+
+> **Tip**: If any of the grep patterns match, remove the secret immediately and rotate it if it was already committed. See [SECURITY.md](SECURITY.md) for the full security policy and reporting process.
 
 ### Formatting and linting
 
