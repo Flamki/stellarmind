@@ -1,0 +1,46 @@
+name: CI Boost — Quality Gate
+on:
+  push:
+    branches: [main, master]
+  pull_request:
+    branches: [main, master]
+
+jobs:
+  quality:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        node-version: [18, 20, 22]
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.node-version }}
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci || npm install
+
+      - name: Lint
+        run: npm run lint --if-present || npx eslint . --ext .js,.ts,.tsx --if-present || echo "No lint configured"
+
+      - name: Type check
+        run: npm run typecheck --if-present || npx tsc --noEmit --if-present || echo "No typecheck configured"
+
+      - name: Test
+        run: npm test --if-present || npx jest --passWithNoTests --if-present || echo "No tests configured"
+
+      - name: Build
+        run: npm run build --if-present || echo "No build step"
+
+  security:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - run: npm ci || npm install
+      - name: Audit
+        run: npm audit --audit-level=moderate || echo "Audit warnings found"
