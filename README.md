@@ -360,3 +360,137 @@ Read [CONTRIBUTING.md](CONTRIBUTING.md) before opening a PR.
 ## License
 
 MIT. See [LICENSE](LICENSE).
+
+
+## Stellar Integration Details
+
+### Testnet Configuration
+
+The marketplace runs on **Stellar Testnet** with the following configuration:
+
+| Parameter | Value | Purpose |
+|-----------|-------|---------|
+| Network | Testnet | Safe development environment |
+| Horizon URL | `https://horizon-testnet.stellar.org` | Transaction submission |
+| Friendbot | Available | Test XLM funding |
+| Passphrase | `Test SDF Network ; September 2015` | Transaction signing |
+
+### Payment Flow
+
+1. **Agent Discovery** — Orchestrator queries the agent registry for available services
+2. **Cost Estimation** — Each agent returns a price quote via x402 headers
+3. **Budget Check** — Orchestrator verifies the task has sufficient budget allocated
+4. **Payment Authorization** — A signed Stellar transaction is created for the exact amount
+5. **Facilitator Verification** — The x402 facilitator verifies the payment on-chain
+6. **Agent Execution** — The premium endpoint executes the task and streams results via SSE
+7. **Settlement** — The payment is settled and recorded on the Stellar ledger
+
+### Key Stellar Operations
+
+```javascript
+const { TransactionBuilder, Operation, Asset, Networks } = require('@stellar/stellar-sdk');
+
+const tx = new TransactionBuilder(sourceAccount, {
+  fee: '100',
+  networkPassphrase: Networks.TESTNET
+})
+  .addOperation(Operation.payment({
+    destination: agentAddress,
+    asset: Asset.native(),
+    amount: paymentAmount
+  }))
+  .setTimeout(30)
+  .build();
+```
+
+### Environment Variables
+
+| Variable | Required | Description |
+|----------|----------|-------------|
+| `STELLAR_NETWORK` | Yes | `TESTNET` or `PUBLIC` |
+| `STELLAR_SECRET_KEY` | Yes | Secret key for signing transactions |
+| `X402_FACILITATOR_URL` | Yes | x402 payment facilitator endpoint |
+| `AGENT_REGISTRY_PATH` | No | Custom agent registry location |
+| `MAX_BUDGET_PER_TASK` | No | Global spending cap (default: 100 XLM) |
+| `SSE_HEARTBEAT_INTERVAL` | No | Heartbeat interval in ms (default: 30000) |
+
+## Security Model
+
+### Budget Guardrails
+
+The orchestrator enforces strict spending limits:
+
+- **Per-task budget**: Maximum XLM allowed per individual task
+- **Per-agent rate limit**: Maximum calls per agent per minute
+- **Global cap**: Total spending limit across all active tasks
+- **Minimum balance**: Wallet must maintain a reserve above payments
+
+### Payment Verification
+
+Every payment undergoes three-phase verification:
+
+1. **Pre-flight**: Budget exceeds payment amount + network fees
+2. **In-flight**: Transaction hash is monitored on Horizon
+3. **Post-flight**: Ledger entry confirms final settlement
+
+### Audit Trail
+
+All payments produce an immutable audit record containing:
+
+- Transaction hash (Stellar ledger link)
+- Timestamp (ISO 8601)
+- Agent identifier
+- Amount in XLM (stroops)
+- Operation result code
+
+## Contributing
+
+### Development Setup
+
+```bash
+git clone https://github.com/Flamki/stellarmind.git
+cd stellarmind
+nvm install && nvm use
+npm install
+npm test
+npm run dev
+```
+
+### Code Quality Standards
+
+- **ESLint**: All code must pass `npm run lint`
+- **Prettier**: Formatting enforced via `npm run format:check`
+- **Tests**: New features require corresponding unit tests
+- **Commit Convention**: Follow [Conventional Commits](https://www.conventionalcommits.org/)
+- **PR Template**: Use the provided pull request template
+
+### Project Structure
+
+```
+stellarmind/
+├── public/               # Frontend assets
+│   ├── assets/css/       # Stylesheets
+│   └── assets/js/        # Client-side JavaScript
+├── src/
+│   ├── agents/           # Agent implementations
+│   │   ├── budget.js     # Budget enforcement
+│   │   ├── orchestrator.js # Task orchestration
+│   │   ├── registry.js   # Agent discovery
+│   │   └── services.js   # Premium endpoints
+│   └── config.js         # Configuration loader
+├── docs/                 # Documentation
+├── .github/workflows/    # CI/CD pipelines
+└── package.json          # Dependencies & scripts
+```
+
+## Troubleshooting
+
+| Symptom | Likely Cause | Solution |
+|---------|-------------|----------|
+| `402 Payment Required` | Insufficient budget | Increase task budget or check XLM balance |
+| `Horizon error` | Network connectivity | Verify Testnet is reachable |
+| `Invalid signature` | Wrong secret key | Check `STELLAR_SECRET_KEY` env variable |
+| `Agent timeout` | Agent not responding | Verify agent endpoint is running |
+| `SSE connection lost` | Network interruption | Client auto-reconnects |
+
+Enable verbose logging: `DEBUG=stellar-mind:* npm run dev`
