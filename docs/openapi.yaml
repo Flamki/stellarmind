@@ -1,0 +1,199 @@
+openapi: "3.0.3"
+info:
+  title: StellarMind API
+  description: REST API for the StellarMind agent orchestration platform
+  version: "1.0.0"
+  contact:
+    name: StellarMind Team
+servers:
+  - url: http://localhost:3000/api/v1
+    description: Local development
+paths:
+  /agents:
+    get:
+      summary: List all registered agents
+      operationId: listAgents
+      tags: [Agents]
+      responses:
+        '200':
+          description: Agent list
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Agent'
+    post:
+      summary: Register a new agent
+      operationId: registerAgent
+      tags: [Agents]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AgentInput'
+      responses:
+        '201':
+          description: Agent registered
+        '400':
+          description: Invalid input
+
+  /agents/{agentId}:
+    get:
+      summary: Get agent details
+      operationId: getAgent
+      tags: [Agents]
+      parameters:
+        - name: agentId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Agent details
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Agent'
+        '404':
+          description: Agent not found
+
+  /orchestration:
+    post:
+      summary: Start an orchestration run
+      operationId: startOrchestration
+      tags: [Orchestration]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/OrchestrationInput'
+      responses:
+        '202':
+          description: Orchestration started
+
+  /orchestration/{runId}/status:
+    get:
+      summary: Get orchestration run status
+      operationId: getOrchestrationStatus
+      tags: [Orchestration]
+      parameters:
+        - name: runId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Run status
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OrchestrationStatus'
+
+  /budget:
+    get:
+      summary: Get budget information
+      operationId: getBudget
+      tags: [Budget]
+      responses:
+        '200':
+          description: Budget details
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Budget'
+
+  /wallet:
+    get:
+      summary: Get wallet status
+      operationId: getWallet
+      tags: [Wallet]
+      responses:
+        '200':
+          description: Wallet details
+
+  /health:
+    get:
+      summary: Health check
+      operationId: healthCheck
+      tags: [System]
+      responses:
+        '200':
+          description: System healthy
+
+components:
+  schemas:
+    Agent:
+      type: object
+      properties:
+        id:
+          type: string
+        name:
+          type: string
+        provider:
+          type: string
+        model:
+          type: string
+        status:
+          type: string
+          enum: [active, inactive, error]
+        createdAt:
+          type: string
+          format: date-time
+
+    AgentInput:
+      type: object
+      required: [name, provider, model]
+      properties:
+        name:
+          type: string
+        provider:
+          type: string
+        model:
+          type: string
+        config:
+          type: object
+
+    OrchestrationInput:
+      type: object
+      required: [task]
+      properties:
+        task:
+          type: string
+        agents:
+          type: array
+          items:
+            type: string
+        budget:
+          type: number
+
+    OrchestrationStatus:
+      type: object
+      properties:
+        runId:
+          type: string
+        status:
+          type: string
+          enum: [pending, running, completed, failed]
+        progress:
+          type: number
+        result:
+          type: object
+
+    Budget:
+      type: object
+      properties:
+        total:
+          type: number
+        spent:
+          type: number
+        remaining:
+          type: number
+        currency:
+          type: string
+
+# Generated for Stellar Wave bounty #36
