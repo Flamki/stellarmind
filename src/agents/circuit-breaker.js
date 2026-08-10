@@ -19,7 +19,7 @@ class CircuitBreaker {
    * @param {number} [options.successThreshold=2] — successes needed to close
    * @param {number} [options.requestTimeout=15000] — ms before request considered failed
    */
-  constructor(options = {}) {
+  constructor(_options = {}) {
     this.name = options.name || 'default';
     this.failureThreshold = options.failureThreshold || 5;
     this.resetTimeout = options.resetTimeout || 30000;
