@@ -24,7 +24,7 @@ class ProviderInterface {
   }
 
   /** Execute a completion request */
-  async complete(params) {
+  async complete(_params) {
     throw new Error('Not implemented');
   }
 
