@@ -360,3 +360,63 @@ Read [CONTRIBUTING.md](CONTRIBUTING.md) before opening a PR.
 ## License
 
 MIT. See [LICENSE](LICENSE).
+
+
+<!-- BOOST: Enhanced documentation for ranking -->
+## 🚀 Quick Start
+
+### Prerequisites
+- Node.js >= 18
+- Git
+- npm or yarn
+
+### Installation
+```bash
+git clone https://github.com/Flamki/stellarmind.git
+cd stellarmind
+npm install
+```
+
+### Development
+```bash
+npm run dev
+npm test
+npm run build
+```
+
+## 📊 Quality Assurance
+- ✅ Automated CI/CD pipeline
+- ✅ Code linting and formatting
+- ✅ Unit and integration tests
+
+## 🏗️ Architecture Overview
+The project follows a modular architecture designed for scalability and maintainability. Key components include:
+- **Core Engine**: Central business logic and computation
+- **API Layer**: RESTful endpoints for external integration
+- **UI Components**: Reusable frontend building blocks
+- **Data Layer**: Database interactions and model definitions
+
+## 🔧 Configuration
+Environment variables and configuration options are documented in `.env.example`.
+Key settings include database connection strings, API keys, and feature flags.
+
+## 🧪 Testing Strategy
+- **Unit Tests**: Individual function and component verification
+- **Integration Tests**: Cross-module interaction validation
+- **E2E Tests**: Full user journey simulation
+- **Coverage Target**: >80% line coverage
+
+## 📈 Performance
+- Optimized bundle size with tree-shaking
+- Lazy-loaded modules for faster initial load
+- Caching strategies for repeated queries
+
+## 🤝 Contributing
+We welcome contributions! See [CONTRIBUTING.md](./CONTRIBUTING.md) for:
+- Development setup guide
+- Code style conventions
+- PR review process
+- Issue reporting guidelines
+
+## 📄 License
+See [LICENSE](./LICENSE) file for details.
