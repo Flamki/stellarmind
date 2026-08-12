@@ -10,11 +10,11 @@ describe('SSE Heartbeat & Stale-Client Cleanup', () => {
     it('adds and removes clients', () => {
       const tracker = createClientTracker()
       const mockRes = { write: () => {}, end: () => {} }
-      
+
       assert.strictEqual(tracker.size(), 0)
       assert.ok(tracker.addClient(mockRes))
       assert.strictEqual(tracker.size(), 1)
-      
+
       tracker.removeClient(mockRes)
       assert.strictEqual(tracker.size(), 0)
     })
@@ -32,20 +32,20 @@ describe('SSE Heartbeat & Stale-Client Cleanup', () => {
       const tracker = createClientTracker()
       const mockRes = { write: () => {} }
       tracker.addClient(mockRes)
-      
+
       assert.strictEqual(tracker.markError(mockRes), false) // 1st error
       assert.strictEqual(tracker.markError(mockRes), false) // 2nd error
-      assert.strictEqual(tracker.markError(mockRes), true)  // 3rd → remove
+      assert.strictEqual(tracker.markError(mockRes), true) // 3rd → remove
     })
 
     it('resets error count on successful markWrite', () => {
       const tracker = createClientTracker()
       const mockRes = { write: () => {} }
       tracker.addClient(mockRes)
-      
+
       tracker.markError(mockRes)
       tracker.markError(mockRes)
-      tracker.markWrite(mockRes)  // reset
+      tracker.markWrite(mockRes) // reset
       assert.strictEqual(tracker.markError(mockRes), false) // counter reset to 1
     })
   })
@@ -55,7 +55,7 @@ describe('SSE Heartbeat & Stale-Client Cleanup', () => {
       const clients = []
       const tracker = createClientTracker()
       const received = []
-      
+
       const mockRes = {
         write(data) {
           // Parse SSE format
@@ -63,13 +63,13 @@ describe('SSE Heartbeat & Stale-Client Cleanup', () => {
           if (match) {
             received.push(JSON.parse(match[1]))
           }
-        }
+        },
       }
       clients.push(mockRes)
       tracker.addClient(mockRes)
-      
+
       safeBroadcast(clients, tracker, { type: 'test', value: 42 })
-      
+
       assert.strictEqual(received.length, 1)
       assert.deepStrictEqual(received[0], { type: 'test', value: 42 })
     })
@@ -77,21 +77,25 @@ describe('SSE Heartbeat & Stale-Client Cleanup', () => {
     it('removes dead clients on write failure', () => {
       const clients = []
       const tracker = createClientTracker()
-      
+
       const goodRes = {
         written: [],
-        write(data) { this.written.push(data) }
+        write(data) {
+          this.written.push(data)
+        },
       }
       const badRes = {
-        write() { throw new Error('connection lost') }
+        write() {
+          throw new Error('connection lost')
+        },
       }
-      
+
       clients.push(goodRes, badRes)
       tracker.addClient(goodRes)
       tracker.addClient(badRes)
-      
+
       safeBroadcast(clients, tracker, { type: 'test' })
-      
+
       assert.strictEqual(clients.length, 1)
       assert.strictEqual(clients[0], goodRes)
       assert.ok(goodRes.written.length > 0)
@@ -103,12 +107,12 @@ describe('SSE Heartbeat & Stale-Client Cleanup', () => {
       const clients = []
       const broadcastCalls = []
       const broadcastFn = (event) => broadcastCalls.push(event)
-      
+
       const { stopHeartbeat, getStats } = setupHeartbeat(clients, broadcastFn, {
         intervalMs: 100,
         staleTimeoutMs: 300,
       })
-      
+
       assert.ok(typeof stopHeartbeat === 'function')
       assert.ok(typeof getStats === 'function')
       assert.deepStrictEqual(getStats(), {
@@ -118,7 +122,7 @@ describe('SSE Heartbeat & Stale-Client Cleanup', () => {
         heartbeatIntervalMs: 100,
         staleTimeoutMs: 300,
       })
-      
+
       stopHeartbeat()
     })
   })
