@@ -4,21 +4,21 @@
  * Stellar Wave bounty #26
  */
 
-const fs = require('fs').promises;
-const path = require('path');
-const crypto = require('crypto');
+const fs = require('fs').promises
+const path = require('path')
+const crypto = require('crypto')
 
-const AUDIT_DIR = process.env.AUDIT_DIR || path.join(__dirname, '..', '..', 'logs', 'audit');
-const RETENTION_DAYS = parseInt(process.env.AUDIT_RETENTION_DAYS || '90', 10);
+const AUDIT_DIR = process.env.AUDIT_DIR || path.join(__dirname, '..', '..', 'logs', 'audit')
+const RETENTION_DAYS = parseInt(process.env.AUDIT_RETENTION_DAYS || '90', 10)
 
 class AuditLogger {
   constructor() {
-    this.initialized = false;
+    this.initialized = false
   }
 
   async init() {
-    await fs.mkdir(AUDIT_DIR, { recursive: true });
-    this.initialized = true;
+    await fs.mkdir(AUDIT_DIR, { recursive: true })
+    this.initialized = true
   }
 
   /**
@@ -29,20 +29,20 @@ class AuditLogger {
       type: event.type,
       entityId: event.entityId,
       timestamp: event.timestamp,
-      action: event.action
-    });
-    return crypto.createHash('sha256').update(payload).digest('hex').slice(0, 16);
+      action: event.action,
+    })
+    return crypto.createHash('sha256').update(payload).digest('hex').slice(0, 16)
   }
 
   /**
    * Get the log file path for a given date.
    */
   _getLogPath(date) {
-    const d = date || new Date();
-    const yyyy = d.getFullYear();
-    const mm = String(d.getMonth() + 1).padStart(2, '0');
-    const dd = String(d.getDate()).padStart(2, '0');
-    return path.join(AUDIT_DIR, `audit-${yyyy}-${mm}-${dd}.jsonl`);
+    const d = date || new Date()
+    const yyyy = d.getFullYear()
+    const mm = String(d.getMonth() + 1).padStart(2, '0')
+    const dd = String(d.getDate()).padStart(2, '0')
+    return path.join(AUDIT_DIR, `audit-${yyyy}-${mm}-${dd}.jsonl`)
   }
 
   /**
@@ -54,7 +54,7 @@ class AuditLogger {
    * @param {Object} [event.metadata] — additional data
    */
   async record(event) {
-    if (!this.initialized) await this.init();
+    if (!this.initialized) await this.init()
 
     const entry = {
       eventId: this._generateEventId(event),
@@ -62,13 +62,13 @@ class AuditLogger {
       entityId: event.entityId,
       action: event.action,
       timestamp: event.timestamp || new Date().toISOString(),
-      metadata: event.metadata || {}
-    };
+      metadata: event.metadata || {},
+    }
 
-    const logPath = this._getLogPath(new Date(entry.timestamp));
-    const line = JSON.stringify(entry) + '\n';
-    await fs.appendFile(logPath, line, 'utf8');
-    return entry.eventId;
+    const logPath = this._getLogPath(new Date(entry.timestamp))
+    const line = JSON.stringify(entry) + '\n'
+    await fs.appendFile(logPath, line, 'utf8')
+    return entry.eventId
   }
 
   /**
@@ -81,54 +81,56 @@ class AuditLogger {
    * @param {number} [filters.limit] — max results (default 100)
    */
   async query(filters = {}) {
-    const { type, entityId, from, to, limit = 100 } = filters;
-    const results = [];
-    const start = from || new Date(Date.now() - RETENTION_DAYS * 86400000);
-    const end = to || new Date();
+    const { type, entityId, from, to, limit = 100 } = filters
+    const results = []
+    const start = from || new Date(Date.now() - RETENTION_DAYS * 86400000)
+    const end = to || new Date()
 
-    const current = new Date(start);
+    const current = new Date(start)
     while (current <= end) {
-      const logPath = this._getLogPath(current);
+      const logPath = this._getLogPath(current)
       try {
-        const content = await fs.readFile(logPath, 'utf8');
+        const content = await fs.readFile(logPath, 'utf8')
         for (const line of content.trim().split('\n')) {
-          if (!line) continue;
+          if (!line) continue
           try {
-            const entry = JSON.parse(line);
-            if (type && entry.type !== type) continue;
-            if (entityId && entry.entityId !== entityId) continue;
-            results.push(entry);
-            if (results.length >= limit) return results;
-          } catch (_) { /* skip malformed lines */ }
+            const entry = JSON.parse(line)
+            if (type && entry.type !== type) continue
+            if (entityId && entry.entityId !== entityId) continue
+            results.push(entry)
+            if (results.length >= limit) return results
+          } catch (_) {
+            /* skip malformed lines */
+          }
         }
       } catch (e) {
-        if (e.code !== 'ENOENT') throw e;
+        if (e.code !== 'ENOENT') throw e
       }
-      current.setDate(current.getDate() + 1);
+      current.setDate(current.getDate() + 1)
     }
 
-    return results;
+    return results
   }
 
   /**
    * Clean up audit logs older than retention period.
    */
   async cleanup() {
-    const cutoff = new Date(Date.now() - RETENTION_DAYS * 86400000);
-    const files = await fs.readdir(AUDIT_DIR);
+    const cutoff = new Date(Date.now() - RETENTION_DAYS * 86400000)
+    const files = await fs.readdir(AUDIT_DIR)
     for (const file of files) {
-      if (!file.startsWith('audit-') || !file.endsWith('.jsonl')) continue;
-      const dateStr = file.replace('audit-', '').replace('.jsonl', '');
-      const [yyyy, mm, dd] = dateStr.split('-').map(Number);
-      const fileDate = new Date(yyyy, mm - 1, dd);
+      if (!file.startsWith('audit-') || !file.endsWith('.jsonl')) continue
+      const dateStr = file.replace('audit-', '').replace('.jsonl', '')
+      const [yyyy, mm, dd] = dateStr.split('-').map(Number)
+      const fileDate = new Date(yyyy, mm - 1, dd)
       if (fileDate < cutoff) {
-        await fs.unlink(path.join(AUDIT_DIR, file));
+        await fs.unlink(path.join(AUDIT_DIR, file))
       }
     }
   }
 }
 
 // Singleton
-const auditLogger = new AuditLogger();
+const auditLogger = new AuditLogger()
 
-module.exports = { AuditLogger, auditLogger };
+module.exports = { AuditLogger, auditLogger }
