@@ -4,7 +4,7 @@
  * Stellar Wave bounty #25
  */
 
-const PROVIDER_REGISTRY = new Map();
+const PROVIDER_REGISTRY = new Map()
 
 class ProviderInterface {
   /**
@@ -14,34 +14,34 @@ class ProviderInterface {
    * @param {Object} [config.defaultOptions]
    */
   constructor(config) {
-    this.config = config;
-    this.name = 'base';
+    this.config = config
+    this.name = 'base'
   }
 
   /** Returns the list of supported models */
   async listModels() {
-    throw new Error('Not implemented');
+    throw new Error('Not implemented')
   }
 
   /** Execute a completion request */
   async complete(_params) {
-    throw new Error('Not implemented');
+    throw new Error('Not implemented')
   }
 
   /** Execute a chat completion request */
   async chat(messages, options = {}) {
-    throw new Error('Not implemented');
+    throw new Error('Not implemented')
   }
 
   /** Health check against the provider */
   async healthCheck() {
-    throw new Error('Not implemented');
+    throw new Error('Not implemented')
   }
 
   /** Provider-specific token counting */
   async countTokens(text) {
     // Default: rough estimate (4 chars ~= 1 token)
-    return Math.ceil(text.length / 4);
+    return Math.ceil(text.length / 4)
   }
 }
 
@@ -51,7 +51,7 @@ class ProviderInterface {
  * @param {typeof ProviderInterface} ProviderClass
  */
 function registerProvider(name, ProviderClass) {
-  PROVIDER_REGISTRY.set(name.toLowerCase(), ProviderClass);
+  PROVIDER_REGISTRY.set(name.toLowerCase(), ProviderClass)
 }
 
 /**
@@ -61,18 +61,20 @@ function registerProvider(name, ProviderClass) {
  * @returns {ProviderInterface}
  */
 function createProvider(name, config) {
-  const ProviderClass = PROVIDER_REGISTRY.get(name.toLowerCase());
+  const ProviderClass = PROVIDER_REGISTRY.get(name.toLowerCase())
   if (!ProviderClass) {
-    throw new Error(`Unknown provider: ${name}. Available: ${[...PROVIDER_REGISTRY.keys()].join(', ')}`);
+    throw new Error(
+      `Unknown provider: ${name}. Available: ${[...PROVIDER_REGISTRY.keys()].join(', ')}`
+    )
   }
-  return new ProviderClass(config);
+  return new ProviderClass(config)
 }
 
 /**
  * List all registered provider names.
  */
 function listProviders() {
-  return [...PROVIDER_REGISTRY.keys()];
+  return [...PROVIDER_REGISTRY.keys()]
 }
 
 /**
@@ -89,5 +91,5 @@ module.exports = {
   registerProvider,
   createProvider,
   listProviders,
-  PROVIDER_REGISTRY
-};
+  PROVIDER_REGISTRY,
+}
