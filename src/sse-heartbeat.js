@@ -1,9 +1,9 @@
 /**
  * SSE Heartbeat & Stale-Client Cleanup Module
- * 
+ *
  * Adds periodic heartbeat events, safe broadcast with error handling,
  * and stale-client eviction to the SSE event stream.
- * 
+ *
  * Usage in server.js:
  *   import { setupHeartbeat, safeBroadcast, stopHeartbeat } from './sse-heartbeat.js'
  *   const { safeBroadcast } = setupHeartbeat(sseClients, broadcast, { intervalMs: 30000 })
@@ -12,7 +12,7 @@
 import { logger } from './logger.js'
 
 const DEFAULT_HEARTBEAT_INTERVAL_MS = 30000
-const DEFAULT_STALE_TIMEOUT_MS = 90000  // 3 heartbeat cycles
+const DEFAULT_STALE_TIMEOUT_MS = 90000 // 3 heartbeat cycles
 const DEFAULT_MAX_CLIENTS = 100
 
 /**
@@ -20,7 +20,7 @@ const DEFAULT_MAX_CLIENTS = 100
  * and tracks per-client metadata for staleness detection.
  */
 export function createClientTracker() {
-  const clients = new Map()  // response -> { id, addedAt, lastWrite, writeErrors }
+  const clients = new Map() // response -> { id, addedAt, lastWrite, writeErrors }
 
   function addClient(res) {
     if (clients.size >= DEFAULT_MAX_CLIENTS) {
@@ -60,8 +60,11 @@ export function createClientTracker() {
     if (entry) {
       entry.writeErrors += 1
       if (entry.writeErrors >= 3) {
-        logger.warn('sse_client_write_error_limit', { clientId: entry.id, errors: entry.writeErrors })
-        return true  // signal removal
+        logger.warn('sse_client_write_error_limit', {
+          clientId: entry.id,
+          errors: entry.writeErrors,
+        })
+        return true // signal removal
       }
     }
     return false
@@ -138,7 +141,7 @@ export function safeBroadcast(clients, clientTracker, event) {
 
 /**
  * Sets up the SSE heartbeat and stale-client cleanup.
- * 
+ *
  * @param {Array} sseClients - The array of SSE response objects
  * @param {Function} broadcastFn - The existing broadcast function (will be wrapped)
  * @param {Object} options - { intervalMs, staleTimeoutMs }
