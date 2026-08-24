@@ -1,0 +1,192 @@
+openapi: 3.0.3
+info:
+  title: StellarMind API
+  version: 1.0.0
+  description: Multi-agent AI marketplace on Stellar Testnet with x402 micropayments.
+servers:
+  - url: http://localhost:3001
+    description: Local Development Server
+
+paths:
+  /healthz:
+    get:
+      summary: Liveness Probe
+      description: Basic liveness healthcheck.
+      responses:
+        '200':
+          description: Service is alive
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    example: ok
+
+  /readyz:
+    get:
+      summary: Readiness Probe
+      description: Verifies readiness of server dependencies.
+      responses:
+        '200':
+          description: Service is ready
+        '503':
+          description: Service unavailable
+
+  /api/status:
+    get:
+      summary: System Status
+      description: Returns wallet configuration and agent platform statuses.
+      responses:
+        '200':
+          description: Status summary
+          content:
+            application/json:
+              schema:
+                type: object
+
+  /api/agents:
+    get:
+      summary: List Registered Agents
+      description: Retrieves metadata for all available marketplace agents.
+      responses:
+        '200':
+          description: Array of registered agents
+
+  /api/agents/{id}:
+    get:
+      summary: Get Agent Details
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Agent details
+        '404':
+          description: Agent not found
+
+  /api/agents/discover/{capability}:
+    get:
+      summary: Discover Agents by Capability
+      parameters:
+        - name: capability
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Matching agents
+
+  /api/orchestrate:
+    post:
+      summary: Execute Multi-Agent Orchestration
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - task
+              properties:
+                task:
+                  type: string
+                budget:
+                  type: number
+      responses:
+        '200':
+          description: Orchestration execution plan and result
+
+  /api/runs:
+    get:
+      summary: Historical Runs
+      description: Retrieves recent orchestration run history.
+      responses:
+        '200':
+          description: List of runs
+
+  /api/wallet/balances:
+    get:
+      summary: Get Wallet Balances
+      description: Queries native and token balances for configured Stellar wallets.
+      responses:
+        '200':
+          description: Wallet balances
+
+  /api/wallet/transactions:
+    get:
+      summary: Get Wallet Transactions
+      parameters:
+        - name: address
+          in: query
+          required: false
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Transaction history
+
+  /api/premium/research:
+    get:
+      summary: Premium Research Agent Endpoint (x402 Protected)
+      parameters:
+        - name: q
+          in: query
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Research result
+        '402':
+          description: Payment Required (x402 protocol challenge)
+
+  /api/premium/summarize:
+    get:
+      summary: Premium Summarize Agent Endpoint (x402 Protected)
+      parameters:
+        - name: q
+          in: query
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Summary result
+        '402':
+          description: Payment Required
+
+  /api/premium/analyze:
+    get:
+      summary: Premium Analysis Agent Endpoint (x402 Protected)
+      parameters:
+        - name: q
+          in: query
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Analysis result
+        '402':
+          description: Payment Required
+
+  /api/premium/code:
+    get:
+      summary: Premium Code Agent Endpoint (x402 Protected)
+      parameters:
+        - name: q
+          in: query
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Code generation result
+        '402':
+          description: Payment Required
