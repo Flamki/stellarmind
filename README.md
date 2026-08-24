@@ -46,6 +46,39 @@ Agent execution + streamed updates + tx proof links
 For a deeper, standalone walkthrough — components plus the request, payment, and orchestration flows
 — see [docs/architecture.md](docs/architecture.md).
 
+
+## Environment Variables
+
+The table below documents all configuration variables supported by StellarMind. For guidelines on secret management and credential handling, refer to [SECURITY.md](SECURITY.md).
+
+| Variable | Description | Required / Optional | Safe Default / Example |
+| :--- | :--- | :--- | :--- |
+| `SERVER_STELLAR_ADDRESS` | Stellar public key for the server wallet receiving payments | Required | `GB...` |
+| `SERVER_STELLAR_SECRET` | Stellar private seed for the server wallet | Required | `SB...` |
+| `ORCHESTRATOR_STELLAR_ADDRESS` | Stellar public key for orchestrator paying for sub-services | Required | `GB...` |
+| `ORCHESTRATOR_STELLAR_SECRET` | Stellar private seed for the orchestrator wallet | Required | `SB...` |
+| `BUYER_STELLAR_ADDRESS` | Stellar public key for demo end-user buyer wallet | Required | `GB...` |
+| `BUYER_STELLAR_SECRET` | Stellar private seed for demo buyer wallet | Required | `SB...` |
+| `ANTHROPIC_API_KEY` | Anthropic Claude API key for intelligence routing | Required | `sk-ant-...` |
+| `ANTHROPIC_REQUEST_TIMEOUT_MS` | Timeout for Anthropic API calls in milliseconds | Optional | `20000` |
+| `ANTHROPIC_MAX_RETRIES` | Maximum retry attempts for transient API errors | Optional | `2` |
+| `ANTHROPIC_RETRY_BASE_DELAY_MS` | Exponential backoff base retry delay (ms) | Optional | `500` |
+| `NETWORK` | Target Stellar network identifier | Optional | `stellar:testnet` |
+| `FACILITATOR_URL` | x402 payment facilitator service URL | Optional | `https://www.x402.org/facilitator` |
+| `STELLAR_RPC_URL` | Soroban / Stellar RPC endpoint | Optional | `https://soroban-testnet.stellar.org` |
+| `PORT` | Local HTTP server port | Optional | `3001` |
+| `LOG_FORMAT` | Logging output style (`json` or `pretty`) | Optional | `json` |
+| `INTERNAL_BASE_URL` | Internal URL for orchestrator premium calls | Optional | `http://localhost:3001` |
+| `RATE_LIMIT_DEFAULT_WINDOW_SEC` | Time window for default rate limiter in seconds | Optional | `60` |
+| `RATE_LIMIT_DEFAULT_MAX` | Max allowed requests per default window | Optional | `60` |
+| `RATE_LIMIT_ORCHESTRATE_WINDOW_SEC` | Time window for orchestrate endpoint rate limiter | Optional | `60` |
+| `RATE_LIMIT_ORCHESTRATE_MAX` | Max allowed requests for orchestration per window | Optional | `10` |
+| `RATE_LIMIT_APIKEY_WINDOW_SEC` | Time window for API key creation rate limiter | Optional | `60` |
+| `RATE_LIMIT_APIKEY_MAX` | Max allowed API key requests per window | Optional | `5` |
+| `RUN_HISTORY_STORAGE` | Persistence mode (`file` or `memory`) | Optional | `file` |
+| `RUN_HISTORY_FILE` | Storage path for execution run history JSON | Optional | `./data/run-history.json` |
+| `RUN_HISTORY_MAX_RUNS` | Maximum number of historical runs retained | Optional | `200` |
+
 ## Quick Start
 
 ### 1) Clone and install
@@ -364,7 +397,40 @@ MIT. See [LICENSE](LICENSE).
 
 ## 🚀 Enhanced by Bounty Hunter
 
-### Quick Start
+#
+## Environment Variables
+
+The table below documents all configuration variables supported by StellarMind. For guidelines on secret management and credential handling, refer to [SECURITY.md](SECURITY.md).
+
+| Variable | Description | Required / Optional | Safe Default / Example |
+| :--- | :--- | :--- | :--- |
+| `SERVER_STELLAR_ADDRESS` | Stellar public key for the server wallet receiving payments | Required | `GB...` |
+| `SERVER_STELLAR_SECRET` | Stellar private seed for the server wallet | Required | `SB...` |
+| `ORCHESTRATOR_STELLAR_ADDRESS` | Stellar public key for orchestrator paying for sub-services | Required | `GB...` |
+| `ORCHESTRATOR_STELLAR_SECRET` | Stellar private seed for the orchestrator wallet | Required | `SB...` |
+| `BUYER_STELLAR_ADDRESS` | Stellar public key for demo end-user buyer wallet | Required | `GB...` |
+| `BUYER_STELLAR_SECRET` | Stellar private seed for demo buyer wallet | Required | `SB...` |
+| `ANTHROPIC_API_KEY` | Anthropic Claude API key for intelligence routing | Required | `sk-ant-...` |
+| `ANTHROPIC_REQUEST_TIMEOUT_MS` | Timeout for Anthropic API calls in milliseconds | Optional | `20000` |
+| `ANTHROPIC_MAX_RETRIES` | Maximum retry attempts for transient API errors | Optional | `2` |
+| `ANTHROPIC_RETRY_BASE_DELAY_MS` | Exponential backoff base retry delay (ms) | Optional | `500` |
+| `NETWORK` | Target Stellar network identifier | Optional | `stellar:testnet` |
+| `FACILITATOR_URL` | x402 payment facilitator service URL | Optional | `https://www.x402.org/facilitator` |
+| `STELLAR_RPC_URL` | Soroban / Stellar RPC endpoint | Optional | `https://soroban-testnet.stellar.org` |
+| `PORT` | Local HTTP server port | Optional | `3001` |
+| `LOG_FORMAT` | Logging output style (`json` or `pretty`) | Optional | `json` |
+| `INTERNAL_BASE_URL` | Internal URL for orchestrator premium calls | Optional | `http://localhost:3001` |
+| `RATE_LIMIT_DEFAULT_WINDOW_SEC` | Time window for default rate limiter in seconds | Optional | `60` |
+| `RATE_LIMIT_DEFAULT_MAX` | Max allowed requests per default window | Optional | `60` |
+| `RATE_LIMIT_ORCHESTRATE_WINDOW_SEC` | Time window for orchestrate endpoint rate limiter | Optional | `60` |
+| `RATE_LIMIT_ORCHESTRATE_MAX` | Max allowed requests for orchestration per window | Optional | `10` |
+| `RATE_LIMIT_APIKEY_WINDOW_SEC` | Time window for API key creation rate limiter | Optional | `60` |
+| `RATE_LIMIT_APIKEY_MAX` | Max allowed API key requests per window | Optional | `5` |
+| `RUN_HISTORY_STORAGE` | Persistence mode (`file` or `memory`) | Optional | `file` |
+| `RUN_HISTORY_FILE` | Storage path for execution run history JSON | Optional | `./data/run-history.json` |
+| `RUN_HISTORY_MAX_RUNS` | Maximum number of historical runs retained | Optional | `200` |
+
+## Quick Start
 ```bash
 git clone https://github.com/Flamki/stellarmind.git
 cd stellarmind
