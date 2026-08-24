@@ -58,6 +58,30 @@ npm test        # Same as demo
 - Before every push, run `git diff --staged` and verify no keys are present.
 - If a secret is exposed, rotate it immediately.
 
+### Pre-Push Security Checklist
+
+To prevent accidental credential leaks before pushing commits or opening pull requests, verify your changes against this checklist:
+
+1. **Inspect repository status:**
+   ```bash
+   git status
+   ```
+   Confirm that `.env`, local keypairs, or temporary dumps are not staged.
+
+2. **Audit staged diffs:**
+   ```bash
+   git diff --staged
+   ```
+   Carefully review code changes to ensure all secrets use placeholder formats (e.g., `sk-ant-...` or `SB...`).
+
+3. **Run a quick secret pattern scan:**
+   ```bash
+   git diff --staged | grep -E "(sk-ant-|SECRET|PRIVATE_KEY|S[A-Z0-9]{55})"
+   ```
+
+4. **Cross-reference security policy:**
+   Consult [SECURITY.md](SECURITY.md) for guidelines on responsible disclosure and credential rotation.
+
 ### Formatting and linting
 
 This project uses ESLint and Prettier to keep code and docs consistent. Before opening a PR, run:
