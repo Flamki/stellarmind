@@ -1,0 +1,17 @@
+{
+  "types": [
+    {"type": "feat", "section": "Features"},
+    {"type": "fix", "section": "Bug Fixes"},
+    {"type": "docs", "section": "Documentation"},
+    {"type": "style", "section": "Styles"},
+    {"type": "refactor", "section": "Code Refactoring"},
+    {"type": "perf", "section": "Performance Improvements"},
+    {"type": "test", "section": "Tests"},
+    {"type": "build", "section": "Build System"},
+    {"type": "ci", "section": "CI/CD"},
+    {"type": "chore", "section": "Chores"}
+  ],
+  "commitUrlFormat": "https://github.com/Flamki/stellarmind/commit/{{hash}}",
+  "compareUrlFormat": "https://github.com/Flamki/stellarmind/compare/{{previousTag}}...{{currentTag}}",
+  "issueUrlFormat": "https://github.com/Flamki/stellarmind/issues/{{id}}"
+}

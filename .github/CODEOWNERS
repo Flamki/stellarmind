@@ -1,0 +1,14 @@
+# Code Owners
+# Automatically request reviews from the right people
+
+# Core infrastructure
+*       @Flamki
+
+# Documentation
+*.md    @Flamki
+docs/   @Flamki
+
+# CI/CD workflows
+.github/workflows/   @Flamki
+
+# Generated for Stellar Wave bounty #41

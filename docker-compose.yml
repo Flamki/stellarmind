@@ -1,0 +1,46 @@
+version: '3.8'
+
+services:
+  stellarmind:
+    build: .
+    container_name: stellarmind
+    ports:
+      - "3000:3000"
+    env_file:
+      - .env
+    environment:
+      - NODE_ENV=production
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "wget", "--spider", "http://localhost:3000/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+    volumes:
+      - ./logs:/app/logs
+    networks:
+      - stellarmind
+
+  # Optional: Redis for session/rate-limiting
+  redis:
+    image: redis:7-alpine
+    container_name: stellarmind-redis
+    restart: unless-stopped
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    networks:
+      - stellarmind
+    profiles:
+      - full
+
+networks:
+  stellarmind:
+    driver: bridge
+
+volumes:
+  redis_data:
+
+# Generated for Stellar Wave bounty #28
