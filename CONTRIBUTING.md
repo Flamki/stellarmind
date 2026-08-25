@@ -58,6 +58,46 @@ npm test        # Same as demo
 - Before every push, run `git diff --staged` and verify no keys are present.
 - If a secret is exposed, rotate it immediately.
 
+See [SECURITY.md](SECURITY.md) for the full secret-handling policy and how to report a vulnerability
+privately.
+
+### Security checklist before push
+
+Run these four commands before every `git push`. They take seconds and catch the mistakes that are
+expensive to undo.
+
+```bash
+# 1. Confirm only the files you intend to ship are staged
+git status
+
+# 2. Read the staged content line by line — this is what actually leaves your machine
+git diff --staged
+
+# 3. Grep the staged diff for common credential shapes
+git diff --staged | grep -nEi \
+  'S[A-Z2-7]{55}|sk-ant-|AKIA[0-9A-Z]{16}|ghp_|xox[baprs]-|BEGIN [A-Z ]*PRIVATE KEY|(api[_-]?key|secret|password|token)[[:space:]]*[:=]'
+
+# 4. Confirm no env file slipped into the commit
+git diff --staged --name-only | grep -E '^\.env' || echo 'OK: no .env files staged'
+```
+
+Step 3 prints nothing when the diff is clean. Any hit is a stop sign — unstage the file, remove the
+value, and re-run.
+
+Then confirm:
+
+- [ ] Only intended files are staged (no `.env`, wallets, logs, recordings, or screenshots).
+- [ ] Secrets are referenced via `process.env`, never as literals — `.env.example` holds
+      placeholders only.
+- [ ] Screenshots, demo videos, and pasted terminal output contain no private key material.
+- [ ] Nothing was committed with `--no-verify`; if it was, say why in the PR description.
+
+The pre-commit hook ([`.husky/check-secrets.sh`](.husky/check-secrets.sh)) and the gitleaks CI job
+run the same class of checks, but they are a backstop — not a substitute for reading your own diff.
+
+If a secret was already pushed, treat it as compromised: rotate it immediately, then follow
+[SECURITY.md](SECURITY.md). Deleting the commit does not un-leak it.
+
 ### Formatting and linting
 
 This project uses ESLint and Prettier to keep code and docs consistent. Before opening a PR, run:
@@ -165,6 +205,8 @@ Closes #44"
 ```
 
 ### 6. Push and open a PR
+
+Run the [security checklist before push](#security-checklist-before-push) first, then:
 
 ```bash
 git push origin your-branch-name
