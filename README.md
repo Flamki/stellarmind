@@ -1,3 +1,5 @@
+
+
 # StellarMind
 
 [![License: MIT](https://img.shields.io/badge/license-MIT-0f172a.svg)](LICENSE)
@@ -96,11 +98,11 @@ Security note:
 
 Add your Anthropic key:
 
-```env
+| Variable | Example | Purpose |
+| --- | --- | --- |
 | `ANTHROPIC_API_KEY` | `sk-ant-...` | Anthropic API key for Claude agents |
 | `ADMIN_TOKEN` | (optional) | Token required for runtime config changes (e.g. `POST /api/config/apikey`) |
 | `SERVER_STELLAR_ADDRESS` | `G...` | Public Key of the server wallet (receives payments) |
-```
 
 Optional for deployments:
 
