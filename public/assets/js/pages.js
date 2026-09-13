@@ -26,11 +26,14 @@ async function loadStatusPage() {
       hint.textContent = 'Current: No key set (using fallbacks)'
     }
 
+    const pricing = Array.isArray(s.x402?.pricing) ? s.x402.pricing : []
+    const premium = pricing.map((entry) => {
+      const [m, ...path] = String(entry.endpoint || '').split(' ')
+      const p = path.join(' ')
+      return m && p && entry.price ? { m, p, pr: entry.price, pw: true } : null
+    }).filter(Boolean)
     const eps = [
-      { m: 'GET', p: '/api/premium/research', pr: '$0.01', pw: true },
-      { m: 'GET', p: '/api/premium/summarize', pr: '$0.01', pw: true },
-      { m: 'GET', p: '/api/premium/analyze', pr: '$0.05', pw: true },
-      { m: 'GET', p: '/api/premium/code', pr: '$0.03', pw: true },
+      ...premium,
       { m: 'POST', p: '/api/orchestrate', pr: '', pw: false },
       { m: 'GET', p: '/api/agents', pr: '', pw: false },
       { m: 'GET', p: '/api/wallet/balances', pr: '', pw: false },
@@ -39,7 +42,8 @@ async function loadStatusPage() {
       { m: 'GET', p: '/api/events', pr: '', pw: false },
     ]
 
-    document.getElementById('endpoint-list').innerHTML = eps
+    document.getElementById('endpoint-list').innerHTML = eps.length
+      ? eps
       .map(
         (e) => `
       <div class="ep-item">
@@ -50,6 +54,7 @@ async function loadStatusPage() {
     `
       )
       .join('')
+      : '<div class="ep-item"><span class="ep-path">Pricing unavailable</span></div>'
 
     const x4 = s.x402 || {}
     document.getElementById('x402-info').innerHTML = `
