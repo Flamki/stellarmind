@@ -50,18 +50,32 @@ export function operationsCacheEntryCount() {
   return operationsCache.size
 }
 
-function cacheLookup(hash) {
-  if (!operationsCache.has(hash)) return undefined
-  const value = operationsCache.get(hash)
+/**
+ * Cache key for one lookup: the network profile and the transaction hash.
+ *
+ * A transaction hash identifies a transaction only within one network, and the
+ * app can be pointed at another Horizon endpoint or network profile
+ * (`NETWORK`), so a result fetched on one profile must never answer a lookup on
+ * another. The endpoint is part of the key for the same reason.
+ */
+export function operationsCacheKey(hash, horizonServer = server, profile = config.network) {
+  const endpoint =
+    horizonServer?.serverURL || horizonServer?.serverUrl || horizonServer?.url || HORIZON_URL
+  return `${profile}|${endpoint}|${hash}`
+}
+
+function cacheLookup(key) {
+  if (!operationsCache.has(key)) return undefined
+  const value = operationsCache.get(key)
   // Re-insert so the least recently used entry is the one evicted below.
-  operationsCache.delete(hash)
-  operationsCache.set(hash, value)
+  operationsCache.delete(key)
+  operationsCache.set(key, value)
   return value
 }
 
-function cacheStore(hash, operations) {
+function cacheStore(key, operations) {
   if (config.horizonOpsCacheSize <= 0) return
-  operationsCache.set(hash, operations)
+  operationsCache.set(key, operations)
   while (operationsCache.size > config.horizonOpsCacheSize) {
     operationsCache.delete(operationsCache.keys().next().value)
   }
@@ -70,12 +84,17 @@ function cacheStore(hash, operations) {
 /**
  * Operations for a single transaction, cached after the first successful lookup.
  *
+ * The cache is keyed by the network profile and the transaction hash (see
+ * `operationsCacheKey`), so a lookup against another Horizon endpoint or
+ * network cannot be answered from this profile's cache.
+ *
  * Returns `{ operations, error }`: an empty list because the transaction has no
  * operations is a different outcome from a lookup that failed, and the caller
  * has to be able to show that difference.
  */
 export async function fetchTransactionOperations(hash, horizonServer = server) {
-  const cached = cacheLookup(hash)
+  const key = operationsCacheKey(hash, horizonServer)
+  const cached = cacheLookup(key)
   if (cached) return { operations: cached, error: null }
 
   try {
@@ -111,7 +130,7 @@ export async function fetchTransactionOperations(hash, horizonServer = server) {
       }
     })
 
-    cacheStore(hash, operations)
+    cacheStore(key, operations)
     return { operations, error: null }
   } catch (err) {
     return { operations: [], error: err.message }
