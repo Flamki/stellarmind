@@ -53,6 +53,14 @@ function emit(level, message, fields = {}) {
 }
 
 export const logger = {
+  /**
+   * Debug channel. Emitted only when LOG_LEVEL=debug, so the default output is
+   * unchanged — `src/sse-heartbeat.js` calls `logger.debug(...)` and used to
+   * crash with "logger.debug is not a function" on every client add/remove.
+   */
+  debug(message, fields) {
+    if (config.logLevel === 'debug') emit('debug', message, fields)
+  },
   info(message, fields) {
     emit('info', message, fields)
   },

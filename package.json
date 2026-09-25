@@ -12,7 +12,7 @@
     "record:narrated": "node src/render-narrated-demo.js",
     "setup": "node src/setup-wallets.js",
     "setup:usdc": "node src/setup-usdc.js",
-    "test": "node src/agents/settlement-header.test.js && node tests/orchestrator.budget.test.js && node tests/usage-tracking.test.js && node tests/response-normalization.test.js && node tests/premium-endpoints.integration.test.js",
+    "test": "node scripts/run-offline-tests.js",
     "test:validation": "node tests/api.validation.test.js",
     "smoke": "node tests/smoke.test.js",
     "lint": "eslint . --ext .js,.mjs,.cjs",
@@ -27,7 +27,9 @@
     "test:premium": "node tests/premium-endpoints.integration.test.js",
     "test:normalization": "node tests/response-normalization.test.js",
     "test:demo": "node src/demo.js",
-    "prepare": "husky"
+    "prepare": "husky",
+    "test:list": "node scripts/run-offline-tests.js --list",
+    "test:load": "npx k6 run tests/load/load-test.js"
   },
   "keywords": [
     "stellar",

@@ -73,8 +73,9 @@ jobs:
       - name: Run unit tests
         run: npm test
 
-      - name: API validation tests
-        run: npm run test:validation
+      # `npm test` discovers every tests/**/*.test.js suite, so
+      # tests/api.validation.test.js already runs inside the gate above: the
+      # separate `npm run test:validation` step only ran the same file twice.
 
   smoke:
     name: Smoke

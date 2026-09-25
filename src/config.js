@@ -50,6 +50,7 @@ export const config = {
     toNumberOr(process.env.ANTHROPIC_RETRY_BASE_DELAY_MS, 500)
   ),
   logFormat: (process.env.LOG_FORMAT || 'json').toLowerCase() === 'pretty' ? 'pretty' : 'json',
+  logLevel: (process.env.LOG_LEVEL || 'info').toLowerCase(),
   // Rate limiting (defaults are intentionally permissive for demos)
   rateLimit: {
     // Default window in seconds and max requests per window

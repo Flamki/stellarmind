@@ -74,7 +74,9 @@ describe('SSE Heartbeat & Stale-Client Cleanup', () => {
       assert.deepStrictEqual(received[0], { type: 'test', value: 42 })
     })
 
-    it('removes dead clients on write failure', () => {
+    // A single failed write is not fatal: `markError` only reports removal on
+    // the 3rd consecutive failure, so the client survives transient blips.
+    it('removes dead clients after 3 consecutive write failures', () => {
       const clients = []
       const tracker = createClientTracker()
 
@@ -95,7 +97,12 @@ describe('SSE Heartbeat & Stale-Client Cleanup', () => {
       tracker.addClient(badRes)
 
       safeBroadcast(clients, tracker, { type: 'test' })
+      assert.strictEqual(clients.length, 2, 'first failure must not evict')
 
+      safeBroadcast(clients, tracker, { type: 'test' })
+      assert.strictEqual(clients.length, 2, 'second failure must not evict')
+
+      safeBroadcast(clients, tracker, { type: 'test' })
       assert.strictEqual(clients.length, 1)
       assert.strictEqual(clients[0], goodRes)
       assert.ok(goodRes.written.length > 0)
