@@ -124,6 +124,7 @@ RUN_HISTORY_MAX_RUNS=200
 ```
 
 The run-history file uses schema versioning for safe migrations:
+
 - Current format includes a `version` field (version 1)
 - Legacy unversioned files are automatically migrated to version 1 on startup
 - Corrupted or unreadable files are preserved with a `.corrupted.{timestamp}` suffix
