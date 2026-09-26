@@ -20,15 +20,23 @@ import {
   fetchTransactionOperations,
   mapWithConcurrency,
   operationsCacheEntryCount,
+  operationsCacheKey,
 } from '../src/stellar/wallet.js'
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..')
 const walletSource = fs.readFileSync(path.join(repoRoot, 'src/stellar/wallet.js'), 'utf8')
 
 /** Minimal stand-in for a Horizon server, mirroring the SDK call chain. */
-function fakeHorizon({ recordsFor = () => [], fail = null, delayMs = 0, onCall = () => {} } = {}) {
+function fakeHorizon({
+  recordsFor = () => [],
+  fail = null,
+  delayMs = 0,
+  onCall = () => {},
+  serverURL = undefined,
+} = {}) {
   const calls = []
   const server = {
+    serverURL,
     operations() {
       return {
         forTransaction(hash) {
@@ -177,6 +185,55 @@ const opRecord = (id) => ({
   assert.ok(
     !/Promise\.all\(\s*txs\.records\.map/.test(walletSource),
     'the unbounded Promise.all over txs.records must not return'
+  )
+}
+
+// ── 6. the cache key separates network profiles ─────────────────────────────
+
+{
+  clearOperationsCache()
+  const testnet = fakeHorizon({
+    serverURL: 'https://horizon-testnet.stellar.org',
+    recordsFor: () => [opRecord('op-testnet')],
+  })
+  const mainnet = fakeHorizon({
+    serverURL: 'https://horizon-mainnet.stellar.org',
+    recordsFor: () => [opRecord('op-mainnet')],
+  })
+
+  const fromTestnet = await fetchTransactionOperations('same-hash', testnet.server)
+  const fromMainnet = await fetchTransactionOperations('same-hash', mainnet.server)
+
+  assert.strictEqual(
+    mainnet.calls.length,
+    1,
+    'a lookup on another profile must not be answered from this profile’s cache'
+  )
+  assert.strictEqual(fromTestnet.operations[0].id, 'op-testnet')
+  assert.strictEqual(
+    fromMainnet.operations[0].id,
+    'op-mainnet',
+    'each profile must keep its own result for the same hash'
+  )
+
+  // Reuse still happens, but only inside one profile.
+  await fetchTransactionOperations('same-hash', testnet.server)
+  assert.strictEqual(testnet.calls.length, 1, 'a repeat on one profile is still a cache hit')
+
+  assert.strictEqual(
+    operationsCacheKey('same-hash', testnet.server),
+    operationsCacheKey('same-hash', testnet.server),
+    'the key must be stable for one profile and hash'
+  )
+  assert.notStrictEqual(
+    operationsCacheKey('same-hash', testnet.server),
+    operationsCacheKey('same-hash', mainnet.server),
+    'the key must differ between profiles'
+  )
+  assert.notStrictEqual(
+    operationsCacheKey('hash-a', testnet.server),
+    operationsCacheKey('hash-b', testnet.server),
+    'the key must differ between hashes on one profile'
   )
 }
 
