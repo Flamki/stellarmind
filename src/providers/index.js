@@ -29,7 +29,7 @@ class ProviderInterface {
   }
 
   /** Execute a chat completion request */
-  async chat(messages, options = {}) {
+  async chat(messages, _options = {}) {
     throw new Error('Not implemented')
   }
 

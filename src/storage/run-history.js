@@ -1,4 +1,4 @@
-﻿import fs from 'node:fs/promises'
+import fs from 'node:fs/promises'
 import path from 'node:path'
 import crypto from 'node:crypto'
 import { summarizeUsageByPhase } from '../agents/usage.js'
@@ -37,11 +37,12 @@ export class InMemoryRunHistoryStore {
   constructor(maxRuns = 200) {
     this.maxRuns = maxRuns
     this.runs = []
+    this.idempotencyMap = new Map()
   }
 
   async init() {}
 
-  async createRun({ task, budget, source }) {
+  async createRun({ task, budget, source, idempotencyKey, idempotencyFingerprint }) {
     const now = new Date().toISOString()
     const run = {
       id: createRunId(),
@@ -53,16 +54,45 @@ export class InMemoryRunHistoryStore {
       updatedAt: now,
       completedAt: null,
       summary: null,
+      plan: null,
+      results: null,
+      output: null,
+      outputAvailable: false,
+      error: null,
       events: [],
       txProofs: [],
       // Provider token usage — kept separate from `summary` (settled
       // marketplace charges) so it never alters or masquerades as those
       // totals. Absent/unknown usage is represented explicitly, not as 0.
       usage: null,
+      idempotencyKey: idempotencyKey || null,
+      idempotencyFingerprint: idempotencyFingerprint || null,
     }
     this.runs.unshift(run)
     this.runs = this.runs.slice(0, this.maxRuns)
-    return run
+    if (idempotencyKey) {
+      this.idempotencyMap.set(idempotencyKey, {
+        runId: run.id,
+        fingerprint: idempotencyFingerprint,
+        createdAt: now,
+      })
+    }
+    return { ...run, runId: run.id }
+  }
+
+  async getRun(runId) {
+    const run = this.runs.find((entry) => entry.id === runId)
+    if (!run) return null
+    return {
+      ...run,
+      runId: run.id,
+      outputAvailable: Boolean(run.outputAvailable ?? (run.results && run.results.length > 0)),
+    }
+  }
+
+  async getIdempotencyRecord(key) {
+    if (!key) return null
+    return this.idempotencyMap.get(key) || null
   }
 
   async appendEvent(runId, event) {
@@ -98,6 +128,11 @@ export class InMemoryRunHistoryStore {
       unpaidCount: result.unpaidCount,
       elapsed: result.elapsed,
     }
+    run.plan = result.plan || null
+    run.results = result.results || []
+    run.output = result.results || []
+    run.result = result
+    run.outputAvailable = true
     run.txProofs = txProofs
     // Persist provider usage as its own field — never folded into
     // `run.summary`'s settled marketplace totals above. If the orchestrator
@@ -119,10 +154,23 @@ export class InMemoryRunHistoryStore {
     run.summary = {
       error: err?.message || 'unknown error',
     }
+    run.error = {
+      message: err?.message || 'unknown error',
+      code: err?.code || 'EXECUTION_FAILED',
+    }
+    run.outputAvailable = false
   }
 
   async listRecent(limit = 20) {
-    return this.runs.slice(0, normalizeLimit(limit, 20, this.maxRuns))
+    return this.runs.slice(0, normalizeLimit(limit, 20, this.maxRuns)).map((run) => ({
+      ...run,
+      runId: run.id,
+      outputAvailable: Boolean(run.outputAvailable ?? (run.results && run.results.length > 0)),
+    }))
+  }
+
+  async flush() {
+    return Promise.resolve()
   }
 }
 
@@ -130,6 +178,7 @@ export class FileRunHistoryStore extends InMemoryRunHistoryStore {
   constructor(filePath, maxRuns = 200) {
     super(maxRuns)
     this.filePath = filePath
+    this._writeQueue = Promise.resolve()
   }
 
   async init() {
@@ -137,8 +186,24 @@ export class FileRunHistoryStore extends InMemoryRunHistoryStore {
     try {
       const raw = await fs.readFile(this.filePath, 'utf8')
       const parsed = JSON.parse(raw)
-      const { version, runs } = this.validateAndMigrate(parsed)
-      if (Array.isArray(runs)) this.runs = runs.slice(0, this.maxRuns)
+      const { version, runs, idempotency } = this.validateAndMigrate(parsed)
+      if (Array.isArray(runs)) {
+        this.runs = runs.slice(0, this.maxRuns)
+      }
+      if (Array.isArray(idempotency)) {
+        for (const [key, record] of idempotency) {
+          this.idempotencyMap.set(key, record)
+        }
+      }
+      for (const run of this.runs) {
+        if (run.idempotencyKey && !this.idempotencyMap.has(run.idempotencyKey)) {
+          this.idempotencyMap.set(run.idempotencyKey, {
+            runId: run.id,
+            fingerprint: run.idempotencyFingerprint,
+            createdAt: run.createdAt,
+          })
+        }
+      }
       // If migration occurred, persist the new format
       if (version === LEGACY_VERSION) {
         await this.persist()
@@ -168,7 +233,7 @@ export class FileRunHistoryStore extends InMemoryRunHistoryStore {
     if (data.version === undefined) {
       // Legacy unversioned format (version 0)
       console.warn('  run history: migrating legacy unversioned format to version 1')
-      return { version: LEGACY_VERSION, runs: data.runs || [] }
+      return { version: LEGACY_VERSION, runs: data.runs || [], idempotency: data.idempotency || [] }
     }
 
     // Validate version is a number
@@ -186,7 +251,7 @@ export class FileRunHistoryStore extends InMemoryRunHistoryStore {
     }
 
     // Version is within supported range
-    return { version, runs: data.runs || [] }
+    return { version, runs: data.runs || [], idempotency: data.idempotency || [] }
   }
 
   /**
@@ -206,17 +271,34 @@ export class FileRunHistoryStore extends InMemoryRunHistoryStore {
   }
 
   async persist() {
-    const payload = JSON.stringify(
-      {
-        version: CURRENT_SCHEMA_VERSION,
-        runs: this.runs.slice(0, this.maxRuns),
-      },
-      null,
-      2
-    )
-    const tempPath = `${this.filePath}.tmp`
-    await fs.writeFile(tempPath, payload, 'utf8')
-    await fs.rename(tempPath, this.filePath)
+    const writeOp = async () => {
+      const payload = JSON.stringify(
+        {
+          version: CURRENT_SCHEMA_VERSION,
+          runs: this.runs.slice(0, this.maxRuns),
+          idempotency: Array.from(this.idempotencyMap.entries()).slice(0, this.maxRuns),
+        },
+        null,
+        2
+      )
+      const tempPath = `${this.filePath}.${Date.now()}.${crypto.randomBytes(4).toString('hex')}.tmp`
+      try {
+        await fs.writeFile(tempPath, payload, 'utf8')
+        await fs.rename(tempPath, this.filePath)
+      } catch (err) {
+        try {
+          await fs.unlink(tempPath).catch(() => {})
+        } catch {}
+        throw err
+      }
+    }
+
+    this._writeQueue = this._writeQueue.catch(() => {}).then(writeOp)
+    return this._writeQueue
+  }
+
+  async flush() {
+    return this._writeQueue
   }
 
   async createRun(payload) {

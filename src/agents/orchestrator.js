@@ -258,7 +258,10 @@ async function callAgentViaX402(agent, input, broadcastFn, context = {}) {
     }
   }
 
-  const serviceFn = SERVICE_MAP[agent.id]
+  const serviceFn = context.serviceMap?.[agent.id] || SERVICE_MAP[agent.id]
+  if (context.agentDelayMs) {
+    await new Promise((resolve) => setTimeout(resolve, context.agentDelayMs))
+  }
   let result
   let capturedUsage = null
   let capturedResponseMeta = null
@@ -409,15 +412,22 @@ export async function orchestrate(task, budget, broadcastFn, context = {}) {
 
   let plan
   let planningUsageEntry = null
-  try {
-    const planResponse = await createAnthropicMessage(
-      {
-        model: PLANNING_MODEL,
-        max_tokens: 400,
-        messages: [
-          {
-            role: 'user',
-            content: `You are a task orchestrator for an AI agent marketplace. Break this task into 2-3 subtasks and choose which agents to use.
+  if (context.initialDelayMs) {
+    await new Promise((resolve) => setTimeout(resolve, context.initialDelayMs))
+  }
+  if (context.plan) {
+    plan = context.plan
+    planningUsageEntry = recordUsageEntry('planning', null, null)
+  } else {
+    try {
+      const planResponse = await createAnthropicMessage(
+        {
+          model: PLANNING_MODEL,
+          max_tokens: 400,
+          messages: [
+            {
+              role: 'user',
+              content: `You are a task orchestrator for an AI agent marketplace. Break this task into 2-3 subtasks and choose which agents to use.
 
 Available agents:
 ${agentList}
@@ -434,87 +444,88 @@ Respond ONLY with valid JSON (no markdown, no code fences):
     {"agentId": "agent-id-here", "input": "what to send to the agent", "cost": "0.01"}
   ]
 }`,
-          },
-        ],
-      },
-      {
-        onRetryAttempt: (retry) => {
-          broadcastFn?.({
-            type: 'anthropic_retry',
-            phase: 'planning',
-            attempt: retry.attempt,
-            maxRetries: retry.maxRetries,
-            delayMs: retry.delayMs,
-            status: retry.status,
-            error: retry.error,
-            timestamp: new Date().toISOString(),
-          })
+            },
+          ],
         },
-      }
-    )
+        {
+          onRetryAttempt: (retry) => {
+            broadcastFn?.({
+              type: 'anthropic_retry',
+              phase: 'planning',
+              attempt: retry.attempt,
+              maxRetries: retry.maxRetries,
+              delayMs: retry.delayMs,
+              status: retry.status,
+              error: retry.error,
+              timestamp: new Date().toISOString(),
+            })
+          },
+        }
+      )
 
-    // Capture usage from the successful call before parsing — a rejected
-    // plan (truncated, empty, invalid JSON, or missing subtasks) still
-    // consumed real provider tokens.
-    planningUsageEntry = recordUsageEntry(
-      'planning',
-      null,
-      usageFromMessage(planResponse, PLANNING_MODEL)
-    )
-
-    plan = parsePlanResponse(planResponse)
-  } catch (err) {
-    logger.warn('orchestrator_planning_fallback', {
-      correlationId: context.correlationId,
-      code: err.code || null,
-      error: err.message?.substring(0, 120),
-    })
-    // Only record "unavailable" if we didn't already capture real usage
-    // above (e.g. the API call itself failed/timed out, vs. the call
-    // succeeding but returning unparseable JSON).
-    if (!planningUsageEntry) {
+      // Capture usage from the successful call before parsing — a rejected
+      // plan (truncated, empty, invalid JSON, or missing subtasks) still
+      // consumed real provider tokens.
       planningUsageEntry = recordUsageEntry(
         'planning',
         null,
-        unavailableUsage(PLANNING_MODEL, 'planning_call_failed')
+        usageFromMessage(planResponse, PLANNING_MODEL)
       )
-    }
-    const subtasks = []
-    let remaining = exactBudget
 
-    const researchCost = AssetAmount.from('0.01', 'USDC')
-    const summaryCost = AssetAmount.from('0.01', 'USDC')
-    const analystCost = AssetAmount.from('0.05', 'USDC')
-    const codeCost = AssetAmount.from('0.03', 'USDC')
-
-    if (remaining.isGreaterThanOrEqualTo(researchCost)) {
-      subtasks.push({ agentId: 'research-bot', input: task, cost: '0.01' })
-      remaining = remaining.minus(researchCost)
-    }
-    if (remaining.isGreaterThanOrEqualTo(summaryCost)) {
-      subtasks.push({
-        agentId: 'summary-bot',
-        input: `Summarize findings about: ${task}`,
-        cost: '0.01',
+      plan = parsePlanResponse(planResponse)
+    } catch (err) {
+      logger.warn('orchestrator_planning_fallback', {
+        correlationId: context.correlationId,
+        code: err.code || null,
+        error: err.message?.substring(0, 120),
       })
-      remaining = remaining.minus(summaryCost)
-    }
-    if (remaining.isGreaterThanOrEqualTo(analystCost)) {
-      subtasks.push({ agentId: 'analyst-bot', input: task, cost: '0.05' })
-      remaining = remaining.minus(analystCost)
-    }
-    if (remaining.isGreaterThanOrEqualTo(codeCost)) {
-      subtasks.push({
-        agentId: 'code-bot',
-        input: `Write an implementation related to: ${task}`,
-        cost: '0.03',
-      })
-      remaining = remaining.minus(codeCost)
-    }
+      // Only record "unavailable" if we didn't already capture real usage
+      // above (e.g. the API call itself failed/timed out, vs. the call
+      // succeeding but returning unparseable JSON).
+      if (!planningUsageEntry) {
+        planningUsageEntry = recordUsageEntry(
+          'planning',
+          null,
+          unavailableUsage(PLANNING_MODEL, 'planning_call_failed')
+        )
+      }
+      const subtasks = []
+      let remaining = exactBudget
 
-    plan = {
-      plan: `Multi-agent workflow: ${subtasks.map((s) => s.agentId).join(' → ')} (${subtasks.length} agents, ${budget} USDC budget)`,
-      subtasks,
+      const researchCost = AssetAmount.from('0.01', 'USDC')
+      const summaryCost = AssetAmount.from('0.01', 'USDC')
+      const analystCost = AssetAmount.from('0.05', 'USDC')
+      const codeCost = AssetAmount.from('0.03', 'USDC')
+
+      if (remaining.isGreaterThanOrEqualTo(researchCost)) {
+        subtasks.push({ agentId: 'research-bot', input: task, cost: '0.01' })
+        remaining = remaining.minus(researchCost)
+      }
+      if (remaining.isGreaterThanOrEqualTo(summaryCost)) {
+        subtasks.push({
+          agentId: 'summary-bot',
+          input: `Summarize findings about: ${task}`,
+          cost: '0.01',
+        })
+        remaining = remaining.minus(summaryCost)
+      }
+      if (remaining.isGreaterThanOrEqualTo(analystCost)) {
+        subtasks.push({ agentId: 'analyst-bot', input: task, cost: '0.05' })
+        remaining = remaining.minus(analystCost)
+      }
+      if (remaining.isGreaterThanOrEqualTo(codeCost)) {
+        subtasks.push({
+          agentId: 'code-bot',
+          input: `Write an implementation related to: ${task}`,
+          cost: '0.03',
+        })
+        remaining = remaining.minus(codeCost)
+      }
+
+      plan = {
+        plan: `Multi-agent workflow: ${subtasks.map((s) => s.agentId).join(' → ')} (${subtasks.length} agents, ${budget} USDC budget)`,
+        subtasks,
+      }
     }
   }
 

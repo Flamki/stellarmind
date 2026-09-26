@@ -233,7 +233,7 @@ function validatePremiumQuery(req, _res, next) {
 }
 
 function validateOrchestrate(req, _res, next) {
-  const source = req.method === 'GET' ? req.query : req.body
+  const source = (req.method === 'GET' ? req.query : req.body) || {}
   const taskResult = assertStringField('task', source.task, {
     required: true,
     minLength: 1,
@@ -245,6 +245,57 @@ function validateOrchestrate(req, _res, next) {
   if (!taskResult.valid) details.push(taskResult.error)
   if (!budgetResult.valid) details.push(budgetResult.error)
 
+  let mode = 'sync'
+  // Check body first, then query string, then Prefer header
+  const modeValue = source.mode ?? req.query?.mode
+  const asyncValue = source.async ?? req.query?.async
+  if (modeValue !== undefined) {
+    if (typeof modeValue !== 'string' || !['sync', 'async'].includes(modeValue.toLowerCase())) {
+      details.push({
+        field: 'mode',
+        reason: "Submission mode must be either 'sync' or 'async'",
+        received: modeValue,
+      })
+    } else {
+      mode = modeValue.toLowerCase()
+    }
+  } else if (asyncValue !== undefined) {
+    if (asyncValue === true || asyncValue === 'true') {
+      mode = 'async'
+    } else if (asyncValue === false || asyncValue === 'false') {
+      mode = 'sync'
+    } else {
+      details.push({
+        field: 'async',
+        reason: "Parameter 'async' must be a boolean",
+        received: asyncValue,
+      })
+    }
+  } else if (
+    typeof req.header === 'function' &&
+    req.header('prefer')?.toLowerCase().includes('respond-async')
+  ) {
+    mode = 'async'
+  }
+
+  const headerKey =
+    typeof req.header === 'function'
+      ? req.header('idempotency-key') || req.header('x-idempotency-key')
+      : undefined
+  const rawKey = headerKey !== undefined ? headerKey : source.idempotencyKey
+  let idempotencyKey = null
+  if (rawKey !== undefined && rawKey !== null) {
+    if (typeof rawKey !== 'string' || rawKey.trim().length === 0 || rawKey.length > 256) {
+      details.push({
+        field: 'idempotencyKey',
+        reason: 'Idempotency key must be a non-empty string with at most 256 characters',
+        received: rawKey,
+      })
+    } else {
+      idempotencyKey = rawKey.trim()
+    }
+  }
+
   if (details.length > 0) {
     return next(validationError('Invalid orchestrate request', details))
   }
@@ -253,6 +304,8 @@ function validateOrchestrate(req, _res, next) {
     ...req.validated,
     task: taskResult.value,
     budget: budgetResult.value,
+    mode,
+    idempotencyKey,
   }
   next()
 }
