@@ -52,6 +52,10 @@ export function errorHandler(err, req, res, _next) {
   // Derive a machine-readable code from the error name or a default
   const code = err.code || err.name || (status === 404 ? 'NOT_FOUND' : 'INTERNAL_ERROR')
 
+  if (err.retryAfter) {
+    res.setHeader('Retry-After', String(err.retryAfter))
+  }
+
   // Always log the full error server-side for diagnostics
   logger.error('request_error', {
     correlationId: req.requestId,
@@ -64,9 +68,9 @@ export function errorHandler(err, req, res, _next) {
   })
 
   // In production, mask only 5xx server errors to avoid leaking internals.
-  // 4xx client errors keep their message so API consumers get actionable feedback.
+  // 4xx client errors and exposed errors keep their message so API consumers get actionable feedback.
   const message =
-    isProd && status >= 500
+    isProd && status >= 500 && !err.expose
       ? 'An unexpected error occurred'
       : err.message || 'An unexpected error occurred'
 
@@ -74,6 +78,14 @@ export function errorHandler(err, req, res, _next) {
     code,
     message,
     requestId: req.requestId,
+  }
+
+  if (err.retryAfter !== undefined) {
+    body.retryAfter = err.retryAfter
+  }
+
+  if (err.state !== undefined) {
+    body.state = err.state
   }
 
   if (Array.isArray(err.details) && err.details.length > 0) {

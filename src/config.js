@@ -67,6 +67,12 @@ export const config = {
     apikeyWindowSec: Math.max(1, toNumberOr(process.env.RATE_LIMIT_APIKEY_WINDOW_SEC, 60)),
     apikeyMax: Math.max(1, toNumberOr(process.env.RATE_LIMIT_APIKEY_MAX, 5)),
   },
+  // Orchestration Admission Queue (bounds concurrent active runs and pending queue)
+  orchestrationQueue: {
+    maxConcurrent: Math.max(1, toNumberOr(process.env.ORCHESTRATION_MAX_CONCURRENT, 2)),
+    queueCapacity: Math.max(0, toNumberOr(process.env.ORCHESTRATION_QUEUE_CAPACITY, 10)),
+    queueTimeoutMs: Math.max(100, toNumberOr(process.env.ORCHESTRATION_QUEUE_TIMEOUT_MS, 30000)),
+  },
   // Run history persistence
   runHistoryStorage: process.env.RUN_HISTORY_STORAGE || 'file',
   runHistoryFile: process.env.RUN_HISTORY_FILE

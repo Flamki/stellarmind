@@ -383,6 +383,12 @@ export function parsePlanResponse(planResponse) {
 const PLANNING_MODEL = 'claude-haiku-4-5-20251001'
 
 export async function orchestrate(task, budget, broadcastFn, context = {}) {
+  if (context.signal?.aborted) {
+    const abortErr = new Error('Orchestration aborted before start')
+    abortErr.code = 'REQUEST_ABORTED'
+    throw abortErr
+  }
+
   const startTime = Date.now()
   const results = []
   const payments = []
@@ -539,6 +545,12 @@ Respond ONLY with valid JSON (no markdown, no code fences):
   })
 
   for (const subtask of plan.subtasks || []) {
+    if (context.signal?.aborted) {
+      const abortErr = new Error('Orchestration aborted')
+      abortErr.code = 'REQUEST_ABORTED'
+      throw abortErr
+    }
+
     const agent = getAgentById(subtask.agentId)
     if (!agent) {
       results.push({ agentId: subtask.agentId, error: 'Agent not found' })

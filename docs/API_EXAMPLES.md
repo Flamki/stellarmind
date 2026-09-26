@@ -755,6 +755,109 @@ Same shape as the `POST /api/orchestrate` response above.
 
 ---
 
+### `GET /api/orchestrate/queue`
+
+Inspect the current status and metrics of the in-memory orchestration admission queue.
+
+**Request:**
+
+```bash
+curl -s http://localhost:3001/api/orchestrate/queue | jq
+```
+
+**Response `200 OK`:**
+
+```json
+{
+  "active": 1,
+  "queued": 0,
+  "maxConcurrent": 2,
+  "queueCapacity": 10,
+  "queueTimeoutMs": 30000,
+  "multiReplicaCoordination": false,
+  "note": "In-process admission queue bounds concurrency on this server instance; no cross-node distributed coordination.",
+  "retryAfterDefaultSec": 30
+}
+```
+
+---
+
+### `POST /api/orchestrate/:id/cancel`
+
+Explicitly cancel a queued or running orchestration by its `runId`.
+
+**Request:**
+
+```bash
+curl -s -X POST http://localhost:3001/api/orchestrate/run_1722345600000_abc123/cancel \
+  -H "Content-Type: application/json" \
+  -d '{"reason":"Cancelled by client"}' | jq
+```
+
+**Response `200 OK`:**
+
+```json
+{
+  "success": true,
+  "runId": "run_1722345600000_abc123",
+  "phase": "queued",
+  "message": "Orchestration run run_1722345600000_abc123 was cancelled (queued phase)"
+}
+```
+
+---
+
+### Overload & Queue Error Responses (`503 Service Unavailable`)
+
+When active execution is at capacity and either the pending queue overflows or wait deadlines
+expire, the server responds with HTTP `503` and an RFC 7231 `Retry-After` header:
+
+**Queue Capacity Overflow Example:**
+
+```http
+HTTP/1.1 503 Service Unavailable
+Content-Type: application/json
+Retry-After: 30
+
+{
+  "error": "Server is overloaded. Orchestration admission queue capacity (10) exceeded.",
+  "code": "QUEUE_CAPACITY_EXCEEDED",
+  "requestId": "9b4d9a7e-f67d-4b5c-aaf2-5b9892a07d7e",
+  "retryAfter": 30,
+  "state": {
+    "active": 2,
+    "queued": 10,
+    "maxConcurrent": 2,
+    "queueCapacity": 10,
+    "queueTimeoutMs": 30000
+  }
+}
+```
+
+**Queue Wait Timeout Example:**
+
+```http
+HTTP/1.1 503 Service Unavailable
+Content-Type: application/json
+Retry-After: 30
+
+{
+  "error": "Orchestration request timed out after waiting 30000ms in admission queue",
+  "code": "QUEUE_TIMEOUT",
+  "requestId": "ff40578a-b023-40d4-a3e9-e9c04e1dee31",
+  "retryAfter": 30,
+  "state": {
+    "active": 2,
+    "queued": 10,
+    "maxConcurrent": 2,
+    "queueCapacity": 10,
+    "queueTimeoutMs": 30000
+  }
+}
+```
+
+---
+
 ## Run History
 
 ### `GET /api/runs`

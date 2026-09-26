@@ -185,6 +185,20 @@ Live agent calls require a configured `ANTHROPIC_API_KEY` and funded testnet wal
 curl -s http://localhost:3001/api/wallet/balances
 ```
 
+**Inspect orchestration admission queue:**
+
+```bash
+curl -s http://localhost:3001/api/orchestrate/queue
+```
+
+**Cancel an orchestration run:**
+
+```bash
+curl -s -X POST http://localhost:3001/api/orchestrate/<runId>/cancel \
+  -H "Content-Type: application/json" \
+  -d '{"reason":"User requested cancellation"}'
+```
+
 > For full request/response examples of **every** endpoint — including premium (x402-protected)
 > endpoints, agent registry, wallet transactions, run history, event stream, and the orchestrator —
 > see [docs/API_EXAMPLES.md](docs/API_EXAMPLES.md).
@@ -212,6 +226,37 @@ INTERNAL_BASE_URL=http://stellarmind:3001
 PORT=3001
 INTERNAL_BASE_URL=https://stellarmind.example.com
 ```
+
+## Orchestration Admission Queue & Concurrency Limits
+
+Every accepted orchestration request can perform planning, provider LLM calls, and Stellar x402
+payment settlements. Because individual runs can be slow or encounter network delays, request-rate
+limits alone do not bound active concurrency. StellarMind includes a configurable, single-process
+admission queue to bound active execution and memory pressure:
+
+- **Bounded Active Execution**: Active orchestrations cannot exceed `ORCHESTRATION_MAX_CONCURRENT`
+  (default: 2).
+- **Bounded Waiting Queue**: Pending requests cannot exceed `ORCHESTRATION_QUEUE_CAPACITY` (default:
+  10). Excess requests are rejected immediately with HTTP `503 Service Unavailable` and code
+  `QUEUE_CAPACITY_EXCEEDED`.
+- **Queue Wait Deadlines**: Requests waiting in queue longer than `ORCHESTRATION_QUEUE_TIMEOUT_MS`
+  (default: 30000ms) are aborted with HTTP `503 Service Unavailable` and code `QUEUE_TIMEOUT`.
+- **Overload Retry Guidance**: Overload responses include a standard `Retry-After` header (in
+  seconds) and response body containing current queue `state` to guide client backoff.
+- **Cancellation & Failure Guarantees**: Client disconnects or explicit cancellation via
+  `POST /api/orchestrate/:id/cancel` immediately dequeue pending items or abort active work,
+  releasing slots exactly once.
+- **Single-Process Scope**: This admission queue operates in-memory for this server process. It
+  bounds execution and memory on the local node without requiring or promising multi-replica
+  distributed coordination.
+
+Configuration variables in `.env`:
+
+| Variable                         | Default | Description                                               |
+| -------------------------------- | ------- | --------------------------------------------------------- |
+| `ORCHESTRATION_MAX_CONCURRENT`   | `2`     | Maximum concurrent active orchestration runs              |
+| `ORCHESTRATION_QUEUE_CAPACITY`   | `10`    | Maximum pending runs allowed in the admission queue       |
+| `ORCHESTRATION_QUEUE_TIMEOUT_MS` | `30000` | Maximum milliseconds a request can wait before timing out |
 
 ## Operational Health Checks
 
