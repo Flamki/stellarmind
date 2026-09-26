@@ -44,15 +44,41 @@ User → Orchestrator (Claude plans tasks)
 
 1. Add the agent definition in `src/agents/registry.js`
 2. Add the service function in `src/agents/services.js`
-3. Add the premium endpoint in `src/server.js` (both middleware config and route handler)
+3. Register the premium endpoint in `src/routes/premium-routes.js` — that is the
+   canonical route registration; `src/server.js` only mounts it. Prices come from
+   `src/pricing.config.js` (validated by `src/pricing.validator.js`), not from the
+   route itself.
 4. Map the agent ID to its endpoint in `src/agents/orchestrator.js`
 
 ### Running Tests
 
+`npm test` is **not** the demo: it runs the offline regression suite, six files in
+sequence, and none of them needs credentials or network access.
+
 ```bash
-npm run demo    # Runs 3 automated tasks with budget enforcement
-npm test        # Same as demo
+npm test               # offline: settlement header, budget, usage tracking,
+                       # response normalisation, premium endpoints, Horizon ops
+npm run test:parser    # just src/agents/settlement-header.test.js
+npm run test:budget    # just tests/orchestrator.budget.test.js
+npm run test:usage     # just tests/usage-tracking.test.js
+npm run test:premium   # just tests/premium-endpoints.integration.test.js
+npm run test:normalization  # just tests/response-normalization.test.js
+npm run test:validation     # tests/api.validation.test.js
+npm run demo           # NOT a test: runs 3 example tasks with budget enforcement
+npm run smoke          # needs SERVER_STELLAR_ADDRESS + SMOKE_PORT and a running
+                       # server, so it is not part of npm test
 ```
+
+A small deterministic check, from a clean checkout and with no credentials:
+
+```bash
+npm ci
+npm run test:premium   # expect the suite's summary line, exit code 0
+npm run test:validation
+```
+
+Every command above is the one in `package.json` — run `npm run` with no arguments
+to list them all if they ever drift apart.
 
 ### Security Hygiene
 
