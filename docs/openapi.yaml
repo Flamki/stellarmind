@@ -65,6 +65,38 @@ paths:
       summary: Start an orchestration run
       operationId: startOrchestration
       tags: [Orchestration]
+      description: >
+        Submit an orchestration task. By default the request blocks until the run completes
+        (synchronous mode). To receive an immediate 202 Accepted response with a run handle, use one
+        of the async triggers below.
+
+        **Async triggers (any one is sufficient):** - Query parameter `?async=true` - Body field
+        `"mode": "async"` - Header `Prefer: respond-async`
+
+        **Idempotency:** Include an `Idempotency-Key` header (or `X-Idempotency-Key`) to prevent
+        duplicate runs. If the same key is reused with different parameters, the server responds 409
+        Conflict.
+      parameters:
+        - name: async
+          in: query
+          required: false
+          schema:
+            type: string
+            enum: ['true', 'false']
+          description: Set to "true" to receive an immediate 202 response
+        - name: Idempotency-Key
+          in: header
+          required: false
+          schema:
+            type: string
+            maxLength: 256
+          description: Client-generated key to prevent duplicate submissions
+        - name: Prefer
+          in: header
+          required: false
+          schema:
+            type: string
+          description: Set to "respond-async" to receive an immediate 202 response
       requestBody:
         required: true
         content:
@@ -72,8 +104,31 @@ paths:
             schema:
               $ref: '#/components/schemas/OrchestrationInput'
       responses:
+        '200':
+          description: Synchronous completion (default mode)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OrchestrationResult'
         '202':
-          description: Orchestration started
+          description: Async mode — run accepted, work in progress
+          headers:
+            Location:
+              description: URL to poll for run status
+              schema:
+                type: string
+            Preference-Applied:
+              description: Echoed when the Prefer header was used
+              schema:
+                type: string
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RunAccepted'
+        '400':
+          description: Validation error (missing/invalid task, budget, mode, or idempotency key)
+        '409':
+          description: Idempotency key conflict (same key, different parameters)
 
   /orchestration/{runId}/status:
     get:
@@ -93,6 +148,58 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/OrchestrationStatus'
+
+  /runs/{runId}:
+    get:
+      summary: Get run detail
+      operationId: getRunDetail
+      tags: [Orchestration]
+      description: >
+        Retrieve the full detail of a run, including its current status, output (when completed),
+        and error information (when failed). This is the endpoint referred to by the Location header
+        in 202 responses.
+      parameters:
+        - name: runId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Run detail
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RunDetail'
+        '404':
+          description: Run not found
+
+  /runs:
+    get:
+      summary: List recent runs
+      operationId: listRuns
+      tags: [Orchestration]
+      parameters:
+        - name: limit
+          in: query
+          required: false
+          schema:
+            type: integer
+            default: 20
+      responses:
+        '200':
+          description: Recent runs
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  count:
+                    type: integer
+                  runs:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/RunDetail'
 
   /budget:
     get:
@@ -164,12 +271,21 @@ components:
       properties:
         task:
           type: string
-        agents:
-          type: array
-          items:
-            type: string
+          description: The task description for the orchestrator to plan and execute
         budget:
           type: number
+          description: Maximum USDC budget for this orchestration run
+        mode:
+          type: string
+          enum: [sync, async]
+          default: sync
+          description: Submission mode. "async" returns 202 immediately.
+        idempotencyKey:
+          type: string
+          maxLength: 256
+          description: >
+            Optional idempotency key (alternative to the Idempotency-Key header). Prevents duplicate
+            runs when the same key is used.
 
     OrchestrationStatus:
       type: object
@@ -184,6 +300,102 @@ components:
         result:
           type: object
 
+    OrchestrationResult:
+      type: object
+      properties:
+        runId:
+          type: string
+        task:
+          type: string
+        plan:
+          type: object
+        results:
+          type: array
+          items:
+            type: object
+        totalPaid:
+          type: string
+        totalCost:
+          type: string
+        elapsed:
+          type: string
+
+    RunAccepted:
+      type: object
+      description: Returned with HTTP 202 when async mode is used
+      properties:
+        runId:
+          type: string
+          description: Unique run identifier
+        status:
+          type: string
+          enum: [running]
+        url:
+          type: string
+          description: URL to poll for run status and results
+        runUrl:
+          type: string
+          description: Alias for url (backward compatibility)
+        task:
+          type: string
+        budget:
+          type: number
+        createdAt:
+          type: string
+          format: date-time
+        mode:
+          type: string
+          enum: [async]
+
+    RunDetail:
+      type: object
+      description: Full run record including status, output, and error information
+      properties:
+        runId:
+          type: string
+        status:
+          type: string
+          enum: [running, completed, failed]
+        task:
+          type: string
+        budget:
+          type: number
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+        completedAt:
+          type: string
+          format: date-time
+          nullable: true
+        outputAvailable:
+          type: boolean
+          description: True when the run has completed and output is available
+        output:
+          type: array
+          items:
+            type: object
+          nullable: true
+          description: The orchestration results (null until completed)
+        error:
+          type: object
+          nullable: true
+          description: Error details (null unless run failed)
+          properties:
+            message:
+              type: string
+            code:
+              type: string
+        summary:
+          type: object
+          nullable: true
+        events:
+          type: array
+          items:
+            type: object
+
     Budget:
       type: object
       properties:
@@ -197,3 +409,4 @@ components:
           type: string
 
 # Generated for Stellar Wave bounty #36
+

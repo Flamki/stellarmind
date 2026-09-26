@@ -99,7 +99,7 @@ class AuditLogger {
             if (entityId && entry.entityId !== entityId) continue
             results.push(entry)
             if (results.length >= limit) return results
-          } catch (_) {
+          } catch {
             /* skip malformed lines */
           }
         }

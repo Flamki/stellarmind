@@ -1,7 +1,7 @@
 /**
  * Tests for SSE Heartbeat & Stale-Client Cleanup
  */
-import { describe, it, beforeEach, afterEach } from 'node:test'
+import { describe, it } from 'node:test'
 import assert from 'node:assert'
 import { createClientTracker, safeBroadcast, setupHeartbeat } from '../src/sse-heartbeat.js'
 
