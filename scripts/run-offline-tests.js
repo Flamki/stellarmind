@@ -132,7 +132,9 @@ export function runAll({
   const unclassified = findUnclassifiedSuites({ roots, repoRoot })
 
   if (unclassified.length > 0) {
-    log('Unclassified test-shaped files (add them to the gate or to OPT_IN_DIRS in scripts/run-offline-tests.js):')
+    log(
+      'Unclassified test-shaped files (add them to the gate or to OPT_IN_DIRS in scripts/run-offline-tests.js):'
+    )
     for (const file of unclassified) log(`  - ${file}`)
     return { suites, results: [], failed: suites, unclassified, timedOut: [] }
   }
@@ -172,7 +174,10 @@ function parseArgs(argv) {
   for (let i = 0; i < argv.length; i++) {
     const arg = argv[i]
     if (arg === '--list') args.list = true
-    else if (arg === '--roots') args.roots = String(argv[++i] || '').split(',').filter(Boolean)
+    else if (arg === '--roots')
+      args.roots = String(argv[++i] || '')
+        .split(',')
+        .filter(Boolean)
     else if (arg === '--repo-root') args.repoRoot = path.resolve(argv[++i] || '.')
     else if (arg === '--timeout-ms') args.timeoutMs = Number(argv[++i])
   }
