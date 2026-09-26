@@ -27,7 +27,8 @@
     "test:premium": "node tests/premium-endpoints.integration.test.js",
     "test:normalization": "node tests/response-normalization.test.js",
     "test:demo": "node src/demo.js",
-    "prepare": "husky"
+    "prepare": "husky",
+    "test:wallet": "node tests/wallet-balances.test.js"
   },
   "keywords": [
     "stellar",
