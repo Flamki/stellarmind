@@ -761,7 +761,9 @@ Same shape as the `POST /api/orchestrate` response above.
 
 List recent orchestration runs with their task, budget, spend, and audit trail.
 
-**Note:** The underlying run-history file uses schema versioning (current version 1). Legacy unversioned files are automatically migrated on startup, and corrupted files are preserved with a `.corrupted.{timestamp}` suffix.
+**Note:** The underlying run-history file uses schema versioning (current version 1). Legacy
+unversioned files are automatically migrated on startup, and corrupted files are preserved with a
+`.corrupted.{timestamp}` suffix.
 
 **Request:**
 
