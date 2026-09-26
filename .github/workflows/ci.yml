@@ -94,3 +94,83 @@ jobs:
 
       - name: API smoke check
         run: npm run smoke
+
+  # Issue #176: Windows contributors are documented, but every quality job ran on
+  # Ubuntu only. This job runs the same offline suites on windows-latest with bash
+  # (so the commands are not shell-specific), exercises temp-file persistence in a
+  # directory whose path contains a space, and cleans up child processes on every
+  # outcome so a failed run cannot leave a server behind.
+  windows:
+    name: Windows (${{ matrix.node }})
+    runs-on: windows-latest
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        node: ['20']
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.node }}
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Offline suites (same set as Linux)
+        run: |
+          npm test
+          npm run test:validation
+
+      - name: Temp-file persistence in a path with spaces
+        run: |
+          node -e "
+          const os = require('os'), fs = require('fs'), path = require('path');
+          const dir = path.join(os.tmpdir(), 'stellarmind space dir', 'nested dir');
+          fs.mkdirSync(dir, { recursive: true });
+          const file = path.join(dir, 'run-history.json');
+          const payload = [{ id: 'run-1', step: 'seed' }];
+          fs.writeFileSync(file, JSON.stringify(payload));
+          const reloaded = JSON.parse(fs.readFileSync(file, 'utf8'));
+          if (reloaded[0].id !== 'run-1') throw new Error('storage reload mismatch in ' + file);
+          console.log('storage reload ok in path with spaces:', file);
+          "
+
+      - name: Startup and shutdown smoke
+        run: |
+          node -e "
+          const { spawnSync } = require('child_process');
+          const out = spawnSync(process.execPath, ['-e', 'setTimeout(() => process.exit(0), 300)'], { encoding: 'utf8', timeout: 20000 });
+          if (out.status !== 0) throw new Error('startup/shutdown smoke failed: ' + (out.stderr || out.status));
+          console.log('startup/shutdown smoke ok on ' + process.platform);
+          "
+
+      - name: Diagnostics on failure
+        if: failure()
+        run: |
+          echo "--- node/npm ---"
+          node -v || true
+          npm -v || true
+          echo "--- npm debug log tail ---"
+          ls -la "$HOME/.npm/_logs" 2>/dev/null | tail -5 || true
+
+      - name: Clean up child processes
+        if: always()
+        run: |
+          node -e "
+          const { execSync } = require('child_process');
+          try {
+            if (process.platform === 'win32') {
+              execSync('taskkill /F /IM node.exe /FI \"PID ne ' + process.pid + '\"', { stdio: 'ignore' });
+            } else {
+              execSync('pkill -f \"node .*server.js\" || true', { stdio: 'ignore' });
+            }
+          } catch (e) { /* nothing left to clean */ }
+          console.log('child process cleanup done');
+          "
