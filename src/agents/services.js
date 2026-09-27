@@ -202,12 +202,36 @@ This function handles a basic Stellar payment operation suitable for agent-to-ag
 }
 
 /**
+ * Provenance for one generation: what actually produced the text.
+ * kind 'live' carries the model that really responded (issue #153, criterion a);
+ * kind 'demo' never claims a model, so a cached response cannot be mistaken for
+ * a live one (criterion c). Evaluation fixtures are matched on this metadata (d).
+ * @returns {{kind: string, model: string|null, provider: string|null, reason: string|null}}
+ */
+export function provenance(kind, model = null, reason = null) {
+  return {
+    kind,
+    model: kind === 'live' ? model : null,
+    provider: kind === 'live' ? 'anthropic' : null,
+    reason,
+  }
+}
+
+/**
  * Try Claude API, fall back to cached/demo response if credits exhausted
  */
-async function callClaude(model, maxTokens, prompt, fallbackFn, fallbackInput, options = {}) {
+export async function callClaude(
+  model,
+  maxTokens,
+  prompt,
+  fallbackFn,
+  fallbackInput,
+  options = {}
+) {
   if (!config.anthropicApiKey) {
     console.log('  ℹ️  No API key — using demo response')
     options.onUsage?.(unavailableUsage(model, 'no_api_key'))
+    options.onProvenance?.(provenance('demo', model, 'no_api_key'))
     return fallbackFn(fallbackInput)
   }
 
@@ -224,6 +248,7 @@ async function callClaude(model, maxTokens, prompt, fallbackFn, fallbackInput, o
     )
     claudeAvailable = true
     options.onUsage?.(usageFromMessage(msg, model))
+    options.onProvenance?.(provenance('live', model))
 
     // Combine every text block (not just content[0]) and surface
     // stop/completion metadata so callers can tell a truncated or empty
@@ -253,9 +278,11 @@ async function callClaude(model, maxTokens, prompt, fallbackFn, fallbackInput, o
         claudeAvailable = false
       }
       options.onUsage?.(unavailableUsage(model, 'credits_exhausted_fallback'))
+      options.onProvenance?.(provenance('demo', model, 'credits_exhausted'))
       return fallbackFn(fallbackInput)
     }
     options.onUsage?.(unavailableUsage(model, 'error'))
+    options.onProvenance?.(provenance('error', model, err.message))
     throw err
   }
 }

@@ -28,7 +28,7 @@
     "test:normalization": "node tests/response-normalization.test.js",
     "test:demo": "node src/demo.js",
     "prepare": "husky",
-    "test:prompts": "node tests/prompt-revision.test.js"
+    "test:prompts": "node tests/prompt-revision.test.js && node tests/prompt-provenance.test.js"
   },
   "keywords": [
     "stellar",
