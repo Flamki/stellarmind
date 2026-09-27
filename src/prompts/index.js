@@ -4,11 +4,12 @@
  * Stellar Wave bounty #24
  */
 
-const crypto = require('crypto')
-const fs = require('fs')
-const path = require('path')
+import crypto from 'node:crypto'
+import fs from 'node:fs'
+import path from 'node:path'
+import { fileURLToPath } from 'node:url'
 
-const PROMPTS_DIR = path.join(__dirname)
+const PROMPTS_DIR = path.dirname(fileURLToPath(import.meta.url))
 
 const CACHE = new Map()
 
@@ -88,4 +89,4 @@ function reloadAll() {
   CACHE.clear()
 }
 
-module.exports = { loadTemplate, render, renderWithRevision, revision, listTemplates, reloadAll }
+export { loadTemplate, render, renderWithRevision, revision, listTemplates, reloadAll }

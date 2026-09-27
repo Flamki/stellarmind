@@ -1,15 +1,9 @@
 /**
  * Prompt revisions: issue #153 wants every live output to carry a reproducible
  * prompt revision, and differing prompt content to produce a different one.
- *
- * src/prompts/index.js is CommonJS, so it is loaded through createRequire from
- * this ES module rather than imported.
  */
 import assert from 'node:assert'
-import { createRequire } from 'node:module'
-
-const require = createRequire(import.meta.url)
-const { revision, renderWithRevision, listTemplates } = require('../src/prompts/index.js')
+import { revision, renderWithRevision, listTemplates } from '../src/prompts/index.js'
 
 const results = []
 function check(name, fn) {
