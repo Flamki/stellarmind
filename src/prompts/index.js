@@ -4,6 +4,7 @@
  * Stellar Wave bounty #24
  */
 
+const crypto = require('crypto')
 const fs = require('fs')
 const path = require('path')
 
@@ -43,6 +44,34 @@ function render(name, variables = {}) {
 }
 
 /**
+ * Stable revision of a prompt: the same rendered content always yields the same
+ * digest, different content yields a different one. Recorded next to results so a
+ * stored output can be traced back to the exact prompt that produced it, without
+ * keeping the prompt text (or anything secret) in the metadata.
+ * @param {string} renderedPrompt — the prompt exactly as it was sent
+ * @returns {string} 16 hex characters
+ */
+function revision(renderedPrompt) {
+  return crypto
+    .createHash('sha256')
+    .update(String(renderedPrompt), 'utf8')
+    .digest('hex')
+    .slice(0, 16)
+}
+
+/**
+ * Render a template and return the prompt together with its revision and source
+ * template name, which is what callers should persist per step.
+ * @param {string} name — template name
+ * @param {Object} variables — key-value pairs to substitute
+ * @returns {{prompt: string, revision: string, template: string}}
+ */
+function renderWithRevision(name, variables = {}) {
+  const prompt = render(name, variables)
+  return { prompt, revision: revision(prompt), template: name }
+}
+
+/**
  * List all available prompt templates.
  */
 function listTemplates() {
@@ -59,4 +88,4 @@ function reloadAll() {
   CACHE.clear()
 }
 
-module.exports = { loadTemplate, render, listTemplates, reloadAll }
+module.exports = { loadTemplate, render, renderWithRevision, revision, listTemplates, reloadAll }
