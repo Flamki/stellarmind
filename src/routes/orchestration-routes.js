@@ -1,8 +1,9 @@
 import crypto from 'node:crypto'
-import { validateOrchestrate } from '../requestValidation.js'
+import { validateOrchestrate, validateOrchestrateExecute } from '../requestValidation.js'
 import { logger } from '../logger.js'
 import { config } from '../config.js'
 import { OrchestrationAdmissionQueue } from '../agents/orchestration-queue.js'
+import { previewOrchestration, executePlan, activePlansStore } from '../agents/orchestrator.js'
 
 export function registerOrchestrationRoutes(app, deps = {}) {
   const {
@@ -260,7 +261,6 @@ export function registerOrchestrationRoutes(app, deps = {}) {
       }
     }
 
-    // If still running without active execution (e.g. recovered), return 202 handle
     res.setHeader('Location', `/api/runs/${run.id}`)
     return res.status(202).json({
       runId: run.id,
@@ -275,9 +275,187 @@ export function registerOrchestrationRoutes(app, deps = {}) {
     })
   }
 
+  async function handlePreviewSubmission(req, res, next) {
+    try {
+      const { task, budget } = req.validated
+      const preview = await previewOrchestration(task, budget, (event) => {
+        broadcast(event)
+      }, {
+        correlationId: req.requestId,
+      })
+      res.json(preview)
+    } catch (err) {
+      next(err)
+    }
+  }
+
+  async function handleExecutionSubmission(req, res, next) {
+    const isAsync = req.validated?.mode === 'async'
+    const clientAbortController = new AbortController()
+    const onClose = () => {
+      if (!res.writableEnded) {
+        clientAbortController.abort(new Error('Client disconnected'))
+      }
+    }
+
+    if (!isAsync) {
+      res.on('close', onClose)
+      req.on('aborted', onClose)
+    }
+
+    try {
+      const { planId, idempotencyKey } = req.validated
+      const source = `${req.method} /api/orchestrate/execute`
+
+      const planRecord = activePlansStore.get(planId)
+      if (!planRecord) {
+        const err = new Error(`Plan '${planId}' not found or already executed`)
+        err.status = 404
+        err.code = 'PLAN_NOT_FOUND'
+        return next(err)
+      }
+
+      const task = planRecord.task
+      const budget = planRecord.budget
+
+      const fingerprint = idempotencyKey
+        ? crypto
+            .createHash('sha256')
+            .update(JSON.stringify({ planId, task: task.trim(), budget: String(budget) }))
+            .digest('hex')
+        : null
+
+      if (idempotencyKey) {
+        const existingRecord = await runHistoryStore.getIdempotencyRecord(idempotencyKey)
+        if (existingRecord) {
+          if (existingRecord.fingerprint !== fingerprint) {
+            const err = new Error('Idempotency key reused with different request parameters')
+            err.status = 409
+            err.code = 'IDEMPOTENCY_KEY_CONFLICT'
+            return next(err)
+          }
+          const existingRun = await runHistoryStore.getRun(existingRecord.runId)
+          if (existingRun) {
+            return sendIdempotentResponse(req, res, next, existingRun, isAsync)
+          }
+        }
+      }
+
+      const run = await runHistoryStore.createRun({
+        task,
+        budget,
+        source,
+        idempotencyKey,
+        idempotencyFingerprint: fingerprint,
+      })
+
+      const runBroadcast = (event) => {
+        const eventWithRun = { ...event, runId: run.id }
+        broadcast(eventWithRun)
+        runHistoryStore.appendEvent(run.id, eventWithRun).catch((persistErr) => {
+          logger.warn('run_history_append_failed', { runId: run.id, error: persistErr.message })
+        })
+      }
+
+      let queueSubmissionError = null
+      const executionPromise = (async () => {
+        try {
+          const result = await admissionQueue.run(
+            async ({ signal }) => {
+              return executePlan(planId, runBroadcast, {
+                correlationId: req.requestId,
+                signal,
+              })
+            },
+            {
+              id: run.id,
+              signal: isAsync ? undefined : clientAbortController.signal,
+              onQueued: ({ position, queueLength, activeCount }) => {
+                runBroadcast({
+                  type: 'orchestration_queued',
+                  runId: run.id,
+                  position,
+                  queueLength,
+                  activeCount,
+                  timestamp: new Date().toISOString(),
+                })
+              },
+              onAdmitted: ({ waitDurationMs, activeCount, queued }) => {
+                if (queued) {
+                  runBroadcast({
+                    type: 'orchestration_admitted',
+                    runId: run.id,
+                    waitDurationMs,
+                    activeCount,
+                    timestamp: new Date().toISOString(),
+                  })
+                }
+              },
+            }
+          )
+
+          result.runId = run.id
+          await runHistoryStore.completeRun(run.id, result)
+          return result
+        } catch (err) {
+          logger.error('orchestration_execution_failed', { runId: run.id, error: err.message })
+          await runHistoryStore.failRun(run.id, err).catch((storeErr) => {
+            logger.error('run_history_fail_persist_failed', {
+              runId: run.id,
+              error: storeErr.message,
+            })
+          })
+          throw err
+        } finally {
+          activeExecutions.delete(run.id)
+          if (!isAsync) {
+            res.off?.('close', onClose)
+            req.off?.('aborted', onClose)
+          }
+        }
+      })()
+
+      activeExecutions.set(run.id, executionPromise)
+      executionPromise.catch((err) => {
+        queueSubmissionError = err
+      })
+
+      await Promise.resolve()
+
+      if (queueSubmissionError) {
+        return next(queueSubmissionError)
+      }
+
+      if (isAsync) {
+        res.setHeader('Location', `/api/runs/${run.id}`)
+        if (req.header('prefer')?.toLowerCase().includes('respond-async')) {
+          res.setHeader('Preference-Applied', 'respond-async')
+        }
+        return res.status(202).json({
+          runId: run.id,
+          status: run.status || 'running',
+          url: `/api/runs/${run.id}`,
+          runUrl: `/api/runs/${run.id}`,
+          task,
+          budget,
+          createdAt: run.createdAt,
+          mode: 'async',
+        })
+      }
+
+      const result = await executionPromise
+      res.json(result)
+    } catch (err) {
+      next(err)
+    }
+  }
+
   // ─── Endpoints ──────────────────────────────────────────────
   app.post('/api/orchestrate', validateOrchestrate, handleSubmission)
   app.get('/api/orchestrate', validateOrchestrate, handleSubmission)
+  app.post('/api/orchestrate/preview', validateOrchestrate, handlePreviewSubmission)
+  app.get('/api/orchestrate/preview', validateOrchestrate, handlePreviewSubmission)
+  app.post('/api/orchestrate/execute', validateOrchestrateExecute, handleExecutionSubmission)
 
   app.get('/api/orchestrate/queue', (req, res) => {
     res.json({

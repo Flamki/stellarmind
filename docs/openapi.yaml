@@ -130,6 +130,87 @@ paths:
         '409':
           description: Idempotency key conflict (same key, different parameters)
 
+  /orchestration/preview:
+    post:
+      summary: Preview an orchestration plan and quote work before execution
+      operationId: previewOrchestration
+      tags: [Orchestration]
+      description: >
+        Generates and validates an orchestration plan, returning validated steps, per-step quotes,
+        total quote, expiry timestamp, and any planner-provider usage. Makes zero premium agent calls
+        or settlement attempts.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/OrchestrationInput'
+      responses:
+        '200':
+          description: Plan preview with quotes and expiry
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  planId:
+                    type: string
+                  task:
+                    type: string
+                  budget:
+                    type: number
+                  plan:
+                    type: string
+                  steps:
+                    type: array
+                    items:
+                      type: object
+                  totalQuote:
+                    type: string
+                  expiresAt:
+                    type: string
+                  usage:
+                    type: object
+        '400':
+          description: Validation error
+
+  /orchestration/execute:
+    post:
+      summary: Execute a previously previewed orchestration plan
+      operationId: executeOrchestrationPlan
+      tags: [Orchestration]
+      description: >
+        Executes a stored plan by planId, validating the plan and current pricing against the accepted quote.
+        Returns QUOTE_EXPIRED or QUOTE_CHANGED error if expired or if pricing changed.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [planId]
+              properties:
+                planId:
+                  type: string
+                  description: Plan identifier returned from /orchestration/preview
+                mode:
+                  type: string
+                  enum: [sync, async]
+                  default: sync
+                idempotencyKey:
+                  type: string
+      responses:
+        '200':
+          description: Orchestration execution completed successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OrchestrationResult'
+        '400':
+          description: Quote expired (QUOTE_EXPIRED), price changed (QUOTE_CHANGED), or validation error
+        '404':
+          description: Plan not found (PLAN_NOT_FOUND)
+
   /orchestration/{runId}/status:
     get:
       summary: Get orchestration run status

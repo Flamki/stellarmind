@@ -338,6 +338,81 @@ function validateConfigApiKey(req, _res, next) {
   next()
 }
 
+function validateOrchestrateExecute(req, res, next) {
+  const source = req.body || {}
+  const details = []
+
+  const planIdResult = assertStringField('planId', source.planId, {
+    required: true,
+    minLength: 1,
+    maxLength: 128,
+  })
+  if (!planIdResult.valid) {
+    details.push(planIdResult.error)
+  }
+
+  let mode = 'sync'
+  const modeValue = source.mode ?? req.query?.mode
+  const asyncValue = source.async ?? req.query?.async
+  if (modeValue !== undefined) {
+    if (typeof modeValue !== 'string' || !['sync', 'async'].includes(modeValue.toLowerCase())) {
+      details.push({
+        field: 'mode',
+        reason: "Submission mode must be either 'sync' or 'async'",
+        received: modeValue,
+      })
+    } else {
+      mode = modeValue.toLowerCase()
+    }
+  } else if (asyncValue !== undefined) {
+    if (asyncValue === true || asyncValue === 'true') {
+      mode = 'async'
+    } else if (asyncValue === false || asyncValue === 'false') {
+      mode = 'sync'
+    } else {
+      details.push({
+        field: 'async',
+        reason: "Parameter 'async' must be a boolean",
+        received: asyncValue,
+      })
+    }
+  } else if (
+    typeof req.header === 'function' &&
+    req.header('prefer')?.toLowerCase().includes('respond-async')
+  ) {
+    mode = 'async'
+  }
+
+  const headerKey =
+    typeof req.header === 'function'
+      ? req.header('idempotency-key') || req.header('x-idempotency-key')
+      : undefined
+  const rawKey = headerKey !== undefined ? headerKey : source.idempotencyKey
+  let idempotencyKey = null
+  if (rawKey !== undefined && rawKey !== null) {
+    if (typeof rawKey !== 'string' || rawKey.trim().length === 0 || rawKey.length > 256) {
+      details.push({
+        field: 'idempotencyKey',
+        reason: 'Idempotency key must be a non-empty string with at most 256 characters',
+        received: rawKey,
+      })
+    } else {
+      idempotencyKey = rawKey.trim()
+    }
+  }
+
+  if (details.length > 0) {
+    return next(validationError('Invalid execute request', details))
+  }
+
+  req.validated = {
+    planId: planIdResult.value,
+    mode,
+    idempotencyKey,
+  }
+  next()
+}
+
 export {
   validationError,
   assertStringField,
@@ -345,6 +420,7 @@ export {
   assertApiKey,
   validatePremiumQuery,
   validateOrchestrate,
+  validateOrchestrateExecute,
   validateWalletTransactions,
   validateConfigApiKey,
 }
