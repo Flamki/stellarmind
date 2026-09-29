@@ -1,0 +1,5 @@
+## Summary
+
+- Wallet reconnects are retried automatically so sessions survive a dropped connection.
+- Receipts show each fee once, and the dashboard payload was trimmed by 40% after a refactor of the internal data shape that also removed the legacy demo key and rewired the status endpoint to report queue depth to operators.
+- The run report is exportable.

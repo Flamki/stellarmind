@@ -1,0 +1,7 @@
+## Highlights
+
+- Wallet reconnects are retried automatically, so a dropped connection no longer ends a session.
+- Receipts show each fee once, making totals match what was actually paid.
+- A finished run can now be downloaded as a report you can share with people outside the team.
+- The dashboard loads noticeably faster on slow connections.
+- The API status page now shows how many tasks are waiting to start.

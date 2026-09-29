@@ -1,0 +1,14 @@
+The two largest drivers are the managed database at $1,260/month and object storage at $840/month.
+Together they are the majority of the bill; egress at $610 is close behind and worth watching, but
+the request was the top two.
+
+**Managed database, reduction:** the instance is sized for peak write traffic that occurs once a
+day. Moving batch imports to a queue and running them against a smaller instance for the rest of
+the day would plausibly cut 20-30% of that line. The trade-off is a longer import window and one
+more moving part to operate, so it only pays off if the batch job is already automated.
+
+**Object storage, reduction:** most of the growth looks like old exports that are never read again.
+A lifecycle rule that moves anything untouched for 90 days to infrequent-access storage reduces the
+line without deleting data. The risk is retrieval cost if someone does need an old export, and a
+slower first byte for those rare reads. Start with a single prefix and measure for a month before
+applying it account-wide.

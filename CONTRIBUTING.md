@@ -111,6 +111,19 @@ npm run lint:fix
 npm run format
 ```
 
+### Agent output quality
+
+Structural checks for what the agents actually return live in `eval/` and run entirely offline:
+
+```bash
+npm run eval:quality                     # score the committed captures
+npm run eval:quality -- --check-baseline # fail when a result moved away from the baseline
+```
+
+See [docs/quality-evals.md](docs/quality-evals.md) for the case format, the reported revisions, and
+how an intentional quality change is accepted (new fixture + regenerated baseline, explained in the
+PR).
+
 ### Environment Setup
 
 ```bash

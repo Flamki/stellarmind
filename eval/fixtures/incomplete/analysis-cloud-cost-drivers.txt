@@ -1,0 +1,7 @@
+The biggest cost is the managed database, and storage is next. Both have grown steadily over the
+quarter as the team added features, and neither has been reviewed since the initial sizing decision.
+
+Database: move the nightly import to a queue and use a smaller instance the rest of the day.
+Storage: add a lifecycle rule for old exports so they are not kept in the hot tier forever.
+
+Both changes are worth doing this quarter.

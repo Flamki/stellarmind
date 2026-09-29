@@ -1,0 +1,25 @@
+## Findings
+
+Permissive licences such as MIT, BSD and Apache-2.0 let a team embed a dependency in a paid
+product and keep its own source closed. Their obligation is mainly attribution, which is cheap
+to satisfy and easy to audit. Apache-2.0 additionally grants an explicit patent licence, which
+matters when a dependency comes from a company rather than an individual.
+
+Copyleft licences such as GPL, LGPL and AGPL impose conditions on distribution. GPL requires
+the whole derived work to carry the same licence, LGPL keeps that requirement at the library
+boundary, and AGPL extends it to users who interact with the software over a network. MPL sits
+between the two camps: file-level copyleft with permissive combination allowed.
+
+The practical differences for a small team are review cost and the shape of the obligations.
+A permissive dependency adds a licence file and a line in a notice list. A copyleft dependency
+adds a decision: does the product link against it, ship it, or only call it as a service? That
+decision has to be revisited on every upgrade, and it is the upgrade path where teams usually
+lose time.
+
+## Recommendation
+
+Standardise on permissive licences (MIT or Apache-2.0) for direct dependencies and require a
+short written justification before any copyleft dependency enters the tree. Where a copyleft
+library is a genuine fit, prefer the AGPL case only when the product is itself a service and
+the team is comfortable publishing its modifications. Record the decision in the dependency
+review note so the next person does not re-litigate it.

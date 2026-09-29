@@ -1,0 +1,24 @@
+Here is the approach and then the code.
+
+```js
+function retry(op, times = 3) {
+  let last
+  for (let i = 0; i < times; i += 1) {
+    try {
+      return op()
+    } catch (err) {
+      last = err
+      // TODO: add backoff between attempts
+    }
+  }
+  return last
+}
+```
+
+```js
+function logFailure(err) {
+  console.error('retry failed', err)
+}
+```
+
+Use it wherever the network can drop.

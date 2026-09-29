@@ -1,0 +1,333 @@
+{
+  "schemaVersion": 1,
+  "offline": true,
+  "setSchemaVersion": 1,
+  "setRevision": "9180d34eea88784a",
+  "modelRevision": "analysisFallback=claude-haiku-4-5-20251001,analysisPrimary=claude-sonnet-4-5-20250929,code=claude-haiku-4-5-20251001,research=claude-haiku-4-5-20251001,summary=claude-haiku-4-5-20251001",
+  "promptRevisions": {
+    "research-oss-licence-tradeoffs": "a4e0f0706420f9ae",
+    "summary-release-notes-for-stakeholders": "955e75cd4da7ca40",
+    "analysis-cloud-cost-drivers": "b48958d851689a59",
+    "code-retry-with-backoff": "d2406a31e88f089d"
+  },
+  "summary": {
+    "cases": 4,
+    "casesPassed": 4,
+    "properties": 17,
+    "passed": 17,
+    "failed": 0,
+    "allPassed": true
+  },
+  "humanJudgment": {
+    "note": "Automated checks below decide only structure and stated constraints. Usefulness, correctness and tone are not scored here and stay a human decision.",
+    "cases": [
+      "research-oss-licence-tradeoffs",
+      "summary-release-notes-for-stakeholders",
+      "analysis-cloud-cost-drivers",
+      "code-retry-with-backoff"
+    ]
+  },
+  "cases": [
+    {
+      "id": "research-oss-licence-tradeoffs",
+      "agent": "research",
+      "phase": "research",
+      "task": "Compare permissive and copyleft open-source licences for a small team shipping a paid product, then recommend one. Answer in two sections: 'Findings' and 'Recommendation'.",
+      "promptRevision": "a4e0f0706420f9ae",
+      "outputSource": "eval/fixtures/baseline/research-oss-licence-tradeoffs.txt",
+      "outputPresent": true,
+      "automated": {
+        "checks": 4,
+        "passed": 4,
+        "failed": 0,
+        "allPassed": true
+      },
+      "checks": [
+        {
+          "id": "sections-present",
+          "kind": "section-headings",
+          "description": "Answers both requested sections, so the recommendation can be found without reading everything.",
+          "passed": true,
+          "expected": ["Findings", "Recommendation"],
+          "actual": ["Findings", "Recommendation"],
+          "reason": "all requested sections present"
+        },
+        {
+          "id": "licence-terms",
+          "kind": "contains-any",
+          "description": "Names concrete licences instead of speaking in the abstract.",
+          "passed": true,
+          "expected": {
+            "terms": [
+              "MIT",
+              "Apache-2.0",
+              "BSD",
+              "GPL",
+              "LGPL",
+              "AGPL",
+              "MPL",
+              "copyleft",
+              "permissive"
+            ],
+            "min": 3
+          },
+          "actual": [
+            "MIT",
+            "Apache-2.0",
+            "BSD",
+            "GPL",
+            "LGPL",
+            "AGPL",
+            "MPL",
+            "copyleft",
+            "permissive"
+          ],
+          "reason": "9 of the expected terms present (needed 3)"
+        },
+        {
+          "id": "length-bounded",
+          "kind": "word-count",
+          "description": "Long enough to be substantive, short enough to stay a briefing.",
+          "passed": true,
+          "expected": {
+            "min": 60,
+            "max": 320
+          },
+          "actual": 257,
+          "reason": "257 words within bounds"
+        },
+        {
+          "id": "no-filler",
+          "kind": "excludes-all",
+          "description": "A research briefing never narrates its own limitations.",
+          "passed": true,
+          "expected": {
+            "terms": ["as an AI", "I cannot", "I am unable", "language model"],
+            "none": true
+          },
+          "actual": [],
+          "reason": "no disallowed terms present"
+        }
+      ],
+      "humanJudgment": {
+        "required": true,
+        "questions": [
+          "Is the recommendation actionable for a team that has never shipped a licence file before?",
+          "Would a lawyer call any statement a legal conclusion rather than a trade-off?"
+        ]
+      }
+    },
+    {
+      "id": "summary-release-notes-for-stakeholders",
+      "agent": "summary",
+      "phase": "summary",
+      "task": "Condense this release into a 'Highlights' list of exactly five bullets for non-technical stakeholders: added wallet reconnect retries; fixed a duplicated fee line in receipts; the run report is now exportable; trimmed the dashboard payload by 40%; removed the legacy demo key; the status endpoint now reports the queue depth.",
+      "promptRevision": "955e75cd4da7ca40",
+      "outputSource": "eval/fixtures/baseline/summary-release-notes-for-stakeholders.txt",
+      "outputPresent": true,
+      "automated": {
+        "checks": 4,
+        "passed": 4,
+        "failed": 0,
+        "allPassed": true
+      },
+      "checks": [
+        {
+          "id": "highlights-heading",
+          "kind": "section-headings",
+          "description": "Stakeholders get a labelled list, not a wall of prose.",
+          "passed": true,
+          "expected": ["Highlights"],
+          "actual": ["Highlights"],
+          "reason": "all requested sections present"
+        },
+        {
+          "id": "exactly-five-bullets",
+          "kind": "bullet-count",
+          "description": "The task asked for exactly five bullets; more or fewer means the constraint was ignored.",
+          "passed": true,
+          "expected": 5,
+          "actual": 5,
+          "reason": "5 bullets as requested"
+        },
+        {
+          "id": "bullets-are-short",
+          "kind": "bullet-word-count",
+          "description": "A stakeholder bullet stays under thirty words.",
+          "passed": true,
+          "expected": {
+            "max": 30
+          },
+          "actual": [],
+          "reason": "every bullet within the word budget"
+        },
+        {
+          "id": "no-internal-jargon",
+          "kind": "excludes-all",
+          "description": "Keeps internal vocabulary out of a stakeholder summary.",
+          "passed": true,
+          "expected": {
+            "terms": ["refactor", "monorepo", "regression suite", "TTL", "idempotent"],
+            "none": true
+          },
+          "actual": [],
+          "reason": "no disallowed terms present"
+        }
+      ],
+      "humanJudgment": {
+        "required": true,
+        "questions": [
+          "Does each bullet describe an outcome a customer could notice?",
+          "Is anything materially important missing from the condensed list?"
+        ]
+      }
+    },
+    {
+      "id": "analysis-cloud-cost-drivers",
+      "agent": "analysis",
+      "phase": "analysis",
+      "task": "From these monthly line items — object storage $840, managed database $1,260, egress $610, CI compute $180, log retention $95 — identify the two largest cost drivers and one concrete reduction for each.",
+      "promptRevision": "b48958d851689a59",
+      "outputSource": "eval/fixtures/baseline/analysis-cloud-cost-drivers.txt",
+      "outputPresent": true,
+      "automated": {
+        "checks": 4,
+        "passed": 4,
+        "failed": 0,
+        "allPassed": true
+      },
+      "checks": [
+        {
+          "id": "two-drivers-named",
+          "kind": "contains-any",
+          "description": "Names the two drivers the numbers actually point at.",
+          "passed": true,
+          "expected": {
+            "terms": ["database", "Database", "storage", "Storage"],
+            "min": 2
+          },
+          "actual": ["database", "Database", "storage", "Storage"],
+          "reason": "4 of the expected terms present (needed 2)"
+        },
+        {
+          "id": "quantified",
+          "kind": "regex-any",
+          "description": "Quantifies the drivers instead of describing them qualitatively.",
+          "passed": true,
+          "expected": {
+            "patterns": ["\\$[0-9][0-9,.]*", "[0-9]+\\s*%"],
+            "min": 2
+          },
+          "actual": ["\\$[0-9][0-9,.]*", "[0-9]+\\s*%"],
+          "reason": "2 pattern(s) matched (needed 2)"
+        },
+        {
+          "id": "risk-called-out",
+          "kind": "contains-any",
+          "description": "Every reduction has a cost; the answer says which one it accepts.",
+          "passed": true,
+          "expected": {
+            "terms": ["risk", "Risk", "trade-off", "downside"],
+            "min": 1
+          },
+          "actual": ["risk", "Risk", "trade-off"],
+          "reason": "3 of the expected terms present (needed 1)"
+        },
+        {
+          "id": "length-bounded",
+          "kind": "word-count",
+          "description": "Stays a decision brief.",
+          "passed": true,
+          "expected": {
+            "min": 50,
+            "max": 300
+          },
+          "actual": 177,
+          "reason": "177 words within bounds"
+        }
+      ],
+      "humanJudgment": {
+        "required": true,
+        "questions": [
+          "Is each proposed reduction plausible for a team of this size?",
+          "Does the analysis distinguish the two drivers from the next-largest item?"
+        ]
+      }
+    },
+    {
+      "id": "code-retry-with-backoff",
+      "agent": "code",
+      "phase": "code",
+      "task": "Write a JavaScript function that retries an async call with exponential backoff and a maximum attempt count. Reply with a single fenced code block, then a two-line usage note.",
+      "promptRevision": "d2406a31e88f089d",
+      "outputSource": "eval/fixtures/baseline/code-retry-with-backoff.txt",
+      "outputPresent": true,
+      "automated": {
+        "checks": 5,
+        "passed": 5,
+        "failed": 0,
+        "allPassed": true
+      },
+      "checks": [
+        {
+          "id": "one-code-block",
+          "kind": "code-fence-count",
+          "description": "One runnable block — a diff of alternatives is not an answer.",
+          "passed": true,
+          "expected": 1,
+          "actual": 1,
+          "reason": "1 code block(s) as requested"
+        },
+        {
+          "id": "async-function",
+          "kind": "regex-all",
+          "description": "The answer is actually asynchronous.",
+          "passed": true,
+          "expected": ["async\\s+function|async\\s*\\("],
+          "actual": ["async\\s+function|async\\s*\\("],
+          "reason": "all patterns matched"
+        },
+        {
+          "id": "attempt-bounded",
+          "kind": "regex-all",
+          "description": "The retry loop is bounded, not infinite.",
+          "passed": true,
+          "expected": ["maxAttempts|max_attempts|maxRetries|attempts"],
+          "actual": ["maxAttempts|max_attempts|maxRetries|attempts"],
+          "reason": "all patterns matched"
+        },
+        {
+          "id": "no-placeholders",
+          "kind": "excludes-all",
+          "description": "Complete code, not a scaffold.",
+          "passed": true,
+          "expected": {
+            "terms": ["TODO", "your code here", "insert logic", "..."],
+            "none": true
+          },
+          "actual": [],
+          "reason": "no disallowed terms present"
+        },
+        {
+          "id": "block-is-compact",
+          "kind": "code-fence-max-lines",
+          "description": "Fits on a screen, so it can be read in review.",
+          "passed": true,
+          "expected": {
+            "max": 45,
+            "blocks": 1
+          },
+          "actual": 14,
+          "reason": "longest block is 14 lines"
+        }
+      ],
+      "humanJudgment": {
+        "required": true,
+        "questions": [
+          "Would this retry loop amplify an outage (no jitter, unbounded concurrency)?",
+          "Does the usage note describe the failure it surfaces, not just how to import it?"
+        ]
+      }
+    }
+  ]
+}

@@ -1,0 +1,7 @@
+## Findings
+
+Permissive licences are easier to use. Copyleft licences are stricter about distribution.
+
+## Notes
+
+Ask a lawyer before shipping anything.

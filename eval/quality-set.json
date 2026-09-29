@@ -1,0 +1,172 @@
+{
+  "schemaVersion": 1,
+  "description": "Curated, non-sensitive agent output quality cases. Every case is a task the platform really routes, paired with structural success properties that can be checked offline — no keys, no wallets, no network.",
+  "cases": [
+    {
+      "id": "research-oss-licence-tradeoffs",
+      "agent": "research",
+      "phase": "research",
+      "task": "Compare permissive and copyleft open-source licences for a small team shipping a paid product, then recommend one. Answer in two sections: 'Findings' and 'Recommendation'.",
+      "successProperties": [
+        {
+          "id": "sections-present",
+          "kind": "section-headings",
+          "headings": ["Findings", "Recommendation"],
+          "description": "Answers both requested sections, so the recommendation can be found without reading everything."
+        },
+        {
+          "id": "licence-terms",
+          "kind": "contains-any",
+          "min": 3,
+          "terms": [
+            "MIT",
+            "Apache-2.0",
+            "BSD",
+            "GPL",
+            "LGPL",
+            "AGPL",
+            "MPL",
+            "copyleft",
+            "permissive"
+          ],
+          "description": "Names concrete licences instead of speaking in the abstract."
+        },
+        {
+          "id": "length-bounded",
+          "kind": "word-count",
+          "min": 60,
+          "max": 320,
+          "description": "Long enough to be substantive, short enough to stay a briefing."
+        },
+        {
+          "id": "no-filler",
+          "kind": "excludes-all",
+          "terms": ["as an AI", "I cannot", "I am unable", "language model"],
+          "description": "A research briefing never narrates its own limitations."
+        }
+      ],
+      "humanReview": [
+        "Is the recommendation actionable for a team that has never shipped a licence file before?",
+        "Would a lawyer call any statement a legal conclusion rather than a trade-off?"
+      ]
+    },
+    {
+      "id": "summary-release-notes-for-stakeholders",
+      "agent": "summary",
+      "phase": "summary",
+      "task": "Condense this release into a 'Highlights' list of exactly five bullets for non-technical stakeholders: added wallet reconnect retries; fixed a duplicated fee line in receipts; the run report is now exportable; trimmed the dashboard payload by 40%; removed the legacy demo key; the status endpoint now reports the queue depth.",
+      "successProperties": [
+        {
+          "id": "highlights-heading",
+          "kind": "section-headings",
+          "headings": ["Highlights"],
+          "description": "Stakeholders get a labelled list, not a wall of prose."
+        },
+        {
+          "id": "exactly-five-bullets",
+          "kind": "bullet-count",
+          "count": 5,
+          "description": "The task asked for exactly five bullets; more or fewer means the constraint was ignored."
+        },
+        {
+          "id": "bullets-are-short",
+          "kind": "bullet-word-count",
+          "max": 30,
+          "description": "A stakeholder bullet stays under thirty words."
+        },
+        {
+          "id": "no-internal-jargon",
+          "kind": "excludes-all",
+          "terms": ["refactor", "monorepo", "regression suite", "TTL", "idempotent"],
+          "description": "Keeps internal vocabulary out of a stakeholder summary."
+        }
+      ],
+      "humanReview": [
+        "Does each bullet describe an outcome a customer could notice?",
+        "Is anything materially important missing from the condensed list?"
+      ]
+    },
+    {
+      "id": "analysis-cloud-cost-drivers",
+      "agent": "analysis",
+      "phase": "analysis",
+      "task": "From these monthly line items — object storage $840, managed database $1,260, egress $610, CI compute $180, log retention $95 — identify the two largest cost drivers and one concrete reduction for each.",
+      "successProperties": [
+        {
+          "id": "two-drivers-named",
+          "kind": "contains-any",
+          "min": 2,
+          "terms": ["database", "Database", "storage", "Storage"],
+          "description": "Names the two drivers the numbers actually point at."
+        },
+        {
+          "id": "quantified",
+          "kind": "regex-any",
+          "patterns": ["\\$[0-9][0-9,.]*", "[0-9]+\\s*%"],
+          "min": 2,
+          "description": "Quantifies the drivers instead of describing them qualitatively."
+        },
+        {
+          "id": "risk-called-out",
+          "kind": "contains-any",
+          "min": 1,
+          "terms": ["risk", "Risk", "trade-off", "downside"],
+          "description": "Every reduction has a cost; the answer says which one it accepts."
+        },
+        {
+          "id": "length-bounded",
+          "kind": "word-count",
+          "min": 50,
+          "max": 300,
+          "description": "Stays a decision brief."
+        }
+      ],
+      "humanReview": [
+        "Is each proposed reduction plausible for a team of this size?",
+        "Does the analysis distinguish the two drivers from the next-largest item?"
+      ]
+    },
+    {
+      "id": "code-retry-with-backoff",
+      "agent": "code",
+      "phase": "code",
+      "task": "Write a JavaScript function that retries an async call with exponential backoff and a maximum attempt count. Reply with a single fenced code block, then a two-line usage note.",
+      "successProperties": [
+        {
+          "id": "one-code-block",
+          "kind": "code-fence-count",
+          "count": 1,
+          "description": "One runnable block — a diff of alternatives is not an answer."
+        },
+        {
+          "id": "async-function",
+          "kind": "regex-all",
+          "patterns": ["async\\s+function|async\\s*\\("],
+          "description": "The answer is actually asynchronous."
+        },
+        {
+          "id": "attempt-bounded",
+          "kind": "regex-all",
+          "patterns": ["maxAttempts|max_attempts|maxRetries|attempts"],
+          "description": "The retry loop is bounded, not infinite."
+        },
+        {
+          "id": "no-placeholders",
+          "kind": "excludes-all",
+          "terms": ["TODO", "your code here", "insert logic", "..."],
+          "description": "Complete code, not a scaffold."
+        },
+        {
+          "id": "block-is-compact",
+          "kind": "code-fence-max-lines",
+          "max": 45,
+          "description": "Fits on a screen, so it can be read in review."
+        }
+      ],
+      "humanReview": [
+        "Would this retry loop amplify an outage (no jitter, unbounded concurrency)?",
+        "Does the usage note describe the failure it surfaces, not just how to import it?"
+      ]
+    }
+  ]
+}
