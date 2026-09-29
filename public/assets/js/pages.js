@@ -26,11 +26,22 @@ async function loadStatusPage() {
       hint.textContent = 'Current: No key set (using fallbacks)'
     }
 
-    const eps = [
-      { m: 'GET', p: '/api/premium/research', pr: '$0.01', pw: true },
-      { m: 'GET', p: '/api/premium/summarize', pr: '$0.01', pw: true },
-      { m: 'GET', p: '/api/premium/analyze', pr: '$0.05', pw: true },
-      { m: 'GET', p: '/api/premium/code', pr: '$0.03', pw: true },
+    // Premium rows come from /api/status x402.pricing so the displayed price
+    // always matches the configured paywall. Public rows are a static list
+    // because the server does not publish metadata for unpriced routes.
+    const pricing = Array.isArray(s.x402?.pricing) ? s.x402.pricing : null
+
+    const premiumRows = pricing
+      ? pricing.map((info) => {
+          const [m = 'GET', p = ''] = String(info.endpoint || '').split(' ')
+          const rawPrice = info.price
+          const pr = typeof rawPrice === 'string' && rawPrice.trim() ? rawPrice.trim() : ''
+          const payable = Boolean(pr)
+          return { m, p, pr, pw: payable, unavailable: !p }
+        })
+      : null
+
+    const publicRows = [
       { m: 'POST', p: '/api/orchestrate', pr: '', pw: false },
       { m: 'GET', p: '/api/agents', pr: '', pw: false },
       { m: 'GET', p: '/api/wallet/balances', pr: '', pw: false },
@@ -39,17 +50,29 @@ async function loadStatusPage() {
       { m: 'GET', p: '/api/events', pr: '', pw: false },
     ]
 
-    document.getElementById('endpoint-list').innerHTML = eps
-      .map(
-        (e) => `
+    const endpointList = document.getElementById('endpoint-list')
+
+    if (!premiumRows || !premiumRows.length) {
+      // Missing or malformed metadata: say so instead of rendering stale prices.
+      endpointList.innerHTML = `
+        <div class="ep-item">
+          <span class="ep-free">Premium pricing unavailable — /api/status did not return x402.pricing</span>
+        </div>
+      `
+    } else {
+      const rows = [...premiumRows, ...publicRows]
+      endpointList.innerHTML = rows
+        .map(
+          (e) => `
       <div class="ep-item">
         <span class="ep-method ${e.m.toLowerCase()}">${e.m}</span>
         <span class="ep-path">${e.p}</span>
-        ${e.pw ? `<span class="ep-price">🔒 ${e.pr}</span>` : '<span class="ep-free">Free</span>'}
+        ${e.unavailable ? '<span class="ep-free">Unavailable</span>' : e.pw ? `<span class="ep-price">🔒 ${e.pr}</span>` : '<span class="ep-free">Free</span>'}
       </div>
     `
-      )
-      .join('')
+        )
+        .join('')
+    }
 
     const x4 = s.x402 || {}
     document.getElementById('x402-info').innerHTML = `
