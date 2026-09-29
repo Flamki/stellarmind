@@ -94,3 +94,58 @@ jobs:
 
       - name: API smoke check
         run: npm run smoke
+
+  # ── Cross-OS offline coverage (Issue #176) ───────────────────────────────────
+  # The jobs above run on Linux only, while the docs support Windows
+  # contributors: file replacement, child processes, line endings and paths all
+  # behave differently there. This job runs the *same* commands on both systems
+  # (same `npm test`, not a duplicated list) so the two cannot drift apart, plus
+  # a workspace copied into a path containing spaces.
+  offline-cross-os:
+    name: Offline suites (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 25
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+    env:
+      # Suites write their full output here; the failure step below prints the
+      # tails, so a red job carries the diagnostic rather than only an exit code.
+      CI_LOG_DIR: ${{ runner.temp }}/stellarmind-logs
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version-file: '.nvmrc'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      # Includes the temporary-file storage reload, the startup/shutdown checks
+      # (which always clean up their child processes) and the offline quality set.
+      - name: Offline suites
+        run: npm test
+
+      - name: API validation tests
+        run: npm run test:validation
+
+      - name: Run history schema suite
+        run: node tests/run-history-schema.test.js
+
+      - name: Workspace path containing spaces
+        run: node tests/support/space-path-suite.mjs
+
+      - name: Lint, formatting and markdown
+        run: |
+          npm run lint
+          npm run format:check
+          npm run lint:md
+
+      - name: Diagnostics on failure
+        if: failure()
+        run: node tests/support/print-diagnostics.mjs

@@ -111,6 +111,22 @@ npm run lint:fix
 npm run format
 ```
 
+### Windows and cross-OS checks
+
+The docs support Windows contributors, so the offline checks are written to run on both systems:
+temporary directories via `os.tmpdir()`, `path.join` instead of concatenation, child processes
+started with `process.execPath` (never a shell command), and no shell-specific syntax.
+
+```bash
+npm test                        # offline suites, including storage reload and startup/shutdown
+npm run test:spaces             # runs the suites from a copy of the repo in a path with spaces
+```
+
+`npm run test:spaces` copies the repository into a temporary directory whose path contains spaces
+and runs the storage, startup, quality and schema suites from there — this is where path handling
+that assumes a POSIX-shaped workspace fails, and nothing else does. Both of these run on Ubuntu and
+Windows in CI (`Offline suites (<os>)`).
+
 ### Environment Setup
 
 ```bash

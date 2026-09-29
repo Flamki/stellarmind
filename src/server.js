@@ -558,7 +558,15 @@ const isMainModule =
 
 if (isMainModule) {
   const PORT = config.port
-  app.listen(PORT, () => {
+  // A start that did not happen must not look like a start that did.
+  //
+  // `listen`'s callback is not a reliable success signal: with express 5 on
+  // Node 26 it also fires when the bind failed (`server.listening` is false and
+  // `server.address()` is null at that point), so the banner is printed only for
+  // a server that is really listening, and a bind failure is reported once, with
+  // a concise diagnostic and a non-zero exit for the shell or CI job.
+  const listenServer = app.listen(PORT, () => {
+    if (!listenServer.listening) return
     console.log(`
 ╔══════════════════════════════════════════════════╗
 ║         🧠 StellarMind — AI Agent Marketplace     ║
@@ -574,6 +582,19 @@ if (isMainModule) {
 ║  x402:       ${(config.serverAddress ? '✅ Active' : '⚠️  No wallet').padEnd(34)}║
 ╚══════════════════════════════════════════════════╝
   `)
+  })
+
+  listenServer.on('error', (err) => {
+    logger.error('server_listen_failed', {
+      port: PORT,
+      code: err.code || null,
+      message: err.message,
+    })
+    console.error(
+      `StellarMind failed to start: cannot listen on port ${PORT} (${err.code || err.message}). ` +
+        'Another process is probably using it.'
+    )
+    process.exit(1)
   })
 }
 

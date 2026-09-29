@@ -1,15 +1,18 @@
 import { FileRunHistoryStore } from '../src/storage/run-history.js'
+import fsSync from 'node:fs'
 import fs from 'node:fs/promises'
+import os from 'node:os'
 import path from 'node:path'
-import { fileURLToPath } from 'node:url'
 
-const __dirname = path.dirname(fileURLToPath(import.meta.url))
-const testDir = path.join(__dirname, 'fixtures')
+// Temporary directory (Issue #176): this suite used to write into
+// `tests/fixtures`, which left corrupted-file copies behind in the working tree
+// and made the suite unsafe to run in parallel. `os.tmpdir()` + `mkdtemp` is the
+// portable form — no shell syntax, and nothing is left in the repository.
+const testDir = await fs.mkdtemp(path.join(os.tmpdir(), 'stellarmind-run-history-'))
 
 async function withTempFile(testName, callback) {
   const testPath = path.join(testDir, `run-history-${testName}.json`)
   try {
-    await fs.mkdir(testDir, { recursive: true })
     await callback(testPath)
   } finally {
     try {
@@ -227,5 +230,17 @@ await withTempFile('new-write', async (testPath) => {
   console.log('  ✓ New writes include version field')
   console.log('  ✓ Version: 1\n')
 })
+
+// Cleanup must also happen when a check throws, so a failure does not leave the
+// temporary directory (and the corrupted-file copies inside it) behind.
+process.on('exit', () => {
+  try {
+    fsSync.rmSync(testDir, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 })
+  } catch {
+    // Best effort; the OS clears its temp directory eventually.
+  }
+})
+
+await fs.rm(testDir, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 })
 
 console.log('All tests passed! ✓')
