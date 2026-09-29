@@ -109,10 +109,6 @@ jobs:
       fail-fast: false
       matrix:
         os: [ubuntu-latest, windows-latest]
-    env:
-      # Suites write their full output here; the failure step below prints the
-      # tails, so a red job carries the diagnostic rather than only an exit code.
-      CI_LOG_DIR: ${{ runner.temp }}/stellarmind-logs
 
     steps:
       - uses: actions/checkout@v4
@@ -138,6 +134,10 @@ jobs:
         run: node tests/run-history-schema.test.js
 
       - name: Workspace path containing spaces
+        # Step-level env: the `runner` context is not available in a job-level
+        # `env` block, which GitHub rejects as an invalid workflow file.
+        env:
+          CI_LOG_DIR: ${{ runner.temp }}/stellarmind-logs
         run: node tests/support/space-path-suite.mjs
 
       - name: Lint, formatting and markdown
@@ -148,4 +148,6 @@ jobs:
 
       - name: Diagnostics on failure
         if: failure()
+        env:
+          CI_LOG_DIR: ${{ runner.temp }}/stellarmind-logs
         run: node tests/support/print-diagnostics.mjs
