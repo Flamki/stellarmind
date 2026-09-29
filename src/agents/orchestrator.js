@@ -15,6 +15,16 @@ import { x402Client, x402HTTPClient, wrapFetchWithPayment } from '@x402/fetch'
 import { ExactStellarScheme, createEd25519Signer } from '@x402/stellar'
 import { parseSettlementHeader, extractTxHash } from './settlement-header.js'
 import {
+  canAttemptFallback,
+  confirmPaymentAttempt,
+  createPaymentAttempt,
+  failPaymentAttempt,
+  markPaymentAttemptUnknown,
+  reconcilePaymentAttempt,
+  summarizePaymentAttempts,
+  upsertPaymentAttempt,
+} from './payment-attempts.js'
+import {
   AssetAmount,
   agentCost,
   exceedsBudget,
@@ -151,6 +161,22 @@ async function callAgentViaX402(agent, input, broadcastFn, context = {}) {
   const baseUrl = config.internalBaseUrl
   const endpointFn = PREMIUM_ENDPOINT_MAP[agent.id]
 
+  // One persisted attempt per (run, step) — see payment-attempts.js. The id
+  // is derived from the run and step, so a reconciliation after a restart
+  // addresses the same logical charge instead of opening a new one.
+  let paymentAttempt = createPaymentAttempt({
+    runId: context.runId || context.correlationId || 'local',
+    stepId: agent.id,
+    agentId: agent.id,
+    amount: agent.price,
+    currency: agent.currency,
+  })
+  // The direct-payment path is a *fallback settlement* for the same logical
+  // charge, so it is only permitted once that charge is known to have
+  // failed terminally. With no x402 attempt there is nothing to reconcile.
+  let fallbackPermitted = !(x402Fetch && endpointFn)
+  let x402FailureReason = null
+
   if (x402Fetch && endpointFn) {
     try {
       const url = `${baseUrl}${endpointFn(input)}`
@@ -171,14 +197,10 @@ async function callAgentViaX402(agent, input, broadcastFn, context = {}) {
           settle?.success === false || Boolean(settle?.error || settle?.errorReason)
         if (settlementFailed) {
           const reason = settle?.errorReason || settle?.error || 'x402 settlement failed'
-          broadcastFn?.({
-            type: 'x402_retry',
-            agent: agent.name,
-            agentId: agent.id,
-            reason,
-            fallback: true,
-            timestamp: new Date().toISOString(),
-          })
+          // The settlement header is definitive evidence that nothing was
+          // charged, which is exactly what makes this a terminal failure.
+          paymentAttempt = failPaymentAttempt(paymentAttempt, 'x402_settlement_reported_failure')
+          x402FailureReason = reason
           logger.warn('x402_settlement_reported_failure', {
             correlationId: context.correlationId,
             agentId: agent.id,
@@ -187,6 +209,11 @@ async function callAgentViaX402(agent, input, broadcastFn, context = {}) {
           })
         } else {
           const verification = txHash ? 'verified' : 'unverified'
+          paymentAttempt = confirmPaymentAttempt(paymentAttempt, {
+            txHash,
+            explorerUrl: buildExplorerUrl(txHash),
+            proof: txHash ? { source: 'x402-settlement-header', txHash } : null,
+          })
           broadcastFn?.({
             type: 'x402_payment',
             agent: agent.name,
@@ -220,20 +247,24 @@ async function callAgentViaX402(agent, input, broadcastFn, context = {}) {
           // Likewise, there's no raw Anthropic content-block response to
           // normalize for a remote x402 call.
           responseMeta: null,
+          // The settled attempt travels with the result so run history can
+          // persist it and the run summary can report it (#131).
+          paymentAttempt,
+          paymentReconciliationRequired: false,
         }
       }
 
       const responseExcerpt =
         typeof data === 'string' ? data.substring(0, 120) : JSON.stringify(data).substring(0, 120)
       const reason = `x402 endpoint returned ${response.status}: ${responseExcerpt}`
-      broadcastFn?.({
-        type: 'x402_retry',
-        agent: agent.name,
-        agentId: agent.id,
-        reason,
-        fallback: true,
-        timestamp: new Date().toISOString(),
-      })
+      // A 4xx is a rejection, so nothing was settled. A 5xx does not
+      // establish whether the request reached settlement, so it stays
+      // unknown rather than authorising a second charge.
+      paymentAttempt =
+        response.status >= 500
+          ? markPaymentAttemptUnknown(paymentAttempt, 'http_5xx')
+          : failPaymentAttempt(paymentAttempt, 'http_4xx_rejected')
+      x402FailureReason = reason
       logger.warn('x402_request_failed_status', {
         correlationId: context.correlationId,
         agentId: agent.id,
@@ -242,11 +273,46 @@ async function callAgentViaX402(agent, input, broadcastFn, context = {}) {
       })
     } catch (err) {
       const reason = summarizeError(err)
+      // No response came back. That says nothing about whether the request
+      // settled — this is precisely the case that must not pay again.
+      paymentAttempt = markPaymentAttemptUnknown(paymentAttempt, 'transport_error')
+      x402FailureReason = reason
+      logger.warn('x402_flow_failed', {
+        correlationId: context.correlationId,
+        agentId: agent.id,
+        paymentMethod: 'x402',
+        reason,
+      })
+    }
+
+    // Reconcile before deciding anything: an unresolved outcome is not a
+    // licence to settle again. The probe only answers whether the earlier
+    // settlement completed; without one the attempt stays visibly pending
+    // until a later reconciliation pass resolves it.
+    if (paymentAttempt.outcome === 'unknown' && typeof context.paymentProbe === 'function') {
+      paymentAttempt = await reconcilePaymentAttempt(paymentAttempt, {
+        probe: context.paymentProbe,
+      })
+      logger.info('x402_settlement_reconciled', {
+        correlationId: context.correlationId,
+        agentId: agent.id,
+        attemptId: paymentAttempt.id,
+        paymentOutcome: paymentAttempt.outcome,
+        failureReason: paymentAttempt.failureReason,
+      })
+    }
+
+    fallbackPermitted = canAttemptFallback(paymentAttempt)
+
+    if (fallbackPermitted) {
       broadcastFn?.({
         type: 'x402_retry',
         agent: agent.name,
         agentId: agent.id,
-        reason,
+        attemptId: paymentAttempt.id,
+        paymentOutcome: paymentAttempt.outcome,
+        failureReason: paymentAttempt.failureReason,
+        reason: x402FailureReason,
         fallback: true,
         timestamp: new Date().toISOString(),
       })
@@ -254,7 +320,33 @@ async function callAgentViaX402(agent, input, broadcastFn, context = {}) {
         correlationId: context.correlationId,
         agentId: agent.id,
         paymentMethod: 'x402',
-        reason,
+        attemptId: paymentAttempt.id,
+        failureReason: paymentAttempt.failureReason,
+        reason: x402FailureReason,
+      })
+    } else {
+      // The earlier attempt may already have settled. Surface it as an
+      // unresolved payment instead of starting a second settlement that
+      // would charge one logical call twice.
+      broadcastFn?.({
+        type: 'x402_settlement_unresolved',
+        agent: agent.name,
+        agentId: agent.id,
+        attemptId: paymentAttempt.id,
+        paymentOutcome: paymentAttempt.outcome,
+        failureReason: paymentAttempt.failureReason,
+        reason: x402FailureReason,
+        fallback: false,
+        paymentAttempt,
+        timestamp: new Date().toISOString(),
+      })
+      logger.warn('x402_settlement_awaiting_reconciliation', {
+        correlationId: context.correlationId,
+        agentId: agent.id,
+        paymentMethod: 'x402',
+        attemptId: paymentAttempt.id,
+        failureReason: paymentAttempt.failureReason,
+        reason: x402FailureReason,
       })
     }
   }
@@ -298,7 +390,10 @@ async function callAgentViaX402(agent, input, broadcastFn, context = {}) {
   }
 
   let paymentResult = { success: false, txHash: null }
-  if (config.orchestratorSecret && config.serverAddress) {
+  // Direct payment is the fallback settlement, so it only runs when the
+  // x402 attempt is a documented terminal failure (or when there was no
+  // x402 attempt at all) — never while its outcome is unknown.
+  if (fallbackPermitted && config.orchestratorSecret && config.serverAddress) {
     try {
       paymentResult = await sendPayment(
         config.orchestratorSecret,
@@ -317,15 +412,44 @@ async function callAgentViaX402(agent, input, broadcastFn, context = {}) {
   }
 
   const txHash = paymentResult.txHash || null
+  // A successful fallback settles the *same* logical charge, so it resolves
+  // the original attempt (with its proof) instead of leaving a paid call
+  // looking failed in run history.
+  if (paymentResult.success) {
+    paymentAttempt = confirmPaymentAttempt(paymentAttempt, {
+      txHash,
+      explorerUrl: paymentResult.explorerUrl || buildExplorerUrl(txHash),
+      proof: x402FailureReason
+        ? { source: 'stellar-xlm-fallback', settledAfter: paymentAttempt.failureReason }
+        : null,
+    })
+  }
+
+  const paymentReconciliationRequired = paymentAttempt.outcome === 'unknown'
+  // Reconciliation can also establish that the x402 charge *did* settle. That
+  // is a paid call — the response was simply lost — so it is reported as one
+  // instead of being counted as unpaid.
+  const reconciledX402Settlement = !paymentResult.success && paymentAttempt.outcome === 'confirmed'
+  const settled = paymentResult.success || reconciledX402Settlement
+  const settledTxHash = paymentResult.success
+    ? txHash
+    : reconciledX402Settlement
+      ? paymentAttempt.txHash
+      : null
   return {
     result,
-    paymentMethod: paymentResult.success ? 'stellar-xlm' : 'none',
-    paymentSuccess: paymentResult.success,
-    paidVia: paymentResult.success ? 'stellar-xlm-direct' : 'none',
-    txHash,
-    explorerUrl: paymentResult.explorerUrl || buildExplorerUrl(txHash),
+    paymentMethod: settled ? (paymentResult.success ? 'stellar-xlm' : 'x402') : 'none',
+    paymentSuccess: settled,
+    paidVia: settled ? (paymentResult.success ? 'stellar-xlm-direct' : 'x402') : 'none',
+    txHash: settledTxHash,
+    explorerUrl: paymentResult.explorerUrl || buildExplorerUrl(settledTxHash),
     usage: capturedUsage || unavailableUsage(agent.model || null, 'no_usage_captured'),
     responseMeta: capturedResponseMeta,
+    paymentAttempt,
+    paymentReconciliationRequired,
+    warning: paymentReconciliationRequired
+      ? 'x402 settlement outcome is unresolved; no fallback settlement was attempted'
+      : undefined,
   }
 }
 
@@ -394,6 +518,9 @@ export async function orchestrate(task, budget, broadcastFn, context = {}) {
   const results = []
   const payments = []
   const usageEntries = []
+  // Every payment attempt this run produced, upserted by id so one logical
+  // charge keeps one record (#131).
+  let paymentAttempts = []
   const exactBudget = AssetAmount.from(budget, 'USDC')
   let totalSpent = AssetAmount.zero('USDC')
   let x402PaymentCount = 0
@@ -591,6 +718,25 @@ Respond ONLY with valid JSON (no markdown, no code fences):
 
     const agentResponse = await callAgentViaX402(agent, activeInput, broadcastFn, context)
 
+    if (agentResponse?.paymentAttempt) {
+      paymentAttempts = upsertPaymentAttempt(paymentAttempts, agentResponse.paymentAttempt)
+    }
+
+    if (agentResponse?.paymentReconciliationRequired) {
+      broadcastFn?.({
+        type: 'payment_reconciliation_required',
+        agent: agent.name,
+        agentId: agent.id,
+        attemptId: agentResponse.paymentAttempt.id,
+        paymentOutcome: agentResponse.paymentAttempt.outcome,
+        failureReason: agentResponse.paymentAttempt.failureReason,
+        amount: agent.price,
+        currency: agent.currency,
+        paymentAttempt: agentResponse.paymentAttempt,
+        timestamp: new Date().toISOString(),
+      })
+    }
+
     if (agentResponse && agentResponse.result) {
       accumulatedContext =
         typeof agentResponse.result === 'string'
@@ -640,6 +786,10 @@ Respond ONLY with valid JSON (no markdown, no code fences):
       // Content-block normalization metadata (issue #150) — null for x402
       // remote calls, where no raw Anthropic response exists to normalize.
       responseMeta: agentResponse.responseMeta || null,
+      // The persisted attempt for this step (#131) — an `unknown` outcome
+      // stays visible here as a pending charge, never as a settled one.
+      paymentAttempt: agentResponse.paymentAttempt || null,
+      paymentReconciliationRequired: !!agentResponse.paymentReconciliationRequired,
     }
 
     results.push(agentResult)
@@ -655,6 +805,9 @@ Respond ONLY with valid JSON (no markdown, no code fences):
       paidVia: agentResponse.paidVia,
       txHash: agentResponse.txHash || null,
       explorerUrl: agentResponse.explorerUrl || null,
+      // The step's payment attempt, persisted by the route as soon as it
+      // is observed so it survives a crash before completeRun (#131).
+      paymentAttempt: agentResponse.paymentAttempt || null,
       timestamp: new Date().toISOString(),
     })
 
@@ -684,6 +837,10 @@ Respond ONLY with valid JSON (no markdown, no code fences):
   const paymentProtocol = paymentProtocolSummary(x402PaymentCount, xlmFallbackCount)
   const successfulPayments = payments.filter((p) => p.paymentSuccess)
   const successfulTxs = successfulPayments.filter((p) => p.txHash)
+  const paymentAttemptSummary = summarizePaymentAttempts(paymentAttempts)
+  const pendingPaymentCount = paymentAttempts.filter(
+    (attempt) => attempt.outcome === 'unknown' || attempt.outcome === 'pending'
+  ).length
   // Provider token usage, aggregated separately from the settled marketplace
   // totals above (totalSpent / paymentProtocol / etc. are untouched by this).
   const usageSummary = summarizeUsageByPhase(usageEntries)
@@ -703,6 +860,8 @@ Respond ONLY with valid JSON (no markdown, no code fences):
     x402WalletReady,
     x402WalletHint,
     usageSummary,
+    paymentAttemptSummary,
+    pendingPaymentCount,
     timestamp: new Date().toISOString(),
   })
 
@@ -733,6 +892,11 @@ Respond ONLY with valid JSON (no markdown, no code fences):
       entries: usageEntries,
       summary: usageSummary,
     },
+    // Payment attempts, so run history can persist them and a later
+    // reconciliation pass can resolve the unknown ones (#131).
+    paymentAttempts,
+    paymentAttemptSummary,
+    pendingPaymentCount,
   }
 }
 

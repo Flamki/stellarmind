@@ -35,6 +35,9 @@ Thumbs.db
 .idea/
 .vscode/
 
+# Test artifacts
+tests/fixtures/
+
 # Runtime / recordings
 recordings/
 stellarmind_demo*.mp4

@@ -143,9 +143,10 @@ settlement-header.js
    ▼
 Result: { result, paidVia: "x402", txHash, explorerUrl }
 
-   ┌─ Fallback path (x402 not configured, 4xx/5xx, or settlement failure) ──────────┐
+   ┌─ Fallback path (x402 not configured, or a *terminal* settlement failure) ──────┐
    │  orchestrator → stellar/wallet.js sendPayment()  (direct XLM, Horizon testnet) │
    │  → real on-chain tx → paidVia: "stellar-xlm-direct"                             │
+   │  a lost response / 5xx stays `unknown` → reconciled, never re-settled (#131)   │
    └─────────────────────────────────────────────────────────────────────────────┘
 ```
 
@@ -158,6 +159,39 @@ Notes:
   trustline; readiness is checked at boot and surfaced via `x402WalletReady` / `x402WalletHint`.
 - A 200 without a decodable settlement header is treated as an _unverified_ success (flagged via a
   `warning`), not a failure.
+
+
+### Payment attempt reconciliation
+
+Every paid call is one *logical charge*, tracked as a persisted attempt
+([`src/agents/payment-attempts.js`](../src/agents/payment-attempts.js)) whose id
+is derived from the run and the step (`pay:<runId>:<stepId>`).
+
+```text
+pending ──▶ confirmed
+   │
+   └─▶ unknown ──▶ confirmed   (settlement had completed; response was lost)
+              └─▶ failed      (reconciliation proved nothing was charged)
+```
+
+A lost response or a 5xx does **not** establish that no settlement happened, so
+those failures stay `unknown` instead of authorising a retry. Direct XLM payment
+is the *fallback settlement for the same logical charge*, so it is only
+permitted for the documented terminal failures in `TERMINAL_FAILURE_REASONS`
+(`http_4xx_rejected`, `x402_settlement_reported_failure`, `reconciled_not_settled`).
+
+- `unknown` attempts stay pending in run history (`GET /api/runs/:id` →
+  `pendingPaymentAttempts`, `GET /api/runs/pending-payments`) and are reported
+  separately from the settled totals in `summary`.
+- `POST /api/runs/:id/reconcile-payments` runs a read-only probe over the
+  pending attempts. The probe is injected as `deps.paymentProbe`
+  (`(attempt) => ({ settled, txHash?, proof? })`) and never starts a payment
+  itself; a resolved settlement updates the original attempt and its proof
+  rather than adding a second record. If no probe is configured the endpoint
+  responds `503 PAYMENT_PROBE_UNAVAILABLE` and the attempts stay pending.
+- The same probe can be passed to `orchestrate()` as `context.paymentProbe`, so
+  an unresolved x402 attempt is reconciled *before* the fallback decision is
+  made.
 
 ## Orchestration Flow
 

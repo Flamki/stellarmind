@@ -373,6 +373,9 @@ registerOrchestrationRoutes(app, {
   orchestrate,
   broadcast,
   admissionQueue,
+  // Optional: inject a read-only probe (attempt) => { settled, txHash, proof }
+  // to reconcile unresolved payment attempts before any fallback settlement
+  // is permitted. Without one, unknown attempts stay visibly pending (#131).
 })
 
 // ─── Agent Registry Endpoints ────────────────────────────────

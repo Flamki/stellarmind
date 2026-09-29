@@ -865,8 +865,11 @@ Retry-After: 30
 List recent orchestration runs with their task, budget, spend, and audit trail.
 
 **Note:** The underlying run-history file uses schema versioning (current version 1). Legacy
-unversioned files are automatically migrated on startup, and corrupted files are preserved with a
-`.corrupted.{timestamp}` suffix.
+unversioned files are automatically migrated on startup. A missing file is a first startup (fresh
+empty store). Malformed JSON or an invalid schema value is preserved with a `.corrupted.{timestamp}`
+suffix before a fresh store is started. Permission/I-O errors reading the file, and future
+(newer-than-supported) schema versions, fail startup with an actionable error and leave the file
+untouched instead of being treated as corruption.
 
 **Request:**
 

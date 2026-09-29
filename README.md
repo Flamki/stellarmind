@@ -127,8 +127,12 @@ The run-history file uses schema versioning for safe migrations:
 
 - Current format includes a `version` field (version 1)
 - Legacy unversioned files are automatically migrated to version 1 on startup
-- Corrupted or unreadable files are preserved with a `.corrupted.{timestamp}` suffix
-- Future schema versions will fail with a clear error without modifying data
+- Missing files are treated as a first startup: a fresh empty store is created, nothing to preserve
+- Malformed JSON or an invalid/incompatible schema value is preserved with a `.corrupted.{timestamp}`
+  suffix before a fresh store is started, so the original is always available for manual repair
+- Future (newer-than-supported) schema versions fail startup with a clear error without touching the file
+- Permission and I/O errors reading the file (e.g. `EACCES`) fail startup with an actionable error and
+  leave the file untouched — these are distinct from a missing file and are never treated as corruption
 
 ### 3) Prepare USDC trustlines
 
