@@ -49,21 +49,25 @@ function baseDir() {
 
 function copyRepo(destination) {
   fs.mkdirSync(destination, { recursive: true })
-  fs.cpSync(repoRoot, destination, {
-    recursive: true,
-    filter: (source) => {
-      const relative = path.relative(repoRoot, source)
-      if (relative === '') return true
-      const top = relative.split(path.sep)[0]
-      return !SKIP.has(top)
-    },
-  })
+  // Enumerate the top level explicitly instead of filtering `fs.cpSync`: the
+  // filter receives paths that can differ in case or separator on Windows, and a
+  // miss there silently copies `node_modules` (which then makes the link below
+  // fail with EEXIST).
+  for (const entry of fs.readdirSync(repoRoot, { withFileTypes: true })) {
+    if (SKIP.has(entry.name)) continue
+    fs.cpSync(path.join(repoRoot, entry.name), path.join(destination, entry.name), {
+      recursive: true,
+    })
+  }
 }
 
 function linkNodeModules(destination) {
   const target = path.join(repoRoot, 'node_modules')
   const link = path.join(destination, 'node_modules')
   if (!fs.existsSync(target)) return false
+  // The copy excludes node_modules; if something still landed there (an
+  // interrupted run, a platform quirk) clear it so the link can be created.
+  if (fs.existsSync(link)) fs.rmSync(link, { recursive: true, force: true })
   // `junction` on Windows needs no elevation; `dir` is the POSIX equivalent.
   fs.symlinkSync(target, link, process.platform === 'win32' ? 'junction' : 'dir')
   return true
