@@ -21,6 +21,11 @@ function toAuditEvent(event) {
   return {
     type: event.type || 'unknown',
     timestamp: event.timestamp || new Date().toISOString(),
+    // Run/step identity (Issue #163) travels with the audit record so a stored
+    // run describes the same steps the dashboard showed live.
+    runId: event.runId || null,
+    stepId: event.stepId || null,
+    stepIndex: event.stepIndex ?? null,
     agentId: event.agentId || null,
     agent: event.agent || null,
     cost: event.cost || null,

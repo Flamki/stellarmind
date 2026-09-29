@@ -1565,6 +1565,7 @@
       </div>
     </div>
 
+    <script src="/assets/js/run-progress.js"></script>
     <script>
       let evCnt = 0,
         isRunning = false
@@ -1646,19 +1647,11 @@
 
       function startLiveRun(task, budget) {
         stopRunHeartbeat()
-        activeRun = {
-          task,
-          budget,
-          startedAt: Date.now(),
-          lastUpdateAt: Date.now(),
-          planned: 0,
-          completed: 0,
-          spent: 0,
-          running: true,
-          startedAgents: new Set(),
-          completedAgents: new Set(),
+        // Issue #163: progress is tracked by run and step identity (see
+        // public/assets/js/run-progress.js), not by agent name.
+        activeRun = Object.assign(RunProgress.createRunProgress(task, budget), {
           heartbeatTimer: null,
-        }
+        })
         const panel = ensureResultPanelVisible()
         panel.classList.add('running')
         setResultTag('Running', 'amber')
@@ -1678,27 +1671,32 @@
         renderLiveChips(activeRun)
       }
 
+      /**
+       * Apply one live event to the active run (Issue #163).
+       *
+       * Run/step bookkeeping lives in public/assets/js/run-progress.js so it is
+       * unit-tested: progress counts step ids (two steps on the same agent are
+       * two steps) and events from another run are dropped. Everything below
+       * only renders what the reducer reports.
+       */
       function trackLiveEvent(ev) {
         if (!activeRun || !activeRun.running) return
-        activeRun.lastUpdateAt = Date.now()
+        const outcome = RunProgress.reduceLiveEvent(activeRun, ev)
+        if (!outcome.accepted) return
+
         switch (ev.type) {
           case 'orchestrator_plan':
-            activeRun.planned = Number(ev.subtaskCount) || activeRun.planned
             pushLiveLine(`Plan ready: ${activeRun.planned} subtasks`)
             appendResultLog(`Plan created: ${ev.plan || 'Multi-agent flow selected.'}`)
             document.getElementById('result-status-line').textContent =
               `Plan ready. Executing ${activeRun.planned || 'multiple'} agent tasks now.`
             break
           case 'agent_call':
-            {
-              const agentKey = ev.agentId || ev.agent || 'unknown-agent'
-              if (!activeRun.startedAgents.has(agentKey)) {
-                activeRun.startedAgents.add(agentKey)
-                pushLiveLine(`${ev.agent || 'Agent'} started`)
-                appendResultLog(`Calling ${ev.agent || ev.agentId} (${ev.cost || 'n/a'} USDC)`)
-                document.getElementById('result-status-line').textContent =
-                  `${ev.agent || 'Agent'} is running now...`
-              }
+            if (outcome.stepStarted) {
+              pushLiveLine(`${ev.agent || 'Agent'} started`)
+              appendResultLog(`Calling ${ev.agent || ev.agentId} (${ev.cost || 'n/a'} USDC)`)
+              document.getElementById('result-status-line').textContent =
+                `${ev.agent || 'Agent'} is running now...`
             }
             break
           case 'x402_payment':
@@ -1710,17 +1708,11 @@
             appendResultLog(`x402 retry for ${ev.agent || 'agent'}; fallback path engaged`)
             break
           case 'agent_response':
-            {
-              const agentKey = ev.agentId || ev.agent || `agent-${activeRun.completed + 1}`
-              if (!activeRun.completedAgents.has(agentKey)) {
-                activeRun.completedAgents.add(agentKey)
-                activeRun.completed += 1
-                activeRun.spent += Number.parseFloat(ev.cost || '0') || 0
-                pushLiveLine(`${ev.agent || 'Agent'} finished`)
-                appendResultLog(
-                  `${ev.agent || 'Agent'} output: ${ev.resultPreview || 'Result received.'}`
-                )
-              }
+            if (outcome.stepCompleted) {
+              pushLiveLine(`${ev.agent || 'Agent'} finished`)
+              appendResultLog(
+                `${ev.agent || 'Agent'} output: ${ev.resultPreview || 'Result received.'}`
+              )
             }
             break
           case 'budget_limit':

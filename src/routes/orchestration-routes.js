@@ -3,6 +3,7 @@ import { validateOrchestrate } from '../requestValidation.js'
 import { logger } from '../logger.js'
 import { config } from '../config.js'
 import { OrchestrationAdmissionQueue } from '../agents/orchestration-queue.js'
+import { createRunEventIdentifier } from '../agents/run-event-identity.js'
 
 export function registerOrchestrationRoutes(app, deps = {}) {
   const {
@@ -113,8 +114,12 @@ export function registerOrchestrationRoutes(app, deps = {}) {
         })
       }
 
+      // Issue #163: every event carries the run it belongs to *and* which step of
+      // that run it describes, so the dashboard can count steps (not agent
+      // names) and ignore events from runs it did not start.
+      const identifyEvent = createRunEventIdentifier(run.id)
       const runBroadcast = (event) => {
-        const eventWithRun = { ...event, runId: run.id }
+        const eventWithRun = identifyEvent(event)
         broadcast(eventWithRun)
         runHistoryStore.appendEvent(run.id, eventWithRun).catch((persistErr) => {
           logger.warn('run_history_append_failed', { runId: run.id, error: persistErr.message })
