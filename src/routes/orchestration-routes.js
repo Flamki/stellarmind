@@ -3,6 +3,11 @@ import { validateOrchestrate } from '../requestValidation.js'
 import { logger } from '../logger.js'
 import { config } from '../config.js'
 import { OrchestrationAdmissionQueue } from '../agents/orchestration-queue.js'
+import {
+  buildRunExportJson,
+  buildRunExportMarkdown,
+  exportFilename,
+} from '../storage/run-export.js'
 
 export function registerOrchestrationRoutes(app, deps = {}) {
   const {
@@ -241,9 +246,13 @@ export function registerOrchestrationRoutes(app, deps = {}) {
       })
     }
 
-    // Synchronous mode
+    // Synchronous mode. `runId` travels with the result so the client can offer
+    // the run's export (Issue #167) without a second lookup.
     if (run.status === 'completed') {
-      return res.json(run.result || run)
+      const result = run.result || run
+      return res.json(
+        typeof result === 'object' && result !== null ? { ...result, runId: run.id } : result
+      )
     }
     if (run.status === 'failed') {
       const err = new Error(run.summary?.error || 'Run failed')
@@ -339,6 +348,46 @@ export function registerOrchestrationRoutes(app, deps = {}) {
         count: runs.length,
         runs,
       })
+    } catch (err) {
+      next(err)
+    }
+  })
+
+  // GET /api/runs/:id/export?format=json|md (Issue #167)
+  // A stable, versioned artifact for sharing or reconciliation, generated from
+  // the persisted run detail — no live model or payment call involved.
+  app.get('/api/runs/:id/export', async (req, res, next) => {
+    try {
+      const run = await runHistoryStore.getRun(req.params.id)
+      if (!run) {
+        const err = new Error(`Run '${req.params.id}' not found`)
+        err.status = 404
+        err.code = 'RUN_NOT_FOUND'
+        return next(err)
+      }
+
+      const format = String(req.query.format || 'json').toLowerCase()
+      if (!['json', 'md', 'markdown'].includes(format)) {
+        const err = new Error(`Unsupported export format '${format}': use 'json' or 'md'`)
+        err.status = 400
+        err.code = 'UNSUPPORTED_EXPORT_FORMAT'
+        return next(err)
+      }
+
+      const exported = buildRunExportJson(run, { network: config.network })
+
+      if (format === 'json') {
+        res.setHeader('Content-Type', 'application/json; charset=utf-8')
+        res.setHeader(
+          'Content-Disposition',
+          `attachment; filename="${exportFilename(run.id, 'json')}"`
+        )
+        return res.send(`${JSON.stringify(exported, null, 2)}\n`)
+      }
+
+      res.setHeader('Content-Type', 'text/markdown; charset=utf-8')
+      res.setHeader('Content-Disposition', `attachment; filename="${exportFilename(run.id, 'md')}"`)
+      return res.send(buildRunExportMarkdown(exported))
     } catch (err) {
       next(err)
     }

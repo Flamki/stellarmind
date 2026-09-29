@@ -34,10 +34,14 @@ function toAuditEvent(event) {
 }
 
 export class InMemoryRunHistoryStore {
-  constructor(maxRuns = 200) {
+  constructor(maxRuns = 200, options = {}) {
     this.maxRuns = maxRuns
     this.runs = []
     this.idempotencyMap = new Map()
+    // Network the receipts in this store were settled on (Issue #167). Kept on
+    // the store so an exported report can state where a transaction hash can be
+    // verified without re-deriving it from config at export time.
+    this.network = options.network || null
   }
 
   async init() {}
@@ -86,6 +90,9 @@ export class InMemoryRunHistoryStore {
     return {
       ...run,
       runId: run.id,
+      // The network the run's receipts settled on, so an exported report can
+      // state where a transaction hash is verifiable (Issue #167).
+      network: run.network || this.network || null,
       outputAvailable: Boolean(run.outputAvailable ?? (run.results && run.results.length > 0)),
     }
   }
@@ -110,8 +117,12 @@ export class InMemoryRunHistoryStore {
       .filter((payment) => payment.paymentSuccess)
       .map((payment) => ({
         method: payment.paidVia || payment.paymentMethod || 'unknown',
+        network: this.network || payment.network || null,
         txHash: payment.txHash || null,
         explorerUrl: payment.explorerUrl || null,
+        // Only settled payments reach this list, but a proof without a hash
+        // cannot be verified, so the flag records what we actually know.
+        confirmed: Boolean(payment.txHash),
       }))
 
     run.status = 'completed'
@@ -175,8 +186,8 @@ export class InMemoryRunHistoryStore {
 }
 
 export class FileRunHistoryStore extends InMemoryRunHistoryStore {
-  constructor(filePath, maxRuns = 200) {
-    super(maxRuns)
+  constructor(filePath, maxRuns = 200, options = {}) {
+    super(maxRuns, options)
     this.filePath = filePath
     this._writeQueue = Promise.resolve()
   }
@@ -326,12 +337,14 @@ export class FileRunHistoryStore extends InMemoryRunHistoryStore {
 export async function createRunHistoryStore(config) {
   const storage = (config.runHistoryStorage || 'file').toLowerCase()
   if (storage === 'memory') {
-    const store = new InMemoryRunHistoryStore(config.runHistoryMaxRuns)
+    const store = new InMemoryRunHistoryStore(config.runHistoryMaxRuns, { network: config.network })
     await store.init()
     return store
   }
 
-  const store = new FileRunHistoryStore(config.runHistoryFile, config.runHistoryMaxRuns)
+  const store = new FileRunHistoryStore(config.runHistoryFile, config.runHistoryMaxRuns, {
+    network: config.network,
+  })
   await store.init()
   return store
 }

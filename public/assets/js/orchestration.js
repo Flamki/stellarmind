@@ -117,6 +117,45 @@ function trackLiveEvent(ev) {
   renderLiveChips(activeRun)
 }
 
+/**
+ * Offer the run report export for the run that just finished (Issue #167).
+ * The links are plain downloads served by /api/runs/:id/export, so they work
+ * with the browser's download UI and can be copied or shared.
+ */
+function renderRunExportLinks(runId) {
+  const host = document.getElementById('result-out')
+  if (!host) return
+
+  let box = document.getElementById('result-export')
+  if (!box) {
+    box = document.createElement('div')
+    box.id = 'result-export'
+    box.className = 'result-export'
+    host.insertAdjacentElement('afterend', box)
+  }
+
+  box.innerHTML = ''
+  if (!runId) return
+
+  const jsonUrl = `/api/runs/${encodeURIComponent(runId)}/export`
+  const mdUrl = `${jsonUrl}?format=md`
+  box.appendChild(document.createTextNode('Run report: '))
+
+  const jsonLink = document.createElement('a')
+  jsonLink.href = jsonUrl
+  jsonLink.setAttribute('download', '')
+  jsonLink.textContent = 'JSON'
+  box.appendChild(jsonLink)
+
+  box.appendChild(document.createTextNode(' · '))
+
+  const mdLink = document.createElement('a')
+  mdLink.href = mdUrl
+  mdLink.setAttribute('download', '')
+  mdLink.textContent = 'Markdown'
+  box.appendChild(mdLink)
+}
+
 async function runOrchestration() {
   if (isRunning) return
   isRunning = true
@@ -146,6 +185,7 @@ async function runOrchestration() {
     ).json()
 
     showResult(r)
+    renderRunExportLinks(r?.runId)
     loadWallets()
   } catch (e) {
     addFeed({ type: 'error', message: e.message })
