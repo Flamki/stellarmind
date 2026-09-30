@@ -13,6 +13,13 @@ import {
 const CURRENT_SCHEMA_VERSION = 1
 const LEGACY_VERSION = 0 // Unversioned files
 
+// Machine-readable recovery reason (issue #139). A run left `status:
+// 'running'` in persisted history when the store is (re)initialized never
+// had its in-process orchestration work survive the restart — there is no
+// promise, no timer, nothing left executing it — so it must not be allowed
+// to look like it is still progressing forever.
+export const INTERRUPTED_REASON_SERVER_RESTART = 'server_restart'
+
 function createRunId() {
   return `run_${Date.now()}_${crypto.randomBytes(4).toString('hex')}`
 }
@@ -302,6 +309,49 @@ export class InMemoryRunHistoryStore {
     run.outputAvailable = false
   }
 
+  /**
+   * Recover runs that were left `status: 'running'` when this store was
+   * (re)initialized — orphaned by a previous process exiting or crashing
+   * mid-orchestration (issue #139).
+   *
+   * This never replays or re-drives agent/payment work (out of scope for
+   * this issue) and never touches anything already captured for the run —
+   * `events`, `results`, `plan`, `usage`, `txProofs` are left exactly as
+   * they were, so confirmed payment proofs and completed step outputs
+   * survive untouched and any payment whose outcome was still uncertain at
+   * the time of the crash remains visible for manual/future reconciliation
+   * rather than being overwritten or silently discarded. Only a terminal
+   * `status` plus a timestamped, machine-readable reason are added, so the
+   * run stops looking like it is executing forever and no automatic new
+   * charge or retry is triggered.
+   *
+   * @returns {Promise<string[]>} ids of runs that were recovered
+   */
+  async recoverInterruptedRuns() {
+    const recoveredIds = []
+    const now = new Date().toISOString()
+
+    for (const run of this.runs) {
+      if (run.status !== 'running') continue
+
+      run.status = 'interrupted'
+      run.interruptedAt = now
+      run.interruptedReason = INTERRUPTED_REASON_SERVER_RESTART
+      run.updatedAt = now
+      run.events.push(
+        toAuditEvent({
+          type: 'run_interrupted',
+          reason: INTERRUPTED_REASON_SERVER_RESTART,
+          status: 'interrupted',
+          timestamp: now,
+        })
+      )
+      recoveredIds.push(run.id)
+    }
+
+    return recoveredIds
+  }
+
   async listRecent(limit = 20) {
     return this.runs
       .slice(0, normalizeLimit(limit, 20, this.maxRuns))
@@ -543,17 +593,33 @@ export class FileRunHistoryStore extends InMemoryRunHistoryStore {
     await super.failRun(runId, err)
     await this.persist()
   }
+
+  async recoverInterruptedRuns() {
+    const recoveredIds = await super.recoverInterruptedRuns()
+    if (recoveredIds.length > 0) {
+      await this.persist()
+    }
+    return recoveredIds
+  }
 }
 
 export async function createRunHistoryStore(config) {
   const storage = (config.runHistoryStorage || 'file').toLowerCase()
-  if (storage === 'memory') {
-    const store = new InMemoryRunHistoryStore(config.runHistoryMaxRuns)
-    await store.init()
-    return store
+  const store =
+    storage === 'memory'
+      ? new InMemoryRunHistoryStore(config.runHistoryMaxRuns)
+      : new FileRunHistoryStore(config.runHistoryFile, config.runHistoryMaxRuns)
+
+  await store.init()
+
+  // Startup recovery (issue #139): any run still `status: 'running'` at this
+  // point belongs to a process that no longer exists.
+  const recoveredIds = await store.recoverInterruptedRuns()
+  if (recoveredIds.length > 0) {
+    console.warn(
+      `  run history: recovered ${recoveredIds.length} interrupted run(s) left "running" by a previous restart: ${recoveredIds.join(', ')}`
+    )
   }
 
-  const store = new FileRunHistoryStore(config.runHistoryFile, config.runHistoryMaxRuns)
-  await store.init()
   return store
 }

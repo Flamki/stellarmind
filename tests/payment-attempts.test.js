@@ -69,8 +69,8 @@ function testAsync(name, fn) {
           passed += 1
           console.log(`  ✓ ${name}`)
         },
-        (err) => report(name, err),
-      ),
+        (err) => report(name, err)
+      )
   )
 }
 
@@ -109,7 +109,10 @@ test('derives the same id for the same run and step', () => {
 
 test('derives a different id per step and per run', () => {
   assert.notStrictEqual(paymentAttemptId(RUN, 'research-bot'), paymentAttemptId(RUN, 'summary-bot'))
-  assert.notStrictEqual(paymentAttemptId(RUN, 'research-bot'), paymentAttemptId('run_other', 'research-bot'))
+  assert.notStrictEqual(
+    paymentAttemptId(RUN, 'research-bot'),
+    paymentAttemptId('run_other', 'research-bot')
+  )
 })
 
 test('refuses to create an attempt that cannot be linked to a run and step', () => {
@@ -205,7 +208,7 @@ test('pending and unknown are visible; confirmed and failed are not', () => {
   const visible = selectPendingAttempts([pending, unknown, confirmed, failed])
   assert.deepStrictEqual(
     visible.map((a) => a.outcome),
-    ['pending', 'unknown'],
+    ['pending', 'unknown']
   )
 })
 
@@ -261,14 +264,18 @@ testAsync('success with a lost response is recovered, not paid twice', async () 
 testAsync('delayed confirmation stays unknown instead of falling back', async () => {
   let attempt = markPaymentAttemptUnknown(createPaymentAttempt(ATTEMPT_INPUT), 'transport_error')
 
-  attempt = await reconcilePaymentAttempt(attempt, { probe: async () => ({ settled: 'inconclusive' }) })
+  attempt = await reconcilePaymentAttempt(attempt, {
+    probe: async () => ({ settled: 'inconclusive' }),
+  })
   assert.strictEqual(attempt.outcome, 'unknown')
   assert.strictEqual(attempt.failureReason, 'reconciliation_inconclusive')
   assert.strictEqual(canAttemptFallback(attempt), false)
   assert.strictEqual(isVisiblyPending(attempt), true)
 
   // A later reconciliation that resolves it confirms the original attempt.
-  attempt = await reconcilePaymentAttempt(attempt, { probe: async () => ({ settled: true, txHash: 'late-tx' }) })
+  attempt = await reconcilePaymentAttempt(attempt, {
+    probe: async () => ({ settled: true, txHash: 'late-tx' }),
+  })
   assert.strictEqual(attempt.outcome, 'confirmed')
   assert.strictEqual(attempt.txHash, 'late-tx')
   assert.strictEqual(attempt.reconciliations, 2)
@@ -306,7 +313,7 @@ testAsync('a probe that throws leaves the attempt unknown', async () => {
 testAsync('without a probe the attempt stays unknown rather than assuming failure', async () => {
   const attempt = await reconcilePaymentAttempt(
     markPaymentAttemptUnknown(createPaymentAttempt(ATTEMPT_INPUT), 'transport_error'),
-    {},
+    {}
   )
   assert.strictEqual(attempt.outcome, 'unknown')
   assert.strictEqual(attempt.failureReason, 'reconciliation_inconclusive')
@@ -339,12 +346,18 @@ testAsync('restart during reconciliation reuses the same attempt and charges onc
 
   attempt = resolved
   assert.strictEqual(isVisiblyPending(attempt), false)
-  assert.deepStrictEqual(flow.settlements, [], 'the restart recovered the charge instead of paying again')
+  assert.deepStrictEqual(
+    flow.settlements,
+    [],
+    'the restart recovered the charge instead of paying again'
+  )
 })
 
 testAsync('reconciliation is a read-only no-op for resolved attempts', async () => {
   const confirmed = confirmPaymentAttempt(createPaymentAttempt(ATTEMPT_INPUT), { txHash: 'tx' })
-  const result = await reconcilePaymentAttempt(confirmed, { probe: async () => ({ settled: false }) })
+  const result = await reconcilePaymentAttempt(confirmed, {
+    probe: async () => ({ settled: false }),
+  })
   assert.strictEqual(result.outcome, 'confirmed')
   assert.strictEqual(result.txHash, 'tx')
 

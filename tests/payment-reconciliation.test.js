@@ -46,14 +46,19 @@ async function test(name, fn) {
   }
 }
 
-const RUN_STEP = { runId: 'run_placeholder', stepId: 'research-bot', amount: '0.01', currency: 'USDC' }
+const RUN_STEP = {
+  runId: 'run_placeholder',
+  stepId: 'research-bot',
+  amount: '0.01',
+  currency: 'USDC',
+}
 
 /** Creates a run and returns `{ store, runId, attempt }` with one unknown attempt. */
 async function seedUnknownAttempt(store) {
   const run = await store.createRun({ task: 'summarize stellar payments', budget: 0.15 })
   const attempt = markPaymentAttemptUnknown(
     createPaymentAttempt({ ...RUN_STEP, runId: run.id }),
-    'transport_error',
+    'transport_error'
   )
   await store.recordPaymentAttempt(run.id, attempt)
   return { runId: run.id, attempt }
@@ -72,7 +77,7 @@ async function main() {
     assert.strictEqual(run.paymentAttempts[0].id, paymentAttemptId(runId, 'research-bot'))
     assert.deepStrictEqual(
       run.pendingPaymentAttempts.map((a) => a.id),
-      [attempt.id],
+      [attempt.id]
     )
     assert.strictEqual(run.paymentAttemptSummary.unknown, 1)
     assert.strictEqual(run.paymentAttemptSummary.confirmed, 0)
@@ -117,7 +122,11 @@ async function main() {
     assert.strictEqual(reconciled[0].outcome, 'confirmed')
 
     const run = await store.getRun(runId)
-    assert.strictEqual(run.paymentAttempts.length, 1, 'a recovered settlement is not a second charge')
+    assert.strictEqual(
+      run.paymentAttempts.length,
+      1,
+      'a recovered settlement is not a second charge'
+    )
     assert.strictEqual(run.paymentAttempts[0].txHash, 'tx_lost_response')
     assert.strictEqual(run.paymentAttempts[0].proof.source, 'horizon')
     assert.deepStrictEqual(run.pendingPaymentAttempts, [])
@@ -136,7 +145,7 @@ async function main() {
     const run = await store.getRun(runId)
     assert.deepStrictEqual(
       run.pendingPaymentAttempts.map((a) => a.id),
-      [attempt.id],
+      [attempt.id]
     )
   })
 
@@ -206,7 +215,7 @@ async function main() {
     const run = await store.createRun({ task: 'mixed outcomes', budget: 0.15 })
     const unknown = markPaymentAttemptUnknown(
       createPaymentAttempt({ ...RUN_STEP, runId: run.id }),
-      'transport_error',
+      'transport_error'
     )
     const confirmed = {
       ...createPaymentAttempt({ ...RUN_STEP, runId: run.id, stepId: 'summary-bot' }),
@@ -232,7 +241,7 @@ async function main() {
     assert.strictEqual(stored.paymentAttempts.length, 2)
     assert.deepStrictEqual(
       stored.pendingPaymentAttempts.map((a) => a.id),
-      [unknown.id],
+      [unknown.id]
     )
     assert.strictEqual(stored.paymentAttemptSummary.confirmed, 1)
     assert.strictEqual(stored.paymentAttemptSummary.unknown, 1)
@@ -271,7 +280,11 @@ async function main() {
     const second = new FileRunHistoryStore(file, 10)
     await second.init()
     const finalRun = await second.getRun(runId)
-    assert.strictEqual(finalRun.paymentAttempts.length, 1, 'the restart did not open a second charge')
+    assert.strictEqual(
+      finalRun.paymentAttempts.length,
+      1,
+      'the restart did not open a second charge'
+    )
     assert.strictEqual(finalRun.paymentAttempts[0].id, attempt.id)
     assert.strictEqual(finalRun.paymentAttempts[0].txHash, 'tx_after_restart')
     assert.deepStrictEqual(finalRun.pendingPaymentAttempts, [])

@@ -46,11 +46,7 @@ export const TERMINAL_FAILURE_REASONS = [
 ]
 
 /** Reasons that leave an attempt `unknown` until reconciliation resolves it. */
-export const UNKNOWN_REASONS = [
-  'transport_error',
-  'http_5xx',
-  'reconciliation_inconclusive',
-]
+export const UNKNOWN_REASONS = ['transport_error', 'http_5xx', 'reconciliation_inconclusive']
 
 export function isTerminalFailure(reason) {
   return TERMINAL_FAILURE_REASONS.includes(reason)
@@ -118,7 +114,10 @@ function withOutcome(attempt, outcome, patch = {}) {
 }
 
 /** Records a definitive settlement, attaching its proof. */
-export function confirmPaymentAttempt(attempt, { txHash = null, explorerUrl = null, proof = null } = {}) {
+export function confirmPaymentAttempt(
+  attempt,
+  { txHash = null, explorerUrl = null, proof = null } = {}
+) {
   return withOutcome(attempt, 'confirmed', {
     failureReason: null,
     terminal: false,
@@ -155,7 +154,11 @@ export function markPaymentAttemptUnknown(attempt, reason = 'transport_error') {
  * module exists to prevent.
  */
 export function canAttemptFallback(attempt) {
-  return attempt?.outcome === 'failed' && attempt.terminal === true && isTerminalFailure(attempt.failureReason)
+  return (
+    attempt?.outcome === 'failed' &&
+    attempt.terminal === true &&
+    isTerminalFailure(attempt.failureReason)
+  )
 }
 
 /** Pending and unknown both stay visible: neither is a settled outcome. */
@@ -207,12 +210,15 @@ export async function reconcilePaymentAttempt(attempt, { probe } = {}) {
  * than appending a second attempt for the same logical charge:
  * `createdSecondCharge` is false by construction.
  */
-export function recordRecoveredSettlement(attempt, { txHash = null, explorerUrl = null, proof = null } = {}) {
+export function recordRecoveredSettlement(
+  attempt,
+  { txHash = null, explorerUrl = null, proof = null } = {}
+) {
   if (!attempt) throw new TypeError('an attempt is required')
   return {
     attempt: confirmPaymentAttempt(
       { ...attempt, reconciliations: attempt.reconciliations || 0 },
-      { txHash, explorerUrl, proof: proof || { recovered: true } },
+      { txHash, explorerUrl, proof: proof || { recovered: true } }
     ),
     createdSecondCharge: false,
   }
@@ -246,6 +252,6 @@ export function summarizePaymentAttempts(attempts) {
       if (attempt.outcome in acc) acc[attempt.outcome] += 1
       return acc
     },
-    { total: 0, pending: 0, confirmed: 0, failed: 0, unknown: 0 },
+    { total: 0, pending: 0, confirmed: 0, failed: 0, unknown: 0 }
   )
 }
