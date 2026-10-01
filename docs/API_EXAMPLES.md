@@ -636,7 +636,9 @@ endpoint. See the [research example](#get-apipremiumresearch) for the full clien
 ## Orchestrator
 
 The orchestrator decomposes a task into subtasks, assigns them to specialized agents, and enforces
-spending limits. Supports both `POST` (JSON body) and `GET` (query parameters).
+spending limits. Every plan is validated before any agent or payment call - unknown agents,
+malformed shapes, and oversized plans are rejected and replaced with a bounded fallback plan (issue
+145). Supports both `POST` (JSON body) and `GET` (query parameters).
 
 ### `POST /api/orchestrate`
 
