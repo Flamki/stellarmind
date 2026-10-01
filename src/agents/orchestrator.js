@@ -1,6 +1,7 @@
 import crypto from 'node:crypto'
 import { config } from '../config.js'
 import { AGENTS, getAgentById } from './registry.js'
+import { validatePlan } from './plan-validator.js'
 import {
   runResearch,
   runSummary,
@@ -240,7 +241,7 @@ async function callAgentViaX402(agent, input, broadcastFn, context = {}) {
             !settlementFailed && !txHash
               ? 'x402 settlement completed without transaction hash header'
               : undefined,
-          // The premium endpoint served this call remotely — we never touched
+          // The premium endpoint served this call remotely - we never touched
           // the Anthropic client ourselves, so provider token usage is
           // genuinely unknown here, not zero.
           usage: unavailableUsage(agent.model || null, 'x402_remote_call'),
@@ -375,12 +376,12 @@ async function callAgentViaX402(agent, input, broadcastFn, context = {}) {
       },
       // Services may report more than one attempt (e.g. a failed primary
       // model call followed by a successful fallback-model call). Keep the
-      // most recent report — the one that actually produced `result`.
+      // most recent report - the one that actually produced `result`.
       onUsage: (usage) => {
         capturedUsage = usage
       },
       // Same for normalized content metadata (truncation, empty/unsupported
-      // content) — only a call that actually produced `result` reports one.
+      // content) - only a call that actually produced `result` reports one.
       onResponseMeta: (meta) => {
         capturedResponseMeta = meta
       },
@@ -460,7 +461,7 @@ async function callAgentViaX402(agent, input, broadcastFn, context = {}) {
  * This is the "planning rejects an incomplete JSON result before execution"
  * guardrail (issue #150): a truncated response, a response with no text
  * content, invalid JSON, or JSON missing a `subtasks` array must never reach
- * subtask execution — each is rejected explicitly here rather than being
+ * subtask execution - each is rejected explicitly here rather than being
  * silently accepted (e.g. `{}` parses successfully but has no subtasks).
  */
 export function parsePlanResponse(planResponse) {
@@ -597,7 +598,7 @@ Respond ONLY with valid JSON (no markdown, no code fences):
         }
       )
 
-      // Capture usage from the successful call before parsing — a rejected
+      // Capture usage from the successful call before parsing - a rejected
       // plan (truncated, empty, invalid JSON, or missing subtasks) still
       // consumed real provider tokens.
       planningUsageEntry = recordUsageEntry(
@@ -607,6 +608,12 @@ Respond ONLY with valid JSON (no markdown, no code fences):
       )
 
       plan = parsePlanResponse(planResponse)
+
+      const validated = validatePlan(plan)
+      if (!validated.valid) {
+        throw new Error(`plan_validation_failed:${validated.reason}`)
+      }
+      plan = validated.plan
     } catch (err) {
       logger.warn('orchestrator_planning_fallback', {
         correlationId: context.correlationId,
@@ -656,8 +663,12 @@ Respond ONLY with valid JSON (no markdown, no code fences):
         remaining = remaining.minus(codeCost)
       }
 
+      subtasks.forEach((s, i) => {
+        s.stepId = `step-${i}`
+      })
+
       plan = {
-        plan: `Multi-agent workflow: ${subtasks.map((s) => s.agentId).join(' → ')} (${subtasks.length} agents, ${budget} USDC budget)`,
+        plan: `Multi-agent workflow: ${subtasks.map((s) => s.agentId).join(' -> ')} (${subtasks.length} agents, ${budget} USDC budget)`,
         subtasks,
       }
     }
@@ -681,7 +692,7 @@ Respond ONLY with valid JSON (no markdown, no code fences):
 
     const agent = getAgentById(subtask.agentId)
     if (!agent) {
-      results.push({ agentId: subtask.agentId, error: 'Agent not found' })
+      results.push({ agentId: subtask.agentId, stepId: subtask.stepId, error: 'Agent not found' })
       continue
     }
 
@@ -752,7 +763,7 @@ Respond ONLY with valid JSON (no markdown, no code fences):
 
     // Provider token usage is tracked independently of the settled
     // marketplace charge (agent.price / cost, accumulated into totalSpent
-    // above) — it never alters or substitutes for that settled amount.
+    // above) - it never alters or substitutes for that settled amount.
     const stepUsageEntry = recordUsageEntry('agent', agent.id, agentResponse.usage)
     usageEntries.push(stepUsageEntry)
 
@@ -772,6 +783,7 @@ Respond ONLY with valid JSON (no markdown, no code fences):
 
     const agentResult = {
       agentId: agent.id,
+      stepId: subtask.stepId,
       agentName: agent.name,
       model: agent.model,
       input: subtask.input,
@@ -783,7 +795,7 @@ Respond ONLY with valid JSON (no markdown, no code fences):
       txHash: agentResponse.txHash || null,
       explorerUrl: agentResponse.explorerUrl || null,
       usage: stepUsageEntry,
-      // Content-block normalization metadata (issue #150) — null for x402
+      // Content-block normalization metadata (issue #150) - null for x402
       // remote calls, where no raw Anthropic response exists to normalize.
       responseMeta: agentResponse.responseMeta || null,
       // The persisted attempt for this step (#131) — an `unknown` outcome
@@ -886,7 +898,7 @@ Respond ONLY with valid JSON (no markdown, no code fences):
     payments: successfulPayments,
     txCount: successfulTxs.length,
     elapsed: `${elapsed}ms`,
-    // Provider token usage — kept as its own namespace, never merged into
+    // Provider token usage - kept as its own namespace, never merged into
     // or masquerading as the settled marketplace charges above.
     usage: {
       entries: usageEntries,
