@@ -1,3 +1,4 @@
+import crypto from 'node:crypto'
 import { config } from '../config.js'
 import { AGENTS, getAgentById } from './registry.js'
 import { validatePlan } from './plan-validator.js'
@@ -909,4 +910,264 @@ Respond ONLY with valid JSON (no markdown, no code fences):
     paymentAttemptSummary,
     pendingPaymentCount,
   }
+}
+
+export const activePlansStore = new Map()
+
+export async function previewOrchestration(task, budget, broadcastFn, context = {}) {
+  if (context.signal?.aborted) {
+    const abortErr = new Error('Orchestration preview aborted before start')
+    abortErr.code = 'REQUEST_ABORTED'
+    throw abortErr
+  }
+
+  const exactBudget = AssetAmount.from(budget, 'USDC')
+  let totalQuote = AssetAmount.zero('USDC')
+
+  broadcastFn?.({
+    type: 'orchestrator_preview_start',
+    task,
+    budget,
+    x402Configured: !!x402Fetch,
+    timestamp: new Date().toISOString(),
+  })
+
+  const agentList = AGENTS.map(
+    (a) => `- ${a.id}: ${a.capability} (cost: ${a.price} ${a.currency})`
+  ).join('\n')
+
+  let plan
+  let planningUsageEntry = null
+
+  if (context.initialDelayMs) {
+    await new Promise((resolve) => setTimeout(resolve, context.initialDelayMs))
+  }
+
+  if (context.plan) {
+    plan = context.plan
+    planningUsageEntry = recordUsageEntry('planning', null, null)
+  } else {
+    try {
+      const planResponse = await createAnthropicMessage(
+        {
+          model: PLANNING_MODEL,
+          max_tokens: 400,
+          messages: [
+            {
+              role: 'user',
+              content: `You are a task orchestrator for an AI agent marketplace. Break this task into 2-3 subtasks and choose which agents to use.
+
+Available agents:
+${agentList}
+
+Task: "${task}"
+Budget: ${budget} USDC
+
+IMPORTANT: Only select agents whose total cost fits within the budget of ${budget} USDC.
+
+Respond ONLY with valid JSON (no markdown, no code fences):
+{
+  "plan": "brief description of your approach",
+  "subtasks": [
+    {"agentId": "agent-id-here", "input": "what to send to the agent", "cost": "0.01"}
+  ]
+}`,
+            },
+          ],
+        },
+        {
+          onRetryAttempt: (retry) => {
+            broadcastFn?.({
+              type: 'anthropic_retry',
+              phase: 'planning',
+              attempt: retry.attempt,
+              maxRetries: retry.maxRetries,
+              delayMs: retry.delayMs,
+              status: retry.status,
+              error: retry.error,
+              timestamp: new Date().toISOString(),
+            })
+          },
+        }
+      )
+
+      planningUsageEntry = recordUsageEntry(
+        'planning',
+        null,
+        usageFromMessage(planResponse, PLANNING_MODEL)
+      )
+
+      plan = parsePlanResponse(planResponse)
+    } catch (err) {
+      logger.warn('orchestrator_preview_planning_fallback', {
+        correlationId: context.correlationId,
+        code: err.code || null,
+        error: err.message?.substring(0, 120),
+      })
+      if (!planningUsageEntry) {
+        planningUsageEntry = recordUsageEntry(
+          'planning',
+          null,
+          unavailableUsage(PLANNING_MODEL, 'planning_call_failed')
+        )
+      }
+      const subtasks = []
+      let remaining = exactBudget
+      const researchCost = AssetAmount.from('0.01', 'USDC')
+      const summaryCost = AssetAmount.from('0.01', 'USDC')
+      const analystCost = AssetAmount.from('0.05', 'USDC')
+      const codeCost = AssetAmount.from('0.03', 'USDC')
+
+      if (remaining.isGreaterThanOrEqualTo(researchCost)) {
+        subtasks.push({ agentId: 'research-bot', input: task, cost: '0.01' })
+        remaining = remaining.minus(researchCost)
+      }
+      if (remaining.isGreaterThanOrEqualTo(summaryCost)) {
+        subtasks.push({
+          agentId: 'summary-bot',
+          input: `Summarize findings about: ${task}`,
+          cost: '0.01',
+        })
+        remaining = remaining.minus(summaryCost)
+      }
+      if (remaining.isGreaterThanOrEqualTo(analystCost)) {
+        subtasks.push({ agentId: 'analyst-bot', input: task, cost: '0.05' })
+        remaining = remaining.minus(analystCost)
+      }
+      if (remaining.isGreaterThanOrEqualTo(codeCost)) {
+        subtasks.push({
+          agentId: 'code-bot',
+          input: `Write an implementation related to: ${task}`,
+          cost: '0.03',
+        })
+        remaining = remaining.minus(codeCost)
+      }
+
+      plan = {
+        plan: `Multi-agent workflow: ${subtasks.map((s) => s.agentId).join(' → ')} (${subtasks.length} agents, ${budget} USDC budget)`,
+        subtasks,
+      }
+    }
+  }
+
+  const steps = []
+  const pricesAtPreview = {}
+
+  for (const subtask of plan.subtasks || []) {
+    const agent = getAgentById(subtask.agentId)
+    if (!agent) {
+      const err = new Error(`Agent not found: ${subtask.agentId}`)
+      err.code = 'AGENT_NOT_FOUND'
+      throw err
+    }
+    const cost = agentCost(agent)
+    totalQuote = totalQuote.plus(cost)
+    pricesAtPreview[agent.id] = agent.price
+
+    steps.push({
+      agentId: agent.id,
+      agentName: agent.name,
+      model: agent.model,
+      input: subtask.input,
+      quote: formatAmount(cost),
+      quoteExact: cost.toJSON(),
+      currency: agent.currency || 'USDC',
+    })
+  }
+
+  const planId = `plan_${Date.now()}_${crypto.randomBytes(4).toString('hex')}`
+  const expiresAt = new Date(Date.now() + 15 * 60 * 1000).toISOString()
+
+  const planRecord = {
+    planId,
+    task,
+    budget: typeof budget === 'number' ? budget : exactBudget.toNumber(),
+    budgetExact: exactBudget.toJSON(),
+    plan: plan.plan,
+    subtasks: plan.subtasks,
+    steps,
+    totalQuote: formatAmount(totalQuote),
+    totalQuoteExact: totalQuote.toJSON(),
+    pricesAtPreview,
+    createdAt: new Date().toISOString(),
+    expiresAt,
+  }
+
+  activePlansStore.set(planId, planRecord)
+
+  broadcastFn?.({
+    type: 'orchestrator_preview_complete',
+    planId,
+    totalQuote: planRecord.totalQuote,
+    stepCount: steps.length,
+    expiresAt,
+    timestamp: new Date().toISOString(),
+  })
+
+  return {
+    planId,
+    task,
+    budget: planRecord.budget,
+    budgetExact: planRecord.budgetExact,
+    plan: plan.plan,
+    steps,
+    totalQuote: planRecord.totalQuote,
+    totalQuoteExact: planRecord.totalQuoteExact,
+    expiresAt,
+    usage: {
+      entries: [planningUsageEntry],
+      summary: summarizeUsageByPhase([planningUsageEntry]),
+    },
+    x402Configured: !!x402Fetch,
+    x402WalletReady,
+    x402WalletHint,
+  }
+}
+
+export async function executePlan(planId, broadcastFn, context = {}) {
+  const planRecord = activePlansStore.get(planId)
+  if (!planRecord) {
+    const err = new Error(`Plan '${planId}' not found or already executed`)
+    err.status = 404
+    err.code = 'PLAN_NOT_FOUND'
+    throw err
+  }
+
+  if (Date.now() > new Date(planRecord.expiresAt).getTime()) {
+    activePlansStore.delete(planId)
+    const err = new Error(`Plan quote has expired at ${planRecord.expiresAt}. Please request a new preview.`)
+    err.status = 400
+    err.code = 'QUOTE_EXPIRED'
+    throw err
+  }
+
+  for (const subtask of planRecord.subtasks) {
+    const agent = getAgentById(subtask.agentId)
+    if (!agent) {
+      activePlansStore.delete(planId)
+      const err = new Error(`Agent '${subtask.agentId}' no longer exists`)
+      err.status = 400
+      err.code = 'AGENT_NOT_FOUND'
+      throw err
+    }
+    const currentPrice = agent.price
+    const previewPrice = planRecord.pricesAtPreview[subtask.agentId]
+    if (currentPrice !== previewPrice) {
+      activePlansStore.delete(planId)
+      const err = new Error(`Agent '${subtask.agentId}' pricing has changed from ${previewPrice} to ${currentPrice}. Please request a new preview.`)
+      err.status = 400
+      err.code = 'QUOTE_CHANGED'
+      throw err
+    }
+  }
+
+  activePlansStore.delete(planId)
+
+  return orchestrate(planRecord.task, planRecord.budget, broadcastFn, {
+    ...context,
+    plan: {
+      plan: planRecord.plan,
+      subtasks: planRecord.subtasks,
+    },
+  })
 }
