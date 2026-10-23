@@ -2,7 +2,9 @@
 
 ## Overview
 
-The wallet availability endpoints distinguish between successful empty results and error states, providing typed error responses with correlation IDs for debugging. This document describes the updated API response formats.
+The wallet availability endpoints distinguish between successful empty results and error states,
+providing typed error responses with correlation IDs for debugging. This document describes the
+updated API response formats.
 
 ## Core Principles
 
@@ -14,12 +16,12 @@ The wallet availability endpoints distinguish between successful empty results a
 
 ## Error Types
 
-| Error Type | HTTP Status | Description | Retryable |
-|------------|-------------|-------------|-----------|
-| `ACCOUNT_NOT_FOUND` | 404 | Account does not exist on the Stellar network | No |
-| `TIMEOUT` | 503 | Request timed out waiting for Horizon response | Yes |
-| `NETWORK_ERROR` | 503 | Network connectivity issue (DNS, connection refused) | Yes |
-| `UPSTREAM_ERROR` | 503 | Horizon service error or other upstream issue | Yes |
+| Error Type          | HTTP Status | Description                                          | Retryable |
+| ------------------- | ----------- | ---------------------------------------------------- | --------- |
+| `ACCOUNT_NOT_FOUND` | 404         | Account does not exist on the Stellar network        | No        |
+| `TIMEOUT`           | 503         | Request timed out waiting for Horizon response       | Yes       |
+| `NETWORK_ERROR`     | 503         | Network connectivity issue (DNS, connection refused) | Yes       |
+| `UPSTREAM_ERROR`    | 503         | Horizon service error or other upstream issue        | Yes       |
 
 ## Endpoints
 
@@ -108,12 +110,12 @@ Returns transaction history for a specific wallet address.
 
 #### Query Parameters
 
-| Parameter | Type | Default | Description |
-|-----------|------|---------|-------------|
-| `address` | string | orchestrator address | Stellar public key |
-| `limit` | integer | 20 | Number of transactions (1-200) |
-| `order` or `direction` | string | `desc` | Sort order: `asc` or `desc` |
-| `cursor` or `page` | string | null | Paging cursor for pagination |
+| Parameter              | Type    | Default              | Description                    |
+| ---------------------- | ------- | -------------------- | ------------------------------ |
+| `address`              | string  | orchestrator address | Stellar public key             |
+| `limit`                | integer | 20                   | Number of transactions (1-200) |
+| `order` or `direction` | string  | `desc`               | Sort order: `asc` or `desc`    |
+| `cursor` or `page`     | string  | null                 | Paging cursor for pagination   |
 
 #### Success Response (200 OK)
 
@@ -202,7 +204,7 @@ Both empty accounts and errors returned `[]`, making them indistinguishable:
 // 1. Valid empty account
 // 2. Horizon timeout
 // 3. Network error
-const txs = await fetch('/api/wallet/transactions').then(r => r.json())
+const txs = await fetch('/api/wallet/transactions').then((r) => r.json())
 // txs = []  — which case is it?
 ```
 
@@ -211,7 +213,7 @@ const txs = await fetch('/api/wallet/transactions').then(r => r.json())
 Success and error are explicit and distinguishable:
 
 ```javascript
-const response = await fetch('/api/wallet/transactions').then(r => r.json())
+const response = await fetch('/api/wallet/transactions').then((r) => r.json())
 
 if (response.success) {
   if (response.transactions.length === 0) {
@@ -222,7 +224,7 @@ if (response.success) {
 } else {
   console.error(`Error: ${response.message} (${response.errorType})`)
   console.error(`Correlation ID: ${response.correlationId}`)
-  
+
   if (response.retryable) {
     // Show retry button
   }
@@ -236,7 +238,7 @@ if (response.success) {
 The frontend `wallet.js` module handles per-wallet availability:
 
 ```javascript
-const data = await fetch('/api/wallet/balances').then(r => r.json())
+const data = await fetch('/api/wallet/balances').then((r) => r.json())
 
 for (const [key, wallet] of Object.entries(data.wallets)) {
   if (wallet.available) {
@@ -254,7 +256,7 @@ for (const [key, wallet] of Object.entries(data.wallets)) {
 The frontend `pages.js` module shows actionable retry states:
 
 ```javascript
-const data = await fetch('/api/wallet/transactions').then(r => r.json())
+const data = await fetch('/api/wallet/transactions').then((r) => r.json())
 
 if (!data.success) {
   if (data.retryable) {
@@ -272,27 +274,28 @@ if (!data.success) {
 
 ### Balance Errors (User-Facing)
 
-| Error Type | Display Message |
-|------------|-----------------|
-| `ACCOUNT_NOT_FOUND` | ⚠️ Not funded |
-| `TIMEOUT` | ⏱️ Timeout |
-| `NETWORK_ERROR` | 🌐 Network error |
-| `UPSTREAM_ERROR` | ⚠️ Service unavailable |
+| Error Type          | Display Message        |
+| ------------------- | ---------------------- |
+| `ACCOUNT_NOT_FOUND` | ⚠️ Not funded          |
+| `TIMEOUT`           | ⏱️ Timeout             |
+| `NETWORK_ERROR`     | 🌐 Network error       |
+| `UPSTREAM_ERROR`    | ⚠️ Service unavailable |
 
 ### Transaction Errors (User-Facing)
 
-| Error Type | Display Message |
-|------------|-----------------|
-| `ACCOUNT_NOT_FOUND` | Account not found on the Stellar network. It may not be funded yet. |
-| `TIMEOUT` | Request timed out while fetching transactions. Please try again. |
-| `NETWORK_ERROR` | Network error connecting to Horizon. Please check your connection and try again. |
-| `UPSTREAM_ERROR` | Horizon service is temporarily unavailable. Please try again later. |
+| Error Type          | Display Message                                                                  |
+| ------------------- | -------------------------------------------------------------------------------- |
+| `ACCOUNT_NOT_FOUND` | Account not found on the Stellar network. It may not be funded yet.              |
+| `TIMEOUT`           | Request timed out while fetching transactions. Please try again.                 |
+| `NETWORK_ERROR`     | Network error connecting to Horizon. Please check your connection and try again. |
+| `UPSTREAM_ERROR`    | Horizon service is temporarily unavailable. Please try again later.              |
 
 ## Migration Guide
 
 ### Backend (src/stellar/wallet.js)
 
 **Before:**
+
 ```javascript
 export async function getBalance(publicKey) {
   try {
@@ -305,6 +308,7 @@ export async function getBalance(publicKey) {
 ```
 
 **After:**
+
 ```javascript
 export async function getBalance(publicKey) {
   try {
@@ -327,43 +331,47 @@ export async function getBalance(publicKey) {
 ### API Endpoints (src/server.js)
 
 **Before:**
+
 ```javascript
 app.get('/api/wallet/balances', async (req, res) => {
   const balances = await getBalance(address)
-  res.json({ address, balances })  // Empty array if error
+  res.json({ address, balances }) // Empty array if error
 })
 ```
 
 **After:**
+
 ```javascript
 app.get('/api/wallet/balances', async (req, res) => {
   const result = await getBalance(address)
   if (result.success) {
     res.json({ address, balances: result.balances, available: true })
   } else {
-    res.json({ 
-      address, 
-      available: false, 
+    res.json({
+      address,
+      available: false,
       error: result.error,
-      errorType: result.errorType 
+      errorType: result.errorType,
     })
   }
 })
 ```
 
-### Frontend (public/assets/js/*.js)
+### Frontend (public/assets/js/\*.js)
 
 **Before:**
+
 ```javascript
-const balances = await fetch('/api/wallet/balances').then(r => r.json())
+const balances = await fetch('/api/wallet/balances').then((r) => r.json())
 if (balances.length === 0) {
   // Is this an error or empty account? Unknown!
 }
 ```
 
 **After:**
+
 ```javascript
-const data = await fetch('/api/wallet/balances').then(r => r.json())
+const data = await fetch('/api/wallet/balances').then((r) => r.json())
 if (!data.wallets.server.available) {
   showError(data.wallets.server.errorType)
 } else if (data.wallets.server.balances.length === 0) {
@@ -382,8 +390,9 @@ node tests/wallet-availability.test.js
 ```
 
 Tests validate:
+
 - Success responses have required fields
-- Error responses have required fields  
+- Error responses have required fields
 - Empty accounts are distinguishable from errors
 - Partial availability is correctly reported
 - Error types map to appropriate HTTP status codes

@@ -78,7 +78,7 @@ function trackLiveEvent(ev) {
 
     case 'x402_payment':
       appendResultLog(
-        `x402 payment settled for ${ev.agent || 'agent'} (${ev.amount || '?'} ${ev.currency || ''})`
+        `x402 payment settled for ${ev.agent || 'agent'} (${ev.amount || '?'} ${ev.asset || ev.currency || ''})`
       )
       break
 

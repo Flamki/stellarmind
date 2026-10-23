@@ -2,7 +2,7 @@
  * Wallet Availability Tests
  * Validates that empty results are distinguished from errors
  * and that partial availability is properly reported.
- * 
+ *
  * Run: node tests/wallet-availability.test.js
  */
 
@@ -31,10 +31,14 @@ test('getBalance success response has required fields', () => {
     success: true,
     balances: [
       { asset: 'XLM', balance: '100.0000000', issuer: null },
-      { asset: 'USDC', balance: '50.0000000', issuer: 'GBBD47IF6LWK7P7MDEVSCWR7DPUWV3NY3DTQEVFL4NAT4AQH3ZLLFLA5' }
-    ]
+      {
+        asset: 'USDC',
+        balance: '50.0000000',
+        issuer: 'GBBD47IF6LWK7P7MDEVSCWR7DPUWV3NY3DTQEVFL4NAT4AQH3ZLLFLA5',
+      },
+    ],
   }
-  
+
   assert.strictEqual(successResponse.success, true)
   assert.ok(Array.isArray(successResponse.balances))
   assert.strictEqual(successResponse.balances.length, 2)
@@ -47,9 +51,9 @@ test('getBalance error response has required fields', () => {
     success: false,
     error: 'Account not found',
     errorType: 'ACCOUNT_NOT_FOUND',
-    timestamp: '2024-01-01T00:00:00.000Z'
+    timestamp: '2024-01-01T00:00:00.000Z',
   }
-  
+
   assert.strictEqual(errorResponse.success, false)
   assert.strictEqual(errorResponse.balances, undefined)
   assert.ok(typeof errorResponse.error === 'string')
@@ -60,21 +64,21 @@ test('getBalance error response has required fields', () => {
 test('getBalance empty account (success) is distinguishable from error', () => {
   const emptyAccount = {
     success: true,
-    balances: []
+    balances: [],
   }
-  
+
   const errorAccount = {
     success: false,
     error: 'Network error',
     errorType: 'NETWORK_ERROR',
-    timestamp: '2024-01-01T00:00:00.000Z'
+    timestamp: '2024-01-01T00:00:00.000Z',
   }
-  
+
   // Empty account is successful with empty array
   assert.strictEqual(emptyAccount.success, true)
   assert.ok(Array.isArray(emptyAccount.balances))
   assert.strictEqual(emptyAccount.balances.length, 0)
-  
+
   // Error has no balances field
   assert.strictEqual(errorAccount.success, false)
   assert.strictEqual(errorAccount.balances, undefined)
@@ -91,11 +95,11 @@ test('getTransactions success response has required fields', () => {
         hash: 'abc123',
         ledger: 12345,
         created_at: '2024-01-01T00:00:00Z',
-        operations: []
-      }
-    ]
+        operations: [],
+      },
+    ],
   }
-  
+
   assert.strictEqual(successResponse.success, true)
   assert.ok(Array.isArray(successResponse.transactions))
   assert.strictEqual(successResponse.error, undefined)
@@ -106,9 +110,9 @@ test('getTransactions error response has required fields', () => {
     success: false,
     error: 'Request timeout',
     errorType: 'TIMEOUT',
-    timestamp: '2024-01-01T00:00:00.000Z'
+    timestamp: '2024-01-01T00:00:00.000Z',
   }
-  
+
   assert.strictEqual(errorResponse.success, false)
   assert.strictEqual(errorResponse.transactions, undefined)
   assert.ok(typeof errorResponse.error === 'string')
@@ -118,21 +122,21 @@ test('getTransactions error response has required fields', () => {
 test('getTransactions empty account (success) is distinguishable from error', () => {
   const emptyAccount = {
     success: true,
-    transactions: []
+    transactions: [],
   }
-  
+
   const errorAccount = {
     success: false,
     error: 'Horizon unavailable',
     errorType: 'UPSTREAM_ERROR',
-    timestamp: '2024-01-01T00:00:00.000Z'
+    timestamp: '2024-01-01T00:00:00.000Z',
   }
-  
+
   // Empty account is successful with empty array
   assert.strictEqual(emptyAccount.success, true)
   assert.ok(Array.isArray(emptyAccount.transactions))
   assert.strictEqual(emptyAccount.transactions.length, 0)
-  
+
   // Error has no transactions field
   assert.strictEqual(errorAccount.success, false)
   assert.strictEqual(errorAccount.transactions, undefined)
@@ -147,18 +151,18 @@ test('balances endpoint with all wallets available', () => {
       server: {
         address: 'GTEST123',
         balances: [{ asset: 'XLM', balance: '100.0', issuer: null }],
-        available: true
+        available: true,
       },
       orchestrator: {
         address: 'GTEST456',
         balances: [],
-        available: true
-      }
+        available: true,
+      },
     },
     timestamp: '2024-01-01T00:00:00.000Z',
-    correlationId: 'req-123'
+    correlationId: 'req-123',
   }
-  
+
   assert.ok(response.wallets.server.available)
   assert.ok(response.wallets.orchestrator.available)
   assert.strictEqual(response.partialAvailability, undefined)
@@ -170,22 +174,22 @@ test('balances endpoint with partial availability', () => {
       server: {
         address: 'GTEST123',
         balances: [{ asset: 'XLM', balance: '100.0', issuer: null }],
-        available: true
+        available: true,
       },
       orchestrator: {
         address: 'GTEST456',
         available: false,
         error: 'Request timeout',
         errorType: 'TIMEOUT',
-        timestamp: '2024-01-01T00:00:00.000Z'
-      }
+        timestamp: '2024-01-01T00:00:00.000Z',
+      },
     },
     partialAvailability: true,
     message: 'Some wallet data could not be retrieved. Check individual wallet status.',
     timestamp: '2024-01-01T00:00:00.000Z',
-    correlationId: 'req-123'
+    correlationId: 'req-123',
   }
-  
+
   assert.ok(response.wallets.server.available)
   assert.strictEqual(response.wallets.orchestrator.available, false)
   assert.strictEqual(response.partialAvailability, true)
@@ -199,9 +203,9 @@ test('unavailable wallet includes error details', () => {
     available: false,
     error: 'Account not found',
     errorType: 'ACCOUNT_NOT_FOUND',
-    timestamp: '2024-01-01T00:00:00.000Z'
+    timestamp: '2024-01-01T00:00:00.000Z',
   }
-  
+
   assert.strictEqual(wallet.available, false)
   assert.strictEqual(wallet.balances, undefined)
   assert.ok(typeof wallet.error === 'string')
@@ -217,9 +221,9 @@ test('transactions endpoint success response', () => {
     transactions: [],
     address: 'GTEST123',
     count: 0,
-    correlationId: 'req-123'
+    correlationId: 'req-123',
   }
-  
+
   assert.strictEqual(response.success, true)
   assert.ok(Array.isArray(response.transactions))
   assert.ok(response.address)
@@ -234,9 +238,9 @@ test('transactions endpoint error response with 404', () => {
     message: 'Account not found on the Stellar network. It may not be funded yet.',
     timestamp: '2024-01-01T00:00:00.000Z',
     correlationId: 'req-123',
-    retryable: false
+    retryable: false,
   }
-  
+
   assert.strictEqual(response.success, false)
   assert.strictEqual(response.transactions, undefined)
   assert.ok(response.error)
@@ -252,9 +256,9 @@ test('transactions endpoint error response with 503', () => {
     message: 'Request timed out while fetching transactions. Please try again.',
     timestamp: '2024-01-01T00:00:00.000Z',
     correlationId: 'req-123',
-    retryable: true
+    retryable: true,
   }
-  
+
   assert.strictEqual(response.success, false)
   assert.strictEqual(response.retryable, true)
   assert.ok(response.correlationId)
@@ -263,13 +267,8 @@ test('transactions endpoint error response with 503', () => {
 console.log('Error Type Categories')
 
 test('all expected error types are defined', () => {
-  const errorTypes = [
-    'ACCOUNT_NOT_FOUND',
-    'TIMEOUT',
-    'NETWORK_ERROR',
-    'UPSTREAM_ERROR'
-  ]
-  
+  const errorTypes = ['ACCOUNT_NOT_FOUND', 'TIMEOUT', 'NETWORK_ERROR', 'UPSTREAM_ERROR']
+
   for (const errorType of errorTypes) {
     assert.ok(typeof errorType === 'string')
     assert.ok(errorType.length > 0)
@@ -278,12 +277,12 @@ test('all expected error types are defined', () => {
 
 test('error types map to appropriate HTTP status codes', () => {
   const statusMap = {
-    'ACCOUNT_NOT_FOUND': 404,
-    'TIMEOUT': 503,
-    'NETWORK_ERROR': 503,
-    'UPSTREAM_ERROR': 503
+    ACCOUNT_NOT_FOUND: 404,
+    TIMEOUT: 503,
+    NETWORK_ERROR: 503,
+    UPSTREAM_ERROR: 503,
   }
-  
+
   assert.strictEqual(statusMap['ACCOUNT_NOT_FOUND'], 404)
   assert.strictEqual(statusMap['TIMEOUT'], 503)
   assert.strictEqual(statusMap['NETWORK_ERROR'], 503)

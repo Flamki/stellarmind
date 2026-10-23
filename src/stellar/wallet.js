@@ -137,7 +137,7 @@ export async function fetchTransactionOperations(hash, horizonServer = server) {
 
 /**
  * Get balance for a Stellar public key
- * 
+ *
  * Returns an object with:
  * - success: boolean indicating if the operation succeeded
  * - balances: array of balance objects (only present when success is true)
@@ -152,14 +152,14 @@ export async function getBalance(publicKey) {
       balance: b.balance,
       issuer: b.asset_issuer || null,
     }))
-    
+
     return {
       success: true,
       balances,
     }
   } catch (err) {
     console.error(`Failed to load balance for ${publicKey}:`, err.message)
-    
+
     // Categorize the error type
     let errorType = 'UPSTREAM_ERROR'
     if (err.response?.status === 404) {
@@ -169,7 +169,7 @@ export async function getBalance(publicKey) {
     } else if (err.message?.includes('ENOTFOUND') || err.message?.includes('ECONNREFUSED')) {
       errorType = 'NETWORK_ERROR'
     }
-    
+
     return {
       success: false,
       error: err.message,
@@ -244,7 +244,7 @@ export async function fundWithFriendbot(publicKey) {
 
 /**
  * Get recent transactions for a wallet
- * 
+ *
  * Returns an object with:
  * - success: boolean indicating if the operation succeeded
  * - transactions: array of transaction objects (only present when success is true)
@@ -298,7 +298,7 @@ export async function getTransactions(publicKey, limit = 10, cursor = null, orde
     }
   } catch (err) {
     console.error('Failed to fetch transactions:', err.message)
-    
+
     // Categorize the error type
     let errorType = 'UPSTREAM_ERROR'
     if (err.response?.status === 404) {
@@ -308,7 +308,7 @@ export async function getTransactions(publicKey, limit = 10, cursor = null, orde
     } else if (err.message?.includes('ENOTFOUND') || err.message?.includes('ECONNREFUSED')) {
       errorType = 'NETWORK_ERROR'
     }
-    
+
     return {
       success: false,
       error: err.message,

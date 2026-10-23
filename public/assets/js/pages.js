@@ -74,7 +74,7 @@ async function loadTxPage() {
   try {
     const response = await fetch('/api/wallet/transactions')
     const data = await response.json()
-    
+
     // Handle error state
     if (!data.success) {
       const errorHtml = `
@@ -83,18 +83,22 @@ async function loadTxPage() {
             <div style="color:var(--red);margin-bottom:12px;font-size:16px;">
               ${getTransactionErrorIcon(data.errorType)} ${data.message || 'Failed to load transactions'}
             </div>
-            ${data.retryable ? `
+            ${
+              data.retryable
+                ? `
               <button onclick="loadTxPage()" style="padding:8px 16px;background:var(--accent);color:white;border:none;border-radius:4px;cursor:pointer;">
                 🔄 Retry
               </button>
               <div style="color:var(--text-muted);font-size:12px;margin-top:8px;">
                 Error ID: ${data.correlationId || 'N/A'}
               </div>
-            ` : `
+            `
+                : `
               <div style="color:var(--text-muted);font-size:12px;margin-top:8px;">
                 ${data.errorType === 'ACCOUNT_NOT_FOUND' ? 'Run the wallet setup first to fund this account.' : ''}
               </div>
-            `}
+            `
+            }
           </td>
         </tr>
       `
@@ -103,10 +107,11 @@ async function loadTxPage() {
       document.getElementById('tx-total').textContent = '0 Transactions'
       return
     }
-    
+
     const txs = data.transactions || []
     document.getElementById('tx-cnt').textContent = txs.length
-    document.getElementById('tx-total').textContent = `${txs.length} Transaction${txs.length !== 1 ? 's' : ''}`
+    document.getElementById('tx-total').textContent =
+      `${txs.length} Transaction${txs.length !== 1 ? 's' : ''}`
 
     if (!txs.length) {
       document.getElementById('tx-body').innerHTML =

@@ -31,23 +31,25 @@ stellarmind/
 
 ## Core Source Code (`src/`)
 
-| Directory/File          | Purpose                                                  |
-| ----------------------- | -------------------------------------------------------- |
-| `src/agents/`           | Agent orchestration, registry, budgeting, settlement     |
-| `src/middleware/`       | Auth, error handling, rate limiting                      |
-| `src/routes/`           | REST API route handlers                                  |
-| `src/stellar/`          | Stellar wallet and blockchain integration                |
-| `src/storage/`          | Run history and persistence layer                        |
-| `src/config.js`         | Application configuration                                |
-| `src/logger.js`         | Structured logging                                       |
-| `src/pricing.config.js` | Pricing model configuration                              |
-| `src/server.js`         | Express server entry point                               |
+| Directory/File          | Purpose                                              |
+| ----------------------- | ---------------------------------------------------- |
+| `src/agents/`           | Agent orchestration, registry, budgeting, settlement |
+| `src/middleware/`       | Auth, error handling, rate limiting                  |
+| `src/routes/`           | REST API route handlers                              |
+| `src/stellar/`          | Stellar wallet and blockchain integration            |
+| `src/storage/`          | Run history and persistence layer                    |
+| `src/config.js`         | Application configuration                            |
+| `src/logger.js`         | Structured logging                                   |
+| `src/pricing.config.js` | Pricing model configuration                          |
+| `src/server.js`         | Express server entry point                           |
 
 ### Key Directories
 
 #### `src/agents/`
 
-Each agent module handles a specific AI task. Agents communicate through the orchestrator. Key files:
+Each agent module handles a specific AI task. Agents communicate through the orchestrator. Key
+files:
+
 - `orchestrator.js` — Central coordination module that dispatches tasks
 - `registry.js` — Agent definitions and metadata
 - `services.js` — Service functions for each agent
@@ -78,13 +80,13 @@ Stellar blockchain integration for wallet management and payment settlement.
 
 ## Documentation (`docs/`)
 
-| File                           | Purpose                                                 |
-| ------------------------------ | ------------------------------------------------------- |
-| `docs/architecture.md`         | System architecture overview                            |
-| `docs/API_EXAMPLES.md`         | REST API usage examples                                 |
-| `docs/ASSET_AMOUNTS.md`        | Asset amount precision and accounting                   |
-| `docs/repository-map.md`       | This file — repository structure guide                  |
-| `docs/issue-task-checklist.md` | Checklist for implementing issues                       |
+| File                           | Purpose                                |
+| ------------------------------ | -------------------------------------- |
+| `docs/architecture.md`         | System architecture overview           |
+| `docs/API_EXAMPLES.md`         | REST API usage examples                |
+| `docs/ASSET_AMOUNTS.md`        | Asset amount precision and accounting  |
+| `docs/repository-map.md`       | This file — repository structure guide |
+| `docs/issue-task-checklist.md` | Checklist for implementing issues      |
 
 ## Configuration Files
 
@@ -101,6 +103,7 @@ Stellar blockchain integration for wallet management and payment settlement.
 2. `npm install` — install dependencies
 3. `npm run dev` — start development server
 4. Visit `http://localhost:3001`
+
 - `*.test.js` — Unit and integration tests (Jest)
 - `load/` — Performance and load tests (k6, Artillery)
 

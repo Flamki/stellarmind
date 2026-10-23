@@ -7,14 +7,14 @@ async function loadWallets() {
   try {
     const response = await fetch('/api/wallet/balances')
     const data = await response.json()
-    
+
     // Handle partial availability
     if (data.partialAvailability) {
       console.warn('Some wallet data unavailable:', data.message)
     }
-    
+
     const wallets = data.wallets || {}
-    
+
     for (const [k, d] of Object.entries(wallets)) {
       const bk = k === 'orchestrator' ? 'orch' : k
       const balEl = document.getElementById(`bal-${bk}`)

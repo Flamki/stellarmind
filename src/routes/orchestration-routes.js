@@ -300,11 +300,16 @@ export function registerOrchestrationRoutes(app, deps = {}) {
   async function handlePreviewSubmission(req, res, next) {
     try {
       const { task, budget } = req.validated
-      const preview = await previewOrchestration(task, budget, (event) => {
-        broadcast(event)
-      }, {
-        correlationId: req.requestId,
-      })
+      const preview = await previewOrchestration(
+        task,
+        budget,
+        (event) => {
+          broadcast(event)
+        },
+        {
+          correlationId: req.requestId,
+        }
+      )
       res.json(preview)
     } catch (err) {
       next(err)

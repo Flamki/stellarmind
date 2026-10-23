@@ -135,7 +135,7 @@ Caller (orchestrator x402Fetch — @x402/fetch + ExactStellarScheme + Ed25519 si
 Facilitator
    │ 5. verifies + settles the USDC payment on Stellar testnet
    ▼
-Premium route handler (src/server.js)
+Premium route handler (src/routes/premium-routes.js)
    │ 6. runs the Claude agent, returns 200 + PAYMENT-RESPONSE header (settlement / tx hash)
    ▼
 settlement-header.js
@@ -189,6 +189,31 @@ same logical charge_, so it is only permitted for the documented terminal failur
   `503 PAYMENT_PROBE_UNAVAILABLE` and the attempts stay pending.
 - The same probe can be passed to `orchestrate()` as `context.paymentProbe`, so an unresolved x402
   attempt is reconciled _before_ the fallback decision is made.
+
+### Settlement reporting: quoted vs settled (#130)
+
+A step has two different amounts and they are never conflated:
+
+- **Quote / reserved cost** — the registry price for the step (`agent.price`, quoted in USDC). This
+  is what the budget guardrail admits, and it is reported as `quotedTotal` (`totalSpent` remains an
+  alias for it) on the run response.
+- **Settlement** — the asset and amount that actually moved, in `settledTotals`, `results[*]`,
+  `payments[*]`, payment attempts, `txProofs`, and the `payment` / `agent_response` events.
+
+| Path             | Settled asset                          | Settled amount                                       |
+| ---------------- | -------------------------------------- | ---------------------------------------------------- |
+| x402             | USDC (issuer from the network profile) | the quoted USDC price                                |
+| Direct fallback  | native XLM (no issuer)                 | the quote's numeric value, per `XLM_FALLBACK_POLICY` |
+| Unpaid / pending | none (`settledAmount: null`)           | none                                                 |
+
+`settledTotals` is grouped per `(asset, issuer, network)` and uses exact `AssetAmount` base units.
+There is **no** USDC/XLM conversion in this repository, so a mixed run reports an XLM total and a
+USDC total separately (`settledSummary`, e.g. `0.01 USDC + 0.05 XLM`) and
+`settlementConversionPolicy.applied` is `false`. An XLM settlement is never added to a USDC total.
+
+Run history stores the same asset information: `summary.quotedTotal`, `summary.settledTotals`, and
+`txProofs[*].asset` / `.amount` match the API and event payloads, so the dashboard renders what was
+actually settled.
 
 ## Orchestration Flow
 

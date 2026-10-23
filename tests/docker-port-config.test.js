@@ -1,7 +1,7 @@
 /**
  * Docker Port Configuration Tests
  * Validates that container port mappings and health checks are properly configured.
- * 
+ *
  * Run: node tests/docker-port-config.test.js
  */
 
@@ -96,10 +96,7 @@ console.log('Server Configuration')
 
 test('src/config.js defaults to port 3001', async () => {
   const config = await readRepoFile('src/config.js')
-  assert.ok(
-    config.includes('process.env.PORT || 3001'),
-    'config.js should default to port 3001'
-  )
+  assert.ok(config.includes('process.env.PORT || 3001'), 'config.js should default to port 3001')
 })
 
 console.log('Environment Configuration')
@@ -112,8 +109,8 @@ test('.env.example documents PORT=3001', async () => {
 test('.env.example reference table shows default 3001', async () => {
   const envExample = await readRepoFile('.env.example')
   const lines = envExample.split('\n')
-  const portLine = lines.find(line => line.includes('| PORT'))
-  
+  const portLine = lines.find((line) => line.includes('| PORT'))
+
   if (portLine) {
     assert.ok(
       portLine.includes('3001'),
@@ -132,7 +129,7 @@ test('README examples use port 3001', async () => {
   const readme = await readRepoFile('README.md')
   const port3001Count = (readme.match(/localhost:3001/g) || []).length
   const port3000Count = (readme.match(/localhost:3000/g) || []).length
-  
+
   assert.ok(port3001Count > 0, 'README should have examples using port 3001')
   assert.strictEqual(port3000Count, 0, 'README should not have examples using port 3000')
 })
@@ -159,7 +156,7 @@ test('/healthz returns required fields', async () => {
     server.indexOf("app.get('/healthz'"),
     server.indexOf("app.get('/healthz'") + 500
   )
-  
+
   assert.ok(healthzSection.includes('status'), '/healthz should return status field')
   assert.ok(healthzSection.includes('uptime'), '/healthz should return uptime field')
   assert.ok(healthzSection.includes('timestamp'), '/healthz should return timestamp field')
@@ -172,16 +169,16 @@ test('All configuration files use consistent port 3001', async () => {
   const compose = await readRepoFile('docker-compose.yml')
   const config = await readRepoFile('src/config.js')
   const envExample = await readRepoFile('.env.example')
-  
+
   // Dockerfile exposes 3001
   assert.ok(dockerfile.includes('EXPOSE 3001'))
-  
+
   // docker-compose maps 3001:3001
   assert.ok(compose.includes('3001:3001'))
-  
+
   // config.js defaults to 3001
   assert.ok(config.includes('|| 3001'))
-  
+
   // .env.example documents 3001
   assert.ok(envExample.includes('PORT=3001'))
 })
@@ -189,11 +186,11 @@ test('All configuration files use consistent port 3001', async () => {
 test('All health checks use /healthz endpoint', async () => {
   const dockerfile = await readRepoFile('Dockerfile')
   const compose = await readRepoFile('docker-compose.yml')
-  
+
   // Both use /healthz
   assert.ok(dockerfile.includes('/healthz'))
   assert.ok(compose.includes('/healthz'))
-  
+
   // Neither use /health
   assert.ok(!dockerfile.includes('/health ') && !dockerfile.includes('/health||'))
   assert.ok(!compose.includes("'/health'") && !compose.includes('"/health"'))

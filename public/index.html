@@ -1804,7 +1804,7 @@
                       border: 1px solid var(--border);
                     "
                   >
-                    <div style="font-size: 11px; color: var(--text-muted)">Spent / Budget</div>
+                    <div style="font-size: 11px; color: var(--text-muted)">Quoted / Budget</div>
                     <div style="font-size: 13px; margin-top: 4px">
                       <span id="detail-spent">0</span> / <span id="detail-budget">—</span>
                     </div>
@@ -2019,7 +2019,7 @@
             break
           case 'x402_payment':
             appendResultLog(
-              `x402 payment settled for ${ev.agent || 'agent'} (${ev.amount || '?'} ${ev.currency || ''})`
+              `x402 payment settled for ${ev.agent || 'agent'} (${ev.amount || '?'} ${ev.asset || ev.currency || ''})`
             )
             break
           case 'x402_retry':
@@ -2353,7 +2353,7 @@
             ic = '\u{1F510}'
             cl = 'x4'
             lb = `x402: ${ev.agent}`
-            sb = `${ev.amount} ${ev.currency} via x402${ev.verification === 'unverified' ? ' (header pending)' : ''}`
+            sb = `${ev.amount} ${ev.asset || ev.currency} via x402${ev.verification === 'unverified' ? ' (header pending)' : ''}`
             break
           case 'x402_retry':
             ic = '\u{1F501}'
@@ -2371,7 +2371,8 @@
             ic = '\u{1F4B8}'
             cl = 'pay'
             lb = `${ev.from} -> ${ev.to}`
-            sb = `${ev.amount} ${ev.currency} | ${ev.method || 'stellar'}`
+            // The settled asset/amount, not the quoted price.
+            sb = `${ev.amount} ${ev.asset || ev.currency} | ${ev.method || 'stellar'}`
             break
           case 'budget_limit':
             ic = '\u{1F6D1}'
@@ -2382,8 +2383,8 @@
           case 'orchestrator_complete':
             ic = '\u{1F3C1}'
             cl = 'ok'
-            lb = `Done - ${ev.totalSpent} USDC`
-            sb = `${ev.agentsUsed} agents | ${ev.elapsed}`
+            lb = `Done - quoted ${ev.quotedTotal || ev.totalSpent} USDC`
+            sb = `Settled: ${ev.settledSummary || 'none'} | ${ev.agentsUsed} agents | ${ev.elapsed}`
             break
           case 'error':
             ic = '\u26A0\uFE0F'
@@ -2467,6 +2468,23 @@
         return out.trim()
       }
 
+      // Per-asset settled totals (issue #130): different assets are shown
+      // separately and never added together.
+      function formatAssetTotals(totals) {
+        if (!Array.isArray(totals) || totals.length === 0) return 'none'
+        return totals.map((total) => `${total.amount} ${total.asset}`).join(' + ')
+      }
+
+      function formatSettlementLabel(item) {
+        if (item && item.settlement && item.settlement.success) {
+          return `${item.settlement.amount} ${item.settlement.asset}`
+        }
+        if (item && item.settledAsset && item.settledAmount) {
+          return `${item.settledAmount} ${item.settledAsset}`
+        }
+        return 'unsettled'
+      }
+
       function showResult(r) {
         const p = document.getElementById('result-panel')
         const out = document.getElementById('result-out')
@@ -2489,7 +2507,7 @@
         for (const x of r.results || []) {
           details += x.skipped
             ? `\n[SKIPPED] ${x.agentId}: ${x.reason}\n`
-            : `\n--- ${x.agentName} (${x.cost} ${x.currency}) ---\n${x.output}\n`
+            : `\n--- ${x.agentName} (quoted ${x.cost} ${x.currency}; settled ${formatSettlementLabel(x)}) ---\n${x.output}\n`
         }
 
         out.textContent = `FINAL ANSWER\n${finalAnswer}\n\nAGENT DETAILS${details}`
@@ -2501,7 +2519,8 @@
           .join(' ')
         ch.innerHTML = `
         <div class="chip">Agents: <span class="v">${r.agentsUsed || 0}</span></div>
-        <div class="chip">Spent: <span class="v">${r.totalSpent || '0'} USDC</span></div>
+        <div class="chip">Quoted: <span class="v">${r.quotedTotal || r.totalSpent || '0'} USDC</span></div>
+        <div class="chip">Settled: <span class="v">${formatAssetTotals(r.settledTotals)}</span></div>
         <div class="chip">TXs: <span class="v">${r.txCount || 0}</span></div>
         <div class="chip">Protocol: <span class="v">${r.paymentProtocol || 'stellar'}</span></div>
         <div class="chip">Time: <span class="v">${r.elapsed || '-'}</span></div>
@@ -2516,7 +2535,7 @@
             activeRun.planned || 0,
             Number(r.agentsUsed || 0) + Number(r.agentsSkipped || 0)
           )
-          activeRun.spent = Number.parseFloat(r.totalSpent || activeRun.spent || 0)
+          activeRun.spent = Number.parseFloat(r.quotedTotal || r.totalSpent || activeRun.spent || 0)
         }
         renderLiveChips(activeRun)
         pushLiveLine('Final answer generated')

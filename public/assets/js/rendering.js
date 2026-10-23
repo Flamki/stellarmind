@@ -3,6 +3,22 @@
  * Handles result display and progress rendering
  */
 
+/**
+ * Per-asset settled totals for display (issue #130).
+ * Amounts of different assets are shown separately and never added together.
+ */
+function formatAssetTotals(totals) {
+  if (!Array.isArray(totals) || totals.length === 0) return 'none'
+  return totals.map((total) => `${total.amount} ${total.asset}`).join(' + ')
+}
+
+/** What a single step actually settled, in its own asset. */
+function formatSettlementLabel(item) {
+  if (item?.settlement?.success) return `${item.settlement.amount} ${item.settlement.asset}`
+  if (item?.settledAsset && item?.settledAmount) return `${item.settledAmount} ${item.settledAsset}`
+  return 'unsettled'
+}
+
 function setResultTag(text, tone = '') {
   const tag = document.getElementById('result-tag')
   tag.textContent = text
@@ -100,7 +116,7 @@ function showResult(r) {
   for (const x of r.results || []) {
     details += x.skipped
       ? `\n[SKIPPED] ${x.agentId}: ${x.reason}\n`
-      : `\n--- ${x.agentName} (${x.cost} ${x.currency}) ---\n${x.output}\n`
+      : `\n--- ${x.agentName} (quoted ${x.cost} ${x.currency}; settled ${formatSettlementLabel(x)}) ---\n${x.output}\n`
   }
 
   out.textContent = `FINAL ANSWER\n${finalAnswer}\n\nAGENT DETAILS${details}`
@@ -114,7 +130,8 @@ function showResult(r) {
 
   ch.innerHTML = `
     <div class="chip">Agents: <span class="v">${r.agentsUsed || 0}</span></div>
-    <div class="chip">Spent: <span class="v">${r.totalSpent || '0'} USDC</span></div>
+    <div class="chip">Quoted: <span class="v">${r.quotedTotal || r.totalSpent || '0'} USDC</span></div>
+    <div class="chip">Settled: <span class="v">${formatAssetTotals(r.settledTotals)}</span></div>
     <div class="chip">TXs: <span class="v">${r.txCount || 0}</span></div>
     <div class="chip">Protocol: <span class="v">${r.paymentProtocol || 'stellar'}</span></div>
     <div class="chip">Time: <span class="v">${r.elapsed || '-'}</span></div>
@@ -129,7 +146,7 @@ function showResult(r) {
       activeRun.planned || 0,
       Number(r.agentsUsed || 0) + Number(r.agentsSkipped || 0)
     )
-    activeRun.spent = Number.parseFloat(r.totalSpent || activeRun.spent || 0)
+    activeRun.spent = Number.parseFloat(r.quotedTotal || r.totalSpent || activeRun.spent || 0)
   }
 
   renderLiveChips(activeRun)
@@ -176,10 +193,17 @@ function renderRunDetail(run) {
   const completed = run.completedAt ? new Date(run.completedAt).toLocaleString() : '—'
   const updated = run.updatedAt ? new Date(run.updatedAt).toLocaleString() : '—'
   const interrupted = run.interruptedAt ? new Date(run.interruptedAt).toLocaleString() : null
+  // Quoted/reserved cost and the settled totals are different figures. The
+  // dashboard labels them separately instead of presenting the quote as spend.
   const spent =
-    run.totalSpent !== undefined && run.totalSpent !== null
-      ? run.totalSpent
-      : (run.summary?.totalSpent ?? '0')
+    run.quotedTotal !== undefined && run.quotedTotal !== null
+      ? run.quotedTotal
+      : run.totalSpent !== undefined && run.totalSpent !== null
+        ? run.totalSpent
+        : (run.summary?.quotedTotal ?? run.summary?.totalSpent ?? '0')
+  const settled =
+    run.summary?.settledSummary ||
+    formatAssetTotals(run.settledTotals ?? run.summary?.settledTotals)
   const budget =
     run.budget !== undefined && run.budget !== null ? run.budget : (run.summary?.budget ?? '—')
   const task = run.task || '—'
@@ -193,6 +217,8 @@ function renderRunDetail(run) {
   document.getElementById('detail-updated').textContent = updated
   document.getElementById('detail-spent').textContent = spent
   document.getElementById('detail-budget').textContent = budget
+  const settledEl = document.getElementById('detail-settled')
+  if (settledEl) settledEl.textContent = settled
 
   const interruptedSection = document.getElementById('detail-interrupted-section')
   if (interrupted) {
@@ -221,8 +247,15 @@ function renderRunDetail(run) {
   }
   if (run.paymentAttempts && Array.isArray(run.paymentAttempts)) {
     for (const pa of run.paymentAttempts) {
-      if (pa?.settled && pa.txHash) {
-        payments.push({ method: pa.method, txHash: pa.txHash, explorerUrl: pa.explorerUrl })
+      // Attempts are confirmed/unknown/failed, not `settled`.
+      if (pa?.outcome === 'confirmed' && pa.txHash) {
+        payments.push({
+          method: pa.method,
+          txHash: pa.txHash,
+          explorerUrl: pa.explorerUrl,
+          amount: pa.settledAmount ?? pa.amount,
+          asset: pa.settledAsset ?? pa.currency,
+        })
       }
     }
   }
@@ -232,7 +265,12 @@ function renderRunDetail(run) {
       .map((p) => {
         const hash = p.txHash || '—'
         const url = p.explorerUrl || `https://stellar.expert/explorer/testnet/tx/${hash}`
+        const settled =
+          p.amount !== undefined && p.amount !== null
+            ? `${p.amount} ${p.asset || ''}`.trim()
+            : 'amount not recorded'
         return `<div class="payment-item">
+          <span>${escapeHtml(settled)}</span>
           <span>${escapeHtml(p.method || 'unknown')}</span>
           <a href="${escapeHtml(url)}" target="_blank" rel="noopener">${escapeHtml(hash.slice(0, 12))}...${escapeHtml(hash.slice(-8))}</a>
         </div>`
