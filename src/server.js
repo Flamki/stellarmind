@@ -55,7 +55,7 @@ if (config.serverAddress) {
 }
 
 // ─── Create Application with Dependencies ───────────────────
-const { app, close, admissionQueue } = createApp({
+const { app, close, shutdown, admissionQueue } = createApp({
   config,
   pricingConfig,
   runHistoryStore,
@@ -68,7 +68,7 @@ const isMainModule =
 
 if (isMainModule) {
   const PORT = config.port
-  app.listen(PORT, () => {
+  const server = app.listen(PORT, () => {
     console.log(`
 ╔══════════════════════════════════════════════════╗
 ║         🧠 StellarMind — AI Agent Marketplace     ║
@@ -85,6 +85,24 @@ if (isMainModule) {
 ╚══════════════════════════════════════════════════╝
   `)
   })
+
+  const handleTerminationSignal = (signal) => {
+    shutdown({
+      signal,
+      server,
+      drainTimeoutMs: config.shutdownDrainTimeoutMs,
+    })
+      .then(() => {
+        process.exit(0)
+      })
+      .catch((err) => {
+        logger.error('graceful_shutdown_failed', { signal, error: err.message })
+        process.exit(1)
+      })
+  }
+
+  process.once('SIGTERM', () => handleTerminationSignal('SIGTERM'))
+  process.once('SIGINT', () => handleTerminationSignal('SIGINT'))
 }
 
-export { app, admissionQueue }
+export { app, close, shutdown, admissionQueue }

@@ -63,6 +63,41 @@ const SERVICE_MAP = {
   'code-bot': runCode,
 }
 
+function createAbortError(signal, paymentAttempts = null) {
+  const reason = signal?.reason
+  const abortErr =
+    reason instanceof Error
+      ? reason
+      : new Error(typeof reason === 'string' ? reason : 'Orchestration aborted')
+  if (!abortErr.code) {
+    abortErr.code = 'REQUEST_ABORTED'
+  }
+  if (Array.isArray(paymentAttempts) && paymentAttempts.length > 0) {
+    abortErr.paymentAttempts = paymentAttempts
+  }
+  return abortErr
+}
+
+function abortableDelay(ms, signal, getPaymentAttempts = null) {
+  return new Promise((resolve, reject) => {
+    if (signal?.aborted) {
+      return reject(createAbortError(signal, getPaymentAttempts?.()))
+    }
+    const timer = setTimeout(() => {
+      if (signal) signal.removeEventListener('abort', onAbort)
+      resolve()
+    }, ms)
+    timer.unref?.()
+    function onAbort() {
+      clearTimeout(timer)
+      reject(createAbortError(signal, getPaymentAttempts?.()))
+    }
+    if (signal) {
+      signal.addEventListener('abort', onAbort, { once: true })
+    }
+  })
+}
+
 const PREMIUM_ENDPOINT_MAP = {
   'research-bot': (input) => `/api/premium/research?topic=${encodeURIComponent(input)}`,
   'summary-bot': (input) => `/api/premium/summarize?text=${encodeURIComponent(input)}`,
@@ -401,7 +436,9 @@ async function callAgentViaX402(agent, input, broadcastFn, context = {}) {
 
   const serviceFn = context.serviceMap?.[agent.id] || SERVICE_MAP[agent.id]
   if (context.agentDelayMs) {
-    await new Promise((resolve) => setTimeout(resolve, context.agentDelayMs))
+    await abortableDelay(context.agentDelayMs, context.signal, () =>
+      paymentAttempt ? [paymentAttempt] : null
+    )
   }
   let result
   let capturedUsage = null
@@ -434,6 +471,16 @@ async function callAgentViaX402(agent, input, broadcastFn, context = {}) {
       },
     })
   } catch (err) {
+    if (
+      context.signal?.aborted ||
+      err?.code === 'SHUTDOWN_DRAIN_TIMEOUT' ||
+      err?.code === 'REQUEST_ABORTED'
+    ) {
+      throw createAbortError(
+        context.signal,
+        paymentAttempt ? [paymentAttempt] : err?.paymentAttempts || null
+      )
+    }
     result = `Error: ${err.message}`
   }
 
@@ -650,7 +697,7 @@ export async function orchestrate(task, budget, broadcastFn, context = {}) {
   let plan
   let planningUsageEntry = null
   if (context.initialDelayMs) {
-    await new Promise((resolve) => setTimeout(resolve, context.initialDelayMs))
+    await abortableDelay(context.initialDelayMs, context.signal, () => paymentAttempts)
   }
   if (context.plan) {
     plan = context.plan
@@ -787,9 +834,7 @@ Respond ONLY with valid JSON (no markdown, no code fences):
 
   for (const subtask of plan.subtasks || []) {
     if (context.signal?.aborted) {
-      const abortErr = new Error('Orchestration aborted')
-      abortErr.code = 'REQUEST_ABORTED'
-      throw abortErr
+      throw createAbortError(context.signal, paymentAttempts)
     }
 
     const agent = getAgentById(subtask.agentId)
@@ -834,7 +879,20 @@ Respond ONLY with valid JSON (no markdown, no code fences):
       timestamp: new Date().toISOString(),
     })
 
-    const agentResponse = await callAgentViaX402(agent, activeInput, broadcastFn, context)
+    let agentResponse
+    try {
+      agentResponse = await callAgentViaX402(agent, activeInput, broadcastFn, context)
+    } catch (err) {
+      if (Array.isArray(err?.paymentAttempts)) {
+        for (const attempt of err.paymentAttempts) {
+          paymentAttempts = upsertPaymentAttempt(paymentAttempts, attempt)
+        }
+      }
+      if (paymentAttempts.length > 0) {
+        err.paymentAttempts = paymentAttempts
+      }
+      throw err
+    }
 
     if (agentResponse?.paymentAttempt) {
       paymentAttempts = upsertPaymentAttempt(paymentAttempts, agentResponse.paymentAttempt)
@@ -1099,7 +1157,7 @@ export async function previewOrchestration(task, budget, broadcastFn, context = 
   let planningUsageEntry = null
 
   if (context.initialDelayMs) {
-    await new Promise((resolve) => setTimeout(resolve, context.initialDelayMs))
+    await abortableDelay(context.initialDelayMs, context.signal)
   }
 
   if (context.plan) {

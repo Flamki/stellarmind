@@ -32,6 +32,7 @@ const networkProfile = resolveNetworkProfile({
 
 export const config = {
   port,
+  shutdownDrainTimeoutMs: Math.max(50, toNumberOr(process.env.SHUTDOWN_DRAIN_TIMEOUT_MS, 10000)),
   internalBaseUrl,
   network: networkProfile.network,
   networkProfile,

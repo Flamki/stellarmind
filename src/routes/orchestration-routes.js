@@ -4,6 +4,7 @@ import { logger } from '../logger.js'
 import { config } from '../config.js'
 import { OrchestrationAdmissionQueue } from '../agents/orchestration-queue.js'
 import { previewOrchestration, executePlan, activePlansStore } from '../agents/orchestrator.js'
+import { INTERRUPTED_REASON_SHUTDOWN_TIMEOUT } from '../storage/run-history.js'
 
 export function registerOrchestrationRoutes(app, deps = {}) {
   const {
@@ -14,17 +15,49 @@ export function registerOrchestrationRoutes(app, deps = {}) {
     // See the reconcile endpoint below and docs/architecture.md (#131).
     paymentProbe,
     admissionQueue = new OrchestrationAdmissionQueue(config.orchestrationQueue),
+    shutdownState = null,
   } = deps
 
   const activeExecutions = new Map() // runId -> Promise<result>
+  const activeRunControllers = new Map() // runId -> AbortController
   const inFlightIdempotentRequests = new Map() // key -> Promise<{ run, fingerprint }>
+  const pendingWritePromises = new Set()
+
+  function trackWrite(promise) {
+    if (!promise || typeof promise.then !== 'function') return Promise.resolve(promise)
+    const tracked = Promise.resolve(promise).finally(() => {
+      pendingWritePromises.delete(tracked)
+    })
+    pendingWritePromises.add(tracked)
+    return tracked
+  }
+
+  async function drainTrackedWrites() {
+    while (pendingWritePromises.size > 0) {
+      await Promise.allSettled([...pendingWritePromises])
+    }
+  }
+
+  function rejectIfDraining(res, next) {
+    if (shutdownState?.isRefusingNewWork?.()) {
+      res.setHeader('Retry-After', '5')
+      const err = new Error('Server is draining for shutdown and not accepting new work')
+      err.status = 503
+      err.code = 'SERVER_DRAINING'
+      next(err)
+      return true
+    }
+    return false
+  }
 
   async function handleSubmission(req, res, next) {
+    if (rejectIfDraining(res, next)) return
+
     const isAsync = req.validated?.mode === 'async'
-    const clientAbortController = new AbortController()
+    const runAbortController = new AbortController()
     const onClose = () => {
       if (!res.writableEnded) {
-        clientAbortController.abort(new Error('Client disconnected'))
+        runAbortController.abort(new Error('Client disconnected'))
       }
     }
 
@@ -93,13 +126,15 @@ export function registerOrchestrationRoutes(app, deps = {}) {
       let run
       if (idempotencyKey) {
         const creationPromise = (async () => {
-          const created = await runHistoryStore.createRun({
-            task,
-            budget,
-            source,
-            idempotencyKey,
-            idempotencyFingerprint: fingerprint,
-          })
+          const created = await trackWrite(
+            runHistoryStore.createRun({
+              task,
+              budget,
+              source,
+              idempotencyKey,
+              idempotencyFingerprint: fingerprint,
+            })
+          )
           return { run: created, fingerprint }
         })()
         inFlightIdempotentRequests.set(idempotencyKey, creationPromise)
@@ -110,37 +145,40 @@ export function registerOrchestrationRoutes(app, deps = {}) {
           inFlightIdempotentRequests.delete(idempotencyKey)
         }
       } else {
-        run = await runHistoryStore.createRun({
-          task,
-          budget,
-          source,
-        })
+        run = await trackWrite(
+          runHistoryStore.createRun({
+            task,
+            budget,
+            source,
+          })
+        )
       }
 
       const runBroadcast = (event) => {
         const eventWithRun = { ...event, runId: run.id }
         broadcast(eventWithRun)
-        runHistoryStore.appendEvent(run.id, eventWithRun).catch((persistErr) => {
+        trackWrite(runHistoryStore.appendEvent(run.id, eventWithRun)).catch((persistErr) => {
           logger.warn('run_history_append_failed', { runId: run.id, error: persistErr.message })
         })
         // Payment attempts are persisted as soon as they are observed, so an
         // attempt whose outcome is still unknown survives a crash mid-run
         // and can be reconciled instead of being settled twice (#131).
         if (eventWithRun.paymentAttempt) {
-          runHistoryStore
-            .recordPaymentAttempt(run.id, eventWithRun.paymentAttempt)
-            .catch((persistErr) => {
-              logger.warn('payment_attempt_persist_failed', {
-                runId: run.id,
-                attemptId: eventWithRun.paymentAttempt.id,
-                error: persistErr.message,
-              })
+          trackWrite(
+            runHistoryStore.recordPaymentAttempt(run.id, eventWithRun.paymentAttempt)
+          ).catch((persistErr) => {
+            logger.warn('payment_attempt_persist_failed', {
+              runId: run.id,
+              attemptId: eventWithRun.paymentAttempt.id,
+              error: persistErr.message,
             })
+          })
         }
       }
 
       // 4. Detached background execution promise with admission queue
       let queueSubmissionError = null
+      activeRunControllers.set(run.id, runAbortController)
       const executionPromise = (async () => {
         try {
           const result = await admissionQueue.run(
@@ -157,7 +195,7 @@ export function registerOrchestrationRoutes(app, deps = {}) {
             },
             {
               id: run.id,
-              signal: isAsync ? undefined : clientAbortController.signal,
+              signal: runAbortController.signal,
               onQueued: ({ position, queueLength, activeCount }) => {
                 runBroadcast({
                   type: 'orchestration_queued',
@@ -183,19 +221,45 @@ export function registerOrchestrationRoutes(app, deps = {}) {
           )
 
           result.runId = run.id
-          await runHistoryStore.completeRun(run.id, result)
+          await drainTrackedWrites()
+          await trackWrite(runHistoryStore.completeRun(run.id, result))
           return result
         } catch (err) {
           logger.error('orchestration_execution_failed', { runId: run.id, error: err.message })
-          await runHistoryStore.failRun(run.id, err).catch((storeErr) => {
-            logger.error('run_history_fail_persist_failed', {
-              runId: run.id,
-              error: storeErr.message,
+          await drainTrackedWrites()
+          if (Array.isArray(err?.paymentAttempts) && runHistoryStore.recordPaymentAttempt) {
+            for (const attempt of err.paymentAttempts) {
+              await trackWrite(runHistoryStore.recordPaymentAttempt(run.id, attempt)).catch(
+                () => {}
+              )
+            }
+          }
+          if (err?.code === 'SHUTDOWN_DRAIN_TIMEOUT') {
+            if (typeof runHistoryStore.interruptRun === 'function') {
+              await trackWrite(
+                runHistoryStore.interruptRun(
+                  run.id,
+                  INTERRUPTED_REASON_SHUTDOWN_TIMEOUT,
+                  err?.paymentAttempts
+                )
+              ).catch(() => {})
+            } else if (typeof runHistoryStore.recoverInterruptedRuns === 'function') {
+              await trackWrite(
+                runHistoryStore.recoverInterruptedRuns(INTERRUPTED_REASON_SHUTDOWN_TIMEOUT)
+              ).catch(() => {})
+            }
+          } else {
+            await trackWrite(runHistoryStore.failRun(run.id, err)).catch((storeErr) => {
+              logger.error('run_history_fail_persist_failed', {
+                runId: run.id,
+                error: storeErr.message,
+              })
             })
-          })
+          }
           throw err
         } finally {
           activeExecutions.delete(run.id)
+          activeRunControllers.delete(run.id)
           if (!isAsync) {
             res.off?.('close', onClose)
             req.off?.('aborted', onClose)
@@ -298,6 +362,8 @@ export function registerOrchestrationRoutes(app, deps = {}) {
   }
 
   async function handlePreviewSubmission(req, res, next) {
+    if (rejectIfDraining(res, next)) return
+
     try {
       const { task, budget } = req.validated
       const preview = await previewOrchestration(
@@ -317,11 +383,13 @@ export function registerOrchestrationRoutes(app, deps = {}) {
   }
 
   async function handleExecutionSubmission(req, res, next) {
+    if (rejectIfDraining(res, next)) return
+
     const isAsync = req.validated?.mode === 'async'
-    const clientAbortController = new AbortController()
+    const runAbortController = new AbortController()
     const onClose = () => {
       if (!res.writableEnded) {
-        clientAbortController.abort(new Error('Client disconnected'))
+        runAbortController.abort(new Error('Client disconnected'))
       }
     }
 
@@ -368,23 +436,37 @@ export function registerOrchestrationRoutes(app, deps = {}) {
         }
       }
 
-      const run = await runHistoryStore.createRun({
-        task,
-        budget,
-        source,
-        idempotencyKey,
-        idempotencyFingerprint: fingerprint,
-      })
+      const run = await trackWrite(
+        runHistoryStore.createRun({
+          task,
+          budget,
+          source,
+          idempotencyKey,
+          idempotencyFingerprint: fingerprint,
+        })
+      )
 
       const runBroadcast = (event) => {
         const eventWithRun = { ...event, runId: run.id }
         broadcast(eventWithRun)
-        runHistoryStore.appendEvent(run.id, eventWithRun).catch((persistErr) => {
+        trackWrite(runHistoryStore.appendEvent(run.id, eventWithRun)).catch((persistErr) => {
           logger.warn('run_history_append_failed', { runId: run.id, error: persistErr.message })
         })
+        if (eventWithRun.paymentAttempt && runHistoryStore.recordPaymentAttempt) {
+          trackWrite(
+            runHistoryStore.recordPaymentAttempt(run.id, eventWithRun.paymentAttempt)
+          ).catch((persistErr) => {
+            logger.warn('payment_attempt_persist_failed', {
+              runId: run.id,
+              attemptId: eventWithRun.paymentAttempt.id,
+              error: persistErr.message,
+            })
+          })
+        }
       }
 
       let queueSubmissionError = null
+      activeRunControllers.set(run.id, runAbortController)
       const executionPromise = (async () => {
         try {
           const result = await admissionQueue.run(
@@ -396,7 +478,7 @@ export function registerOrchestrationRoutes(app, deps = {}) {
             },
             {
               id: run.id,
-              signal: isAsync ? undefined : clientAbortController.signal,
+              signal: runAbortController.signal,
               onQueued: ({ position, queueLength, activeCount }) => {
                 runBroadcast({
                   type: 'orchestration_queued',
@@ -422,19 +504,45 @@ export function registerOrchestrationRoutes(app, deps = {}) {
           )
 
           result.runId = run.id
-          await runHistoryStore.completeRun(run.id, result)
+          await drainTrackedWrites()
+          await trackWrite(runHistoryStore.completeRun(run.id, result))
           return result
         } catch (err) {
           logger.error('orchestration_execution_failed', { runId: run.id, error: err.message })
-          await runHistoryStore.failRun(run.id, err).catch((storeErr) => {
-            logger.error('run_history_fail_persist_failed', {
-              runId: run.id,
-              error: storeErr.message,
+          await drainTrackedWrites()
+          if (Array.isArray(err?.paymentAttempts) && runHistoryStore.recordPaymentAttempt) {
+            for (const attempt of err.paymentAttempts) {
+              await trackWrite(runHistoryStore.recordPaymentAttempt(run.id, attempt)).catch(
+                () => {}
+              )
+            }
+          }
+          if (err?.code === 'SHUTDOWN_DRAIN_TIMEOUT') {
+            if (typeof runHistoryStore.interruptRun === 'function') {
+              await trackWrite(
+                runHistoryStore.interruptRun(
+                  run.id,
+                  INTERRUPTED_REASON_SHUTDOWN_TIMEOUT,
+                  err?.paymentAttempts
+                )
+              ).catch(() => {})
+            } else if (typeof runHistoryStore.recoverInterruptedRuns === 'function') {
+              await trackWrite(
+                runHistoryStore.recoverInterruptedRuns(INTERRUPTED_REASON_SHUTDOWN_TIMEOUT)
+              ).catch(() => {})
+            }
+          } else {
+            await trackWrite(runHistoryStore.failRun(run.id, err)).catch((storeErr) => {
+              logger.error('run_history_fail_persist_failed', {
+                runId: run.id,
+                error: storeErr.message,
+              })
             })
-          })
+          }
           throw err
         } finally {
           activeExecutions.delete(run.id)
+          activeRunControllers.delete(run.id)
           if (!isAsync) {
             res.off?.('close', onClose)
             req.off?.('aborted', onClose)
@@ -600,9 +708,11 @@ export function registerOrchestrationRoutes(app, deps = {}) {
         return next(err)
       }
 
-      const reconciled = await runHistoryStore.reconcilePendingPayments(paymentProbe, {
-        runId: run.id,
-      })
+      const reconciled = await trackWrite(
+        runHistoryStore.reconcilePendingPayments(paymentProbe, {
+          runId: run.id,
+        })
+      )
       const updated = await runHistoryStore.getRun(run.id)
       res.json({
         runId: run.id,
@@ -613,4 +723,69 @@ export function registerOrchestrationRoutes(app, deps = {}) {
       next(err)
     }
   })
+
+  return {
+    getActiveRunCount: () => activeExecutions.size,
+    async waitForActiveRuns(timeoutMs = 10000) {
+      if (activeExecutions.size === 0) {
+        return { timedOut: false, remainingCount: 0 }
+      }
+      let timer = null
+      try {
+        const waitAll = (async () => {
+          while (activeExecutions.size > 0) {
+            await Promise.allSettled([...activeExecutions.values()])
+          }
+          return { timedOut: false, remainingCount: 0 }
+        })()
+        const timeoutPromise = new Promise((resolve) => {
+          timer = setTimeout(() => {
+            resolve({ timedOut: true, remainingCount: activeExecutions.size })
+          }, timeoutMs)
+          timer.unref?.()
+        })
+        return await Promise.race([waitAll, timeoutPromise])
+      } finally {
+        if (timer) clearTimeout(timer)
+      }
+    },
+    async abortRemainingRuns(reason = INTERRUPTED_REASON_SHUTDOWN_TIMEOUT) {
+      const remainingRunIds = [...activeExecutions.keys()]
+      const timeoutErr = new Error(`Orchestration interrupted due to ${reason}`)
+      timeoutErr.code = 'SHUTDOWN_DRAIN_TIMEOUT'
+      timeoutErr.status = 503
+
+      for (const [, controller] of activeRunControllers.entries()) {
+        try {
+          controller.abort(timeoutErr)
+        } catch {
+          // Ignore abort errors
+        }
+      }
+
+      admissionQueue.clear?.(reason)
+
+      // Allow synchronous/immediate abort handlers to enqueue any final event/payment writes
+      await Promise.resolve()
+      await drainTrackedWrites()
+
+      let interruptedIds = []
+      if (typeof runHistoryStore.recoverInterruptedRuns === 'function') {
+        interruptedIds = await trackWrite(runHistoryStore.recoverInterruptedRuns(reason))
+      } else if (typeof runHistoryStore.interruptRun === 'function') {
+        for (const runId of remainingRunIds) {
+          const ok = await trackWrite(runHistoryStore.interruptRun(runId, reason))
+          if (ok) interruptedIds.push(runId)
+        }
+      }
+      await drainTrackedWrites()
+      return interruptedIds.length > 0 ? interruptedIds : remainingRunIds
+    },
+    async flushPendingWrites() {
+      await drainTrackedWrites()
+      if (typeof runHistoryStore?.flush === 'function') {
+        await runHistoryStore.flush()
+      }
+    },
+  }
 }

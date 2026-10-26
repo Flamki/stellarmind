@@ -19,6 +19,7 @@ const LEGACY_VERSION = 0 // Unversioned files
 // promise, no timer, nothing left executing it — so it must not be allowed
 // to look like it is still progressing forever.
 export const INTERRUPTED_REASON_SERVER_RESTART = 'server_restart'
+export const INTERRUPTED_REASON_SHUTDOWN_TIMEOUT = 'graceful_shutdown_timeout'
 
 function createRunId() {
   return `run_${Date.now()}_${crypto.randomBytes(4).toString('hex')}`
@@ -107,6 +108,10 @@ function normalizeRunRecord(run) {
 
   if (!normalized.output && normalized.status !== 'completed') {
     normalized.output = null
+  }
+
+  if (normalized.status === 'interrupted' && run.results === null) {
+    normalized.results = null
   }
 
   if (!normalized.results && normalized.status === 'completed' && !normalized.output) {
@@ -245,7 +250,7 @@ export class InMemoryRunHistoryStore {
 
   async completeRun(runId, result) {
     const run = this.runs.find((entry) => entry.id === runId)
-    if (!run) return
+    if (!run || run.status === 'interrupted') return
 
     // A proof is only useful if it names the asset and amount that settled,
     // not the quote the run reserved (#130). Unpaid/pending steps never reach
@@ -323,7 +328,11 @@ export class InMemoryRunHistoryStore {
 
   async failRun(runId, err) {
     const run = this.runs.find((entry) => entry.id === runId)
-    if (!run) return
+    if (!run || run.status === 'interrupted') return
+    if (err?.code === 'SHUTDOWN_DRAIN_TIMEOUT') {
+      await this.interruptRun(runId, INTERRUPTED_REASON_SHUTDOWN_TIMEOUT, err?.paymentAttempts)
+      return
+    }
     run.status = 'failed'
     run.completedAt = new Date().toISOString()
     run.updatedAt = run.completedAt
@@ -337,12 +346,58 @@ export class InMemoryRunHistoryStore {
     run.output = null
     run.results = Array.isArray(run.results) ? run.results : []
     run.outputAvailable = false
+    if (Array.isArray(err?.paymentAttempts) && err.paymentAttempts.length > 0) {
+      run.paymentAttempts = err.paymentAttempts.reduce(
+        (list, attempt) => upsertPaymentAttempt(list, attempt),
+        run.paymentAttempts || []
+      )
+    }
+    if (Array.isArray(run.paymentAttempts) && run.paymentAttempts.length > 0) {
+      run.pendingPaymentAttempts = selectPendingAttempts(run.paymentAttempts)
+      run.paymentAttemptSummary = summarizePaymentAttempts(run.paymentAttempts)
+    }
+  }
+
+  /**
+   * Marks a single running run as interrupted (e.g. when the graceful shutdown
+   * drain deadline expires), preserving any recorded events, partial results,
+   * and uncertain/pending payment attempts.
+   */
+  async interruptRun(runId, reason = INTERRUPTED_REASON_SHUTDOWN_TIMEOUT, extraAttempts = null) {
+    const run = this.runs.find((entry) => entry.id === runId)
+    if (!run || run.status !== 'running') return false
+
+    const now = new Date().toISOString()
+    if (Array.isArray(extraAttempts) && extraAttempts.length > 0) {
+      run.paymentAttempts = extraAttempts.reduce(
+        (list, attempt) => upsertPaymentAttempt(list, attempt),
+        run.paymentAttempts || []
+      )
+    }
+    if (Array.isArray(run.paymentAttempts) && run.paymentAttempts.length > 0) {
+      run.pendingPaymentAttempts = selectPendingAttempts(run.paymentAttempts)
+      run.paymentAttemptSummary = summarizePaymentAttempts(run.paymentAttempts)
+    }
+    run.status = 'interrupted'
+    run.interruptedAt = now
+    run.interruptedReason = reason
+    run.updatedAt = now
+    run.events.push(
+      toAuditEvent({
+        type: 'run_interrupted',
+        reason,
+        status: 'interrupted',
+        timestamp: now,
+      })
+    )
+    return true
   }
 
   /**
    * Recover runs that were left `status: 'running'` when this store was
    * (re)initialized — orphaned by a previous process exiting or crashing
-   * mid-orchestration (issue #139).
+   * mid-orchestration (issue #139) — or still running when a graceful
+   * shutdown drain deadline expires (issue #180).
    *
    * This never replays or re-drives agent/payment work (out of scope for
    * this issue) and never touches anything already captured for the run —
@@ -355,28 +410,18 @@ export class InMemoryRunHistoryStore {
    * run stops looking like it is executing forever and no automatic new
    * charge or retry is triggered.
    *
+   * @param {string} [reason=INTERRUPTED_REASON_SERVER_RESTART]
    * @returns {Promise<string[]>} ids of runs that were recovered
    */
-  async recoverInterruptedRuns() {
+  async recoverInterruptedRuns(reason = INTERRUPTED_REASON_SERVER_RESTART) {
     const recoveredIds = []
-    const now = new Date().toISOString()
 
     for (const run of this.runs) {
       if (run.status !== 'running') continue
-
-      run.status = 'interrupted'
-      run.interruptedAt = now
-      run.interruptedReason = INTERRUPTED_REASON_SERVER_RESTART
-      run.updatedAt = now
-      run.events.push(
-        toAuditEvent({
-          type: 'run_interrupted',
-          reason: INTERRUPTED_REASON_SERVER_RESTART,
-          status: 'interrupted',
-          timestamp: now,
-        })
-      )
-      recoveredIds.push(run.id)
+      const interrupted = await this.interruptRun(run.id, reason)
+      if (interrupted) {
+        recoveredIds.push(run.id)
+      }
     }
 
     return recoveredIds
@@ -624,8 +669,16 @@ export class FileRunHistoryStore extends InMemoryRunHistoryStore {
     await this.persist()
   }
 
-  async recoverInterruptedRuns() {
-    const recoveredIds = await super.recoverInterruptedRuns()
+  async interruptRun(runId, reason = INTERRUPTED_REASON_SHUTDOWN_TIMEOUT, extraAttempts = null) {
+    const interrupted = await super.interruptRun(runId, reason, extraAttempts)
+    if (interrupted) {
+      await this.persist()
+    }
+    return interrupted
+  }
+
+  async recoverInterruptedRuns(reason = INTERRUPTED_REASON_SERVER_RESTART) {
+    const recoveredIds = await super.recoverInterruptedRuns(reason)
     if (recoveredIds.length > 0) {
       await this.persist()
     }

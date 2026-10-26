@@ -13,7 +13,7 @@ import {
   setApiKey,
   MODEL_LABELS,
 } from './agents/services.js'
-import { orchestrate } from './agents/orchestrator.js'
+import { orchestrate, activePlansStore } from './agents/orchestrator.js'
 import { OrchestrationAdmissionQueue } from './agents/orchestration-queue.js'
 import { getBalance, getTransactions } from './stellar/wallet.js'
 import { requestId, requestLogger, errorHandler } from './middleware/errorHandler.js'
@@ -22,6 +22,7 @@ import { logger } from './logger.js'
 import { adminAuth } from './middleware/auth.js'
 import { registerPremiumRoutes } from './routes/premium-routes.js'
 import { registerOrchestrationRoutes } from './routes/orchestration-routes.js'
+import { INTERRUPTED_REASON_SHUTDOWN_TIMEOUT } from './storage/run-history.js'
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
 
@@ -47,11 +48,30 @@ export function createApp(dependencies = {}) {
     runHistoryStore,
     broadcast,
     paymentMiddleware,
+    paymentProbe,
+    orchestrate: orchestrateFn = orchestrate,
     admissionQueue = new OrchestrationAdmissionQueue(config.orchestrationQueue),
     premiumServices = {},
   } = dependencies
 
   const app = express()
+
+  // Graceful shutdown state
+  let draining = false
+  let refusingNewWork = false
+  let shutdownPromise = null
+
+  const shutdownState = {
+    isDraining: () => draining,
+    isRefusingNewWork: () => refusingNewWork,
+    markNotReady: () => {
+      draining = true
+    },
+    refuseNewWork: () => {
+      draining = true
+      refusingNewWork = true
+    },
+  }
 
   // Basic middleware
   app.use(cors())
@@ -66,7 +86,11 @@ export function createApp(dependencies = {}) {
   function broadcastEvent(event) {
     const data = JSON.stringify(event)
     sseClients.forEach((res) => {
-      res.write(`data: ${data}\n\n`)
+      try {
+        res.write(`data: ${data}\n\n`)
+      } catch {
+        // Ignore write errors on closing clients
+      }
     })
   }
 
@@ -82,8 +106,11 @@ export function createApp(dependencies = {}) {
 
     const components = {
       app: {
-        ready: true,
-        description: 'Core HTTP server initialized',
+        ready: !draining,
+        draining,
+        description: draining
+          ? 'Server is draining for graceful shutdown'
+          : 'Core HTTP server initialized',
       },
       anthropic: {
         configured: anthropicConfigured,
@@ -103,10 +130,11 @@ export function createApp(dependencies = {}) {
       },
     }
 
-    const ready = Object.values(components).every((component) => component.ready)
+    const ready = !draining && Object.values(components).every((component) => component.ready)
     return {
       status: ready ? 'ready' : 'not_ready',
       ready,
+      draining,
       timestamp: new Date().toISOString(),
       components,
     }
@@ -129,6 +157,17 @@ export function createApp(dependencies = {}) {
 
   // SSE Events endpoint
   app.get('/api/events', (req, res) => {
+    if (draining) {
+      res.setHeader('Retry-After', '5')
+      return res.status(503).json({
+        error: {
+          message: 'Server is draining for shutdown and not accepting new SSE connections',
+          code: 'SERVER_DRAINING',
+          status: 503,
+        },
+      })
+    }
+
     res.setHeader('Content-Type', 'text/event-stream')
     res.setHeader('Cache-Control', 'no-cache')
     res.setHeader('Connection', 'keep-alive')
@@ -221,11 +260,13 @@ export function createApp(dependencies = {}) {
   })
 
   // Orchestrator Endpoint (sync + async modes)
-  registerOrchestrationRoutes(app, {
+  const orchestrationController = registerOrchestrationRoutes(app, {
     runHistoryStore,
-    orchestrate,
+    orchestrate: orchestrateFn,
     broadcast: actualBroadcast,
+    paymentProbe,
     admissionQueue,
+    shutdownState,
   })
 
   // Agent Registry Endpoints
@@ -474,9 +515,15 @@ export function createApp(dependencies = {}) {
   app.use(errorHandler)
 
   // Cleanup function to close SSE connections
-  function close() {
+  function close(reason = 'shutdown') {
+    const payload = JSON.stringify({
+      type: 'server_shutdown',
+      reason,
+      timestamp: new Date().toISOString(),
+    })
     sseClients.forEach((res) => {
       try {
+        res.write(`data: ${payload}\n\n`)
         res.end()
       } catch {
         // Ignore errors during cleanup
@@ -485,5 +532,102 @@ export function createApp(dependencies = {}) {
     sseClients.length = 0
   }
 
-  return { app, close, admissionQueue }
+  /**
+   * Coordinate a bounded graceful shutdown:
+   * 1. Switch readiness to not_ready before refusing new work
+   * 2. Refuse new orchestration work with 503 SERVER_DRAINING
+   * 3. Give accepted work the configured drain window
+   * 4. Record remaining work at deadline as interrupted (preserving uncertain payments)
+   * 5. Close SSE connections, timers, listener, and flush the storage queue
+   */
+  async function shutdown(options = {}) {
+    if (shutdownPromise) {
+      return shutdownPromise
+    }
+
+    const {
+      signal = 'SIGTERM',
+      server = null,
+      drainTimeoutMs = config?.shutdownDrainTimeoutMs ?? 10000,
+      onReadinessChanged = null,
+    } = options
+
+    shutdownPromise = (async () => {
+      const startedAt = Date.now()
+      logger.info('graceful_shutdown_started', { signal, drainTimeoutMs })
+
+      // 1. Switch readiness to not_ready before refusing new work
+      shutdownState.markNotReady()
+      if (typeof onReadinessChanged === 'function') {
+        await onReadinessChanged(buildReadinessPayload())
+      }
+
+      // 2. Refuse new orchestration work
+      shutdownState.refuseNewWork()
+
+      // 3. Give accepted work the configured drain window
+      const drainOutcome = await orchestrationController.waitForActiveRuns(drainTimeoutMs)
+
+      // 4. At deadline, record remaining work accurately, including uncertain payments
+      let interruptedRunIds = []
+      if (drainOutcome.timedOut || orchestrationController.getActiveRunCount() > 0) {
+        interruptedRunIds = await orchestrationController.abortRemainingRuns(
+          INTERRUPTED_REASON_SHUTDOWN_TIMEOUT
+        )
+      } else if (typeof runHistoryStore?.recoverInterruptedRuns === 'function') {
+        interruptedRunIds = await runHistoryStore.recoverInterruptedRuns(
+          INTERRUPTED_REASON_SHUTDOWN_TIMEOUT
+        )
+      }
+
+      // 5. Close SSE connections, timers, listener, and flush storage queue
+      close(signal)
+      admissionQueue.clear?.(INTERRUPTED_REASON_SHUTDOWN_TIMEOUT)
+      activePlansStore.clear()
+
+      if (server && server.listening) {
+        server.closeIdleConnections?.()
+        await new Promise((resolve) => {
+          const forceTimer = setTimeout(() => {
+            server.closeAllConnections?.()
+            resolve()
+          }, 250)
+          forceTimer.unref?.()
+          server.close(() => {
+            clearTimeout(forceTimer)
+            resolve()
+          })
+        })
+      }
+
+      await orchestrationController.flushPendingWrites()
+
+      const elapsedMs = Date.now() - startedAt
+      logger.info('graceful_shutdown_complete', {
+        signal,
+        timedOut: drainOutcome.timedOut,
+        interruptedRunIds,
+        elapsedMs,
+      })
+
+      return {
+        status: 'shutdown_complete',
+        signal,
+        drained: !drainOutcome.timedOut,
+        timedOut: drainOutcome.timedOut,
+        interruptedRunIds,
+        elapsedMs,
+      }
+    })()
+
+    return shutdownPromise
+  }
+
+  return {
+    app,
+    close,
+    shutdown,
+    isDraining: () => draining,
+    admissionQueue,
+  }
 }

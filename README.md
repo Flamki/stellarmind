@@ -283,7 +283,26 @@ StellarMind exposes lightweight endpoints for deployment tooling and load balanc
   - no external dependency checks are performed
 - `GET /readyz`
   - returns `200` when the configured critical components are ready
-  - returns `503` when required configuration is missing
+  - returns `503` when required configuration is missing or when the server is draining for graceful
+    shutdown
+
+### Graceful Shutdown & Drain Lifecycle
+
+On `SIGTERM` or `SIGINT`, StellarMind runs a bounded drain sequence controlled by
+`SHUTDOWN_DRAIN_TIMEOUT_MS` (default: `10000` ms):
+
+1. **Readiness transition**: `/readyz` immediately switches to `503` (`status: "not_ready"`,
+   `draining: true`) so load balancers stop routing traffic before new work is refused.
+2. **New work refusal**: New `/api/orchestrate` and `/api/events` requests are refused with HTTP
+   `503 Service Unavailable` (`code: "SERVER_DRAINING"`).
+3. **In-flight drain window**: Accepted runs are given up to `SHUTDOWN_DRAIN_TIMEOUT_MS` to complete
+   cleanly.
+4. **Deadline interruption & payment preservation**: Any runs still active at the drain deadline are
+   aborted and recorded with `status: "interrupted"` and
+   `interruptedReason: "graceful_shutdown_timeout"`, preserving any unresolved payment attempts in
+   `pendingPaymentAttempts` for reconciliation.
+5. **Resource cleanup**: Open SSE connections receive a `server_shutdown` event and close, internal
+   timers and the HTTP listener close, and the run-history write queue flushes to disk before exit.
 
 Example `/readyz` response:
 
