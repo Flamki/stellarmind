@@ -284,6 +284,41 @@ StellarMind exposes lightweight endpoints for deployment tooling and load balanc
 - `GET /readyz`
   - returns `200` when the configured critical components are ready
   - returns `503` when required configuration is missing
+- `GET /metrics` (Prometheus text exposition format `0.0.4`) and `GET /api/metrics` (JSON snapshot)
+  - exposes counters, gauges, and histograms for accepted/terminal runs, phase latency,
+    active/queued work, settlement outcomes, and persistence errors
+  - enforces a strict allowlist on label values (`mode`, `submission`, `status`, `phase`, `method`,
+    `outcome`, `asset`, `operation`) so prompts, run IDs, wallet addresses, and transaction hashes
+    never become metric labels
+  - separates demo activity (`mode="demo"`) from live traffic (`mode="live"`)
+
+### Operational Metrics & Prometheus Scrape Setup
+
+Example `prometheus.yml` scrape configuration:
+
+```yaml
+scrape_configs:
+  - job_name: 'stellarmind'
+    scrape_interval: 15s
+    metrics_path: /metrics
+    static_configs:
+      - targets: ['localhost:3001']
+```
+
+Example PromQL query for detecting an elevated live run failure rate (>10% over 5 minutes):
+
+```promql
+sum(rate(stellarmind_runs_terminal_total{mode="live",status="failed"}[5m]))
+/
+clamp_min(sum(rate(stellarmind_runs_terminal_total{mode="live"}[5m])), 1e-9)
+> 0.10
+```
+
+Quick CLI check against the JSON snapshot to inspect live vs demo failure rates locally:
+
+```bash
+curl -s http://localhost:3001/api/metrics | jq '.counters.runsTerminal'
+```
 
 Example `/readyz` response:
 

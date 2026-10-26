@@ -8,6 +8,7 @@ import {
   summarizePaymentAttempts,
   upsertPaymentAttempt,
 } from '../agents/payment-attempts.js'
+import { defaultMetrics } from '../metrics.js'
 
 // Schema versioning constants
 const CURRENT_SCHEMA_VERSION = 1
@@ -117,10 +118,15 @@ function normalizeRunRecord(run) {
 }
 
 export class InMemoryRunHistoryStore {
-  constructor(maxRuns = 200) {
+  constructor(maxRuns = 200, options = {}) {
     this.maxRuns = maxRuns
     this.runs = []
     this.idempotencyMap = new Map()
+    this.metrics = options.metrics || defaultMetrics
+  }
+
+  setMetrics(metrics) {
+    if (metrics) this.metrics = metrics
   }
 
   async init() {}
@@ -394,8 +400,8 @@ export class InMemoryRunHistoryStore {
 }
 
 export class FileRunHistoryStore extends InMemoryRunHistoryStore {
-  constructor(filePath, maxRuns = 200) {
-    super(maxRuns)
+  constructor(filePath, maxRuns = 200, options = {}) {
+    super(maxRuns, options)
     this.filePath = filePath
     this._writeQueue = Promise.resolve()
   }
@@ -415,6 +421,7 @@ export class FileRunHistoryStore extends InMemoryRunHistoryStore {
         await this.persist()
         return
       }
+      this.metrics?.recordPersistenceError({ operation: 'read' })
       // Inaccessible file (permissions, I/O error, etc). This is NOT a
       // first startup and NOT corruption we can safely recover from — the
       // file may be perfectly readable once the underlying problem is
@@ -576,6 +583,7 @@ export class FileRunHistoryStore extends InMemoryRunHistoryStore {
         await fs.writeFile(tempPath, payload, 'utf8')
         await fs.rename(tempPath, this.filePath)
       } catch (err) {
+        this.metrics?.recordPersistenceError({ operation: 'write' })
         try {
           await fs.unlink(tempPath).catch(() => {})
         } catch {}

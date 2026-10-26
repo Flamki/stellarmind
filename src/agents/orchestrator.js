@@ -53,6 +53,7 @@ import {
   XLM_FALLBACK_POLICY,
 } from './settlement.js'
 import { normalizeContent } from './response-normalization.js'
+import { defaultMetrics, resolveActivityMode } from '../metrics.js'
 
 // const anthropic = ... (imported from services.js)
 
@@ -618,6 +619,14 @@ export async function orchestrate(task, budget, broadcastFn, context = {}) {
   }
 
   const startTime = Date.now()
+  const activeMetrics = context.metrics || defaultMetrics
+  const activityMode = resolveActivityMode({
+    activityMode: context.activityMode,
+    mode: context.mode,
+    demo: context.demo,
+    source: context.source,
+    config,
+  })
   const results = []
   const payments = []
   const usageEntries = []
@@ -649,6 +658,7 @@ export async function orchestrate(task, budget, broadcastFn, context = {}) {
 
   let plan
   let planningUsageEntry = null
+  const planningStartedAt = Date.now()
   if (context.initialDelayMs) {
     await new Promise((resolve) => setTimeout(resolve, context.initialDelayMs))
   }
@@ -777,6 +787,11 @@ Respond ONLY with valid JSON (no markdown, no code fences):
   }
 
   usageEntries.push(planningUsageEntry)
+  activeMetrics?.observePhaseDuration?.({
+    phase: 'planning',
+    mode: activityMode,
+    durationMs: Date.now() - planningStartedAt,
+  })
 
   broadcastFn?.({
     type: 'orchestrator_plan',
@@ -804,6 +819,12 @@ Respond ONLY with valid JSON (no markdown, no code fences):
       broadcastFn?.({
         ...buildBudgetLimitEvent(agent, exactBudget, totalSpent),
         timestamp: new Date().toISOString(),
+      })
+      activeMetrics?.recordSettlementOutcome?.({
+        method: 'unpaid',
+        outcome: 'skipped',
+        asset: 'none',
+        mode: activityMode,
       })
       results.push(buildSkipResult(agent, exactBudget, totalSpent))
       continue
@@ -834,7 +855,28 @@ Respond ONLY with valid JSON (no markdown, no code fences):
       timestamp: new Date().toISOString(),
     })
 
+    const stepStartedAt = Date.now()
     const agentResponse = await callAgentViaX402(agent, activeInput, broadcastFn, context)
+    const stepDurationMs = Date.now() - stepStartedAt
+    activeMetrics?.observePhaseDuration?.({
+      phase: 'agent_step',
+      mode: activityMode,
+      durationMs: stepDurationMs,
+    })
+
+    const settlementOutcome = agentResponse?.paymentSuccess
+      ? 'settled'
+      : agentResponse?.paymentReconciliationRequired ||
+          agentResponse?.paymentAttempt?.outcome === 'unknown'
+        ? 'unresolved'
+        : 'failed'
+    activeMetrics?.recordSettlementOutcome?.({
+      method: agentResponse?.paidVia || agentResponse?.paymentMethod || 'unpaid',
+      outcome: settlementOutcome,
+      asset: agentResponse?.settledAsset || agentResponse?.quotedAsset || 'none',
+      mode: activityMode,
+      durationMs: stepDurationMs,
+    })
 
     if (agentResponse?.paymentAttempt) {
       paymentAttempts = upsertPaymentAttempt(paymentAttempts, agentResponse.paymentAttempt)
@@ -1068,6 +1110,8 @@ Respond ONLY with valid JSON (no markdown, no code fences):
     paymentAttempts,
     paymentAttemptSummary,
     pendingPaymentCount,
+    activityMode,
+    _metricsRecorded: true,
   }
 }
 

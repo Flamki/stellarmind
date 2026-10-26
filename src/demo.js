@@ -78,7 +78,7 @@ async function main() {
     }
 
     try {
-      const result = await orchestrate(task, budget, logEvent)
+      const result = await orchestrate(task, budget, logEvent, { activityMode: 'demo' })
 
       console.log(`\n  📊 Result Summary:`)
       console.log(`     Agents used: ${result.agentsUsed}`)

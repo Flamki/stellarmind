@@ -22,6 +22,7 @@ import { logger } from './logger.js'
 import { adminAuth } from './middleware/auth.js'
 import { registerPremiumRoutes } from './routes/premium-routes.js'
 import { registerOrchestrationRoutes } from './routes/orchestration-routes.js'
+import { createMetricsRegistry } from './metrics.js'
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
 
@@ -47,9 +48,17 @@ export function createApp(dependencies = {}) {
     runHistoryStore,
     broadcast,
     paymentMiddleware,
+    paymentProbe,
+    orchestrate: orchestrateFn = orchestrate,
     admissionQueue = new OrchestrationAdmissionQueue(config.orchestrationQueue),
+    metrics = createMetricsRegistry(),
     premiumServices = {},
   } = dependencies
+
+  metrics.setQueueStateProvider(() => admissionQueue.getState())
+  if (typeof runHistoryStore?.setMetrics === 'function') {
+    runHistoryStore.setMetrics(metrics)
+  }
 
   const app = express()
 
@@ -125,6 +134,20 @@ export function createApp(dependencies = {}) {
   app.get('/readyz', (req, res) => {
     const payload = buildReadinessPayload()
     res.status(payload.ready ? 200 : 503).json(payload)
+  })
+
+  // Operational metrics endpoints (Prometheus text + JSON snapshot)
+  app.get('/metrics', (req, res) => {
+    const acceptHeader = String(req.headers.accept || '').toLowerCase()
+    if (req.query.format === 'json' || acceptHeader.includes('application/json')) {
+      return res.json(metrics.getSnapshot())
+    }
+    res.setHeader('Content-Type', 'text/plain; version=0.0.4; charset=utf-8')
+    res.send(metrics.formatPrometheus())
+  })
+
+  app.get('/api/metrics', (req, res) => {
+    res.json(metrics.getSnapshot())
   })
 
   // SSE Events endpoint
@@ -223,9 +246,12 @@ export function createApp(dependencies = {}) {
   // Orchestrator Endpoint (sync + async modes)
   registerOrchestrationRoutes(app, {
     runHistoryStore,
-    orchestrate,
+    orchestrate: orchestrateFn,
     broadcast: actualBroadcast,
+    paymentProbe,
     admissionQueue,
+    metrics,
+    appConfig: config,
   })
 
   // Agent Registry Endpoints
@@ -485,5 +511,5 @@ export function createApp(dependencies = {}) {
     sseClients.length = 0
   }
 
-  return { app, close, admissionQueue }
+  return { app, close, admissionQueue, metrics }
 }

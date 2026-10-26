@@ -4,6 +4,7 @@ import { logger } from '../logger.js'
 import { config } from '../config.js'
 import { OrchestrationAdmissionQueue } from '../agents/orchestration-queue.js'
 import { previewOrchestration, executePlan, activePlansStore } from '../agents/orchestrator.js'
+import { defaultMetrics, resolveActivityMode } from '../metrics.js'
 
 export function registerOrchestrationRoutes(app, deps = {}) {
   const {
@@ -14,10 +15,69 @@ export function registerOrchestrationRoutes(app, deps = {}) {
     // See the reconcile endpoint below and docs/architecture.md (#131).
     paymentProbe,
     admissionQueue = new OrchestrationAdmissionQueue(config.orchestrationQueue),
+    metrics = defaultMetrics,
+    appConfig = config,
   } = deps
 
   const activeExecutions = new Map() // runId -> Promise<result>
   const inFlightIdempotentRequests = new Map() // key -> Promise<{ run, fingerprint }>
+
+  function recordStubRunMetrics(result, activityMode, runDurationMs) {
+    if (!result || result._metricsRecorded) return
+    metrics?.observePhaseDuration?.({
+      phase: 'planning',
+      mode: activityMode,
+      durationMs: Math.max(1, Math.round(runDurationMs * 0.2)),
+    })
+    const stepItems = Array.isArray(result.results) ? result.results : []
+    const stepMs =
+      stepItems.length > 0
+        ? Math.max(1, Math.round((runDurationMs * 0.8) / stepItems.length))
+        : Math.max(1, runDurationMs)
+    if (stepItems.length > 0) {
+      for (const step of stepItems) {
+        if (step?.skipped) {
+          metrics?.recordSettlementOutcome?.({
+            method: 'unpaid',
+            outcome: 'skipped',
+            asset: 'none',
+            mode: activityMode,
+          })
+          continue
+        }
+        metrics?.observePhaseDuration?.({
+          phase: 'agent_step',
+          mode: activityMode,
+          durationMs: stepMs,
+        })
+      }
+    } else {
+      metrics?.observePhaseDuration?.({
+        phase: 'agent_step',
+        mode: activityMode,
+        durationMs: stepMs,
+      })
+    }
+
+    const payments = Array.isArray(result.payments) ? result.payments : []
+    if (payments.length > 0) {
+      for (const payment of payments) {
+        const outcome =
+          payment.paymentSuccess !== false
+            ? 'settled'
+            : payment.paymentReconciliationRequired
+              ? 'unresolved'
+              : 'failed'
+        metrics?.recordSettlementOutcome?.({
+          method: payment.paidVia || payment.paymentMethod || 'x402',
+          outcome,
+          asset: payment.settledAsset || payment.asset || payment.quotedAsset || 'USDC',
+          mode: activityMode,
+          durationMs: stepMs,
+        })
+      }
+    }
+  }
 
   async function handleSubmission(req, res, next) {
     const isAsync = req.validated?.mode === 'async'
@@ -36,6 +96,13 @@ export function registerOrchestrationRoutes(app, deps = {}) {
     try {
       const { task, budget, idempotencyKey } = req.validated
       const source = `${req.method} /api/orchestrate`
+      const activityMode = resolveActivityMode({
+        activityMode: req.body?.activityMode || req.query?.activityMode,
+        mode: req.header('x-stellarmind-mode') || req.header('x-activity-mode'),
+        demo: req.body?.demo ?? req.query?.demo,
+        source,
+        config: appConfig,
+      })
 
       const fingerprint = idempotencyKey
         ? crypto
@@ -91,36 +158,47 @@ export function registerOrchestrationRoutes(app, deps = {}) {
 
       // 3. Create fresh run (startup step)
       let run
-      if (idempotencyKey) {
-        const creationPromise = (async () => {
-          const created = await runHistoryStore.createRun({
+      try {
+        if (idempotencyKey) {
+          const creationPromise = (async () => {
+            const created = await runHistoryStore.createRun({
+              task,
+              budget,
+              source,
+              idempotencyKey,
+              idempotencyFingerprint: fingerprint,
+            })
+            return { run: created, fingerprint }
+          })()
+          inFlightIdempotentRequests.set(idempotencyKey, creationPromise)
+          try {
+            const createdResult = await creationPromise
+            run = createdResult.run
+          } finally {
+            inFlightIdempotentRequests.delete(idempotencyKey)
+          }
+        } else {
+          run = await runHistoryStore.createRun({
             task,
             budget,
             source,
-            idempotencyKey,
-            idempotencyFingerprint: fingerprint,
           })
-          return { run: created, fingerprint }
-        })()
-        inFlightIdempotentRequests.set(idempotencyKey, creationPromise)
-        try {
-          const createdResult = await creationPromise
-          run = createdResult.run
-        } finally {
-          inFlightIdempotentRequests.delete(idempotencyKey)
         }
-      } else {
-        run = await runHistoryStore.createRun({
-          task,
-          budget,
-          source,
-        })
+      } catch (createErr) {
+        metrics?.recordPersistenceError?.({ operation: 'create_run' })
+        throw createErr
       }
+
+      metrics?.recordRunAccepted?.({
+        mode: activityMode,
+        submission: isAsync ? 'async' : 'sync',
+      })
 
       const runBroadcast = (event) => {
         const eventWithRun = { ...event, runId: run.id }
         broadcast(eventWithRun)
         runHistoryStore.appendEvent(run.id, eventWithRun).catch((persistErr) => {
+          metrics?.recordPersistenceError?.({ operation: 'append_event' })
           logger.warn('run_history_append_failed', { runId: run.id, error: persistErr.message })
         })
         // Payment attempts are persisted as soon as they are observed, so an
@@ -130,6 +208,7 @@ export function registerOrchestrationRoutes(app, deps = {}) {
           runHistoryStore
             .recordPaymentAttempt(run.id, eventWithRun.paymentAttempt)
             .catch((persistErr) => {
+              metrics?.recordPersistenceError?.({ operation: 'record_payment' })
               logger.warn('payment_attempt_persist_failed', {
                 runId: run.id,
                 attemptId: eventWithRun.paymentAttempt.id,
@@ -141,6 +220,7 @@ export function registerOrchestrationRoutes(app, deps = {}) {
 
       // 4. Detached background execution promise with admission queue
       let queueSubmissionError = null
+      const runStartedAt = Date.now()
       const executionPromise = (async () => {
         try {
           const result = await admissionQueue.run(
@@ -153,12 +233,16 @@ export function registerOrchestrationRoutes(app, deps = {}) {
                 runId: run.id,
                 paymentProbe,
                 signal,
+                activityMode,
+                metrics,
               })
             },
             {
               id: run.id,
               signal: isAsync ? undefined : clientAbortController.signal,
               onQueued: ({ position, queueLength, activeCount }) => {
+                metrics?.recordRunQueued?.({ mode: activityMode, queueLength })
+                metrics?.setQueueDepth?.({ active: activeCount, queued: queueLength })
                 runBroadcast({
                   type: 'orchestration_queued',
                   runId: run.id,
@@ -170,6 +254,11 @@ export function registerOrchestrationRoutes(app, deps = {}) {
               },
               onAdmitted: ({ waitDurationMs, activeCount, queued }) => {
                 if (queued) {
+                  metrics?.observePhaseDuration?.({
+                    phase: 'queue_wait',
+                    mode: activityMode,
+                    durationMs: waitDurationMs,
+                  })
                   runBroadcast({
                     type: 'orchestration_admitted',
                     runId: run.id,
@@ -183,11 +272,36 @@ export function registerOrchestrationRoutes(app, deps = {}) {
           )
 
           result.runId = run.id
-          await runHistoryStore.completeRun(run.id, result)
+          const runDurationMs = Date.now() - runStartedAt
+          recordStubRunMetrics(result, activityMode, runDurationMs)
+          try {
+            await runHistoryStore.completeRun(run.id, result)
+          } catch (completeErr) {
+            metrics?.recordPersistenceError?.({ operation: 'complete_run' })
+            throw completeErr
+          }
+          metrics?.recordRunTerminal?.({
+            status: 'completed',
+            mode: activityMode,
+            durationMs: runDurationMs,
+          })
           return result
         } catch (err) {
+          const runDurationMs = Date.now() - runStartedAt
+          const terminalStatus =
+            err?.code === 'QUEUE_CAPACITY_EXCEEDED' || err?.code === 'QUEUE_TIMEOUT'
+              ? 'rejected'
+              : err?.code === 'REQUEST_ABORTED'
+                ? 'cancelled'
+                : 'failed'
+          metrics?.recordRunTerminal?.({
+            status: terminalStatus,
+            mode: activityMode,
+            durationMs: runDurationMs,
+          })
           logger.error('orchestration_execution_failed', { runId: run.id, error: err.message })
           await runHistoryStore.failRun(run.id, err).catch((storeErr) => {
+            metrics?.recordPersistenceError?.({ operation: 'fail_run' })
             logger.error('run_history_fail_persist_failed', {
               runId: run.id,
               error: storeErr.message,
