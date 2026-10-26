@@ -49,6 +49,7 @@ export function createApp(dependencies = {}) {
     paymentMiddleware,
     admissionQueue = new OrchestrationAdmissionQueue(config.orchestrationQueue),
     premiumServices = {},
+    orchestrate: injectedOrchestrate = orchestrate,
   } = dependencies
 
   const app = express()
@@ -223,7 +224,7 @@ export function createApp(dependencies = {}) {
   // Orchestrator Endpoint (sync + async modes)
   registerOrchestrationRoutes(app, {
     runHistoryStore,
-    orchestrate,
+    orchestrate: injectedOrchestrate,
     broadcast: actualBroadcast,
     admissionQueue,
   })

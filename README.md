@@ -307,10 +307,19 @@ Example `/readyz` response:
 ## Request Correlation and Logs
 
 - Every API request is assigned a correlation ID (`x-correlation-id`).
-- Incoming `x-correlation-id` / `x-request-id` headers are reused when provided.
-- Response always includes `x-correlation-id`.
-- Structured logs default to JSON (`LOG_FORMAT=json`) and include correlation data for request
-  lifecycle, orchestrator flow, and payment events.
+- Incoming `x-correlation-id` / `x-request-id` headers are reused when they match the safe
+  identifier contract (`/^[a-zA-Z0-9._:-]{1,128}$/`); values containing task prose, whitespace, or
+  credentials (`sk-ant-`, `Bearer`, Stellar secret keys) are rejected and replaced with a fresh
+  UUID.
+- Internal orchestrator calls to `/api/premium/*` propagate `x-correlation-id`,
+  `x-stellarmind-run-id`, `x-stellarmind-step-id`, and `x-stellarmind-attempt` headers so outer
+  requests, internal premium calls, retries, and persisted `run.events` can be joined
+  deterministically.
+- Responses echo `x-correlation-id` (and `x-stellarmind-run-id` / `x-stellarmind-step-id` /
+  `x-stellarmind-attempt` when present).
+- Structured logs default to JSON (`LOG_FORMAT=json`) and include `correlationId`, `runId`,
+  `stepId`, and `attempt` across request lifecycle, orchestrator flow, premium agent handlers, and
+  payment events.
 
 ## Audit Run History
 

@@ -97,6 +97,7 @@ export function registerOrchestrationRoutes(app, deps = {}) {
             task,
             budget,
             source,
+            correlationId: req.requestId || null,
             idempotencyKey,
             idempotencyFingerprint: fingerprint,
           })
@@ -114,11 +115,16 @@ export function registerOrchestrationRoutes(app, deps = {}) {
           task,
           budget,
           source,
+          correlationId: req.requestId || null,
         })
       }
 
       const runBroadcast = (event) => {
-        const eventWithRun = { ...event, runId: run.id }
+        const eventWithRun = {
+          ...event,
+          runId: run.id,
+          correlationId: event.correlationId || req.requestId || null,
+        }
         broadcast(eventWithRun)
         runHistoryStore.appendEvent(run.id, eventWithRun).catch((persistErr) => {
           logger.warn('run_history_append_failed', { runId: run.id, error: persistErr.message })
@@ -372,12 +378,17 @@ export function registerOrchestrationRoutes(app, deps = {}) {
         task,
         budget,
         source,
+        correlationId: req.requestId || null,
         idempotencyKey,
         idempotencyFingerprint: fingerprint,
       })
 
       const runBroadcast = (event) => {
-        const eventWithRun = { ...event, runId: run.id }
+        const eventWithRun = {
+          ...event,
+          runId: run.id,
+          correlationId: event.correlationId || req.requestId || null,
+        }
         broadcast(eventWithRun)
         runHistoryStore.appendEvent(run.id, eventWithRun).catch((persistErr) => {
           logger.warn('run_history_append_failed', { runId: run.id, error: persistErr.message })
@@ -391,6 +402,7 @@ export function registerOrchestrationRoutes(app, deps = {}) {
             async ({ signal }) => {
               return executePlan(planId, runBroadcast, {
                 correlationId: req.requestId,
+                runId: run.id,
                 signal,
               })
             },

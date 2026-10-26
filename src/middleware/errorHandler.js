@@ -1,21 +1,47 @@
-import { randomUUID } from 'node:crypto'
 import { logger } from '../logger.js'
+import {
+  ATTEMPT_HEADER,
+  CORRELATION_ID_HEADER,
+  RUN_ID_HEADER,
+  STEP_ID_HEADER,
+  extractCorrelationContext,
+  toCorrelationLogFields,
+} from '../correlation.js'
 
 /**
- * Attach a requestId to every incoming request so it flows through
- * to error responses and server logs.
+ * Attach sanitized correlation metadata (`requestId`, `runId`, `stepId`,
+ * `stepAttempt`, and `correlationContext`) to every incoming request so it
+ * flows through internal premium requests, error responses, and server logs
+ * without ever accepting raw task text or credentials (#182).
  */
 export function requestId(req, _res, next) {
-  req.requestId = req.header('x-correlation-id') || req.header('x-request-id') || randomUUID()
+  const correlation = extractCorrelationContext(req, { generateIfMissing: true })
+  req.requestId = correlation.correlationId
+  req.runId = correlation.runId
+  req.stepId = correlation.stepId
+  req.stepAttempt = correlation.attempt
+  req.correlationContext = correlation
   next()
 }
 
 export function requestLogger(req, res, next) {
   const startedAt = Date.now()
-  res.setHeader('x-correlation-id', req.requestId)
+  res.setHeader(CORRELATION_ID_HEADER, req.requestId)
+  if (req.runId) res.setHeader(RUN_ID_HEADER, req.runId)
+  if (req.stepId) res.setHeader(STEP_ID_HEADER, req.stepId)
+  if (req.stepAttempt !== null && req.stepAttempt !== undefined) {
+    res.setHeader(ATTEMPT_HEADER, String(req.stepAttempt))
+  }
+
+  const correlationFields = toCorrelationLogFields({
+    correlationId: req.requestId,
+    runId: req.runId,
+    stepId: req.stepId,
+    attempt: req.stepAttempt,
+  })
 
   logger.info('request_start', {
-    correlationId: req.requestId,
+    ...correlationFields,
     method: req.method,
     path: req.path,
     url: req.originalUrl,
@@ -23,7 +49,7 @@ export function requestLogger(req, res, next) {
 
   res.on('finish', () => {
     logger.info('request_complete', {
-      correlationId: req.requestId,
+      ...correlationFields,
       method: req.method,
       path: req.path,
       status: res.statusCode,
@@ -58,7 +84,12 @@ export function errorHandler(err, req, res, _next) {
 
   // Always log the full error server-side for diagnostics
   logger.error('request_error', {
-    correlationId: req.requestId,
+    ...toCorrelationLogFields({
+      correlationId: req.requestId,
+      runId: req.runId,
+      stepId: req.stepId,
+      attempt: req.stepAttempt,
+    }),
     method: req.method,
     url: req.originalUrl,
     status,

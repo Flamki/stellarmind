@@ -1,9 +1,20 @@
 import { config } from './config.js'
 
+let activeLogSink = null
+
+export function setLogSink(sinkFn) {
+  activeLogSink = typeof sinkFn === 'function' ? sinkFn : null
+}
+
+export function resetLogSink() {
+  activeLogSink = null
+}
+
 function redact(value) {
   if (value == null) return value
   if (typeof value !== 'string') return value
   if (value.startsWith('sk-ant-')) return `sk-ant-...${value.slice(-6)}`
+  if (/^S[A-Z2-7]{55}$/.test(value)) return `S...${value.slice(-4)}`
   return value
 }
 
@@ -34,6 +45,14 @@ function emit(level, message, fields = {}) {
     level,
     msg: message,
     ...normalizeFields(fields),
+  }
+
+  if (activeLogSink) {
+    try {
+      activeLogSink(payload)
+    } catch {
+      // Never let a test or telemetry sink break application logging
+    }
   }
 
   if (config.logFormat === 'pretty') {

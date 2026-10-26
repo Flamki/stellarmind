@@ -53,6 +53,11 @@ import {
   XLM_FALLBACK_POLICY,
 } from './settlement.js'
 import { normalizeContent } from './response-normalization.js'
+import {
+  buildCorrelationHeaders,
+  sanitizeAttemptNumber,
+  sanitizeCorrelationToken,
+} from '../correlation.js'
 
 // const anthropic = ... (imported from services.js)
 
@@ -171,6 +176,11 @@ async function parseResponseBody(response) {
 async function callAgentViaX402(agent, input, broadcastFn, context = {}) {
   const baseUrl = config.internalBaseUrl
   const endpointFn = PREMIUM_ENDPOINT_MAP[agent.id]
+  const correlationId = sanitizeCorrelationToken(context.correlationId) || null
+  const runId = sanitizeCorrelationToken(context.runId) || null
+  const logicalStepId = sanitizeCorrelationToken(context.stepId) || agent.id
+  let attempt = sanitizeAttemptNumber(context.attempt) || 1
+  const maxX402Attempts = Math.max(1, Number.parseInt(context.x402MaxAttempts ?? 1, 10) || 1)
   // The quote is the marketplace price for this call. It is reported
   // separately from the settlement, which may be in another asset (#130).
   const quote = buildQuote(agent, config.networkProfile)
@@ -198,139 +208,231 @@ async function callAgentViaX402(agent, input, broadcastFn, context = {}) {
   let x402FailureReason = null
 
   if (activeX402Fetch && endpointFn) {
-    try {
-      const url = `${baseUrl}${endpointFn(input)}`
-      logger.info('x402_request_start', {
-        correlationId: context.correlationId,
-        agentId: agent.id,
-        paymentMethod: 'x402',
-        endpoint: url,
+    const url = `${baseUrl}${endpointFn(input)}`
+    for (let x402Attempt = 1; x402Attempt <= maxX402Attempts; x402Attempt += 1) {
+      attempt = x402Attempt
+      const correlationHeaders = buildCorrelationHeaders({
+        correlationId,
+        runId,
+        stepId: logicalStepId,
+        attempt,
       })
 
-      const response = await activeX402Fetch(url)
-      const data = await parseResponseBody(response)
+      try {
+        logger.info('x402_request_start', {
+          correlationId,
+          runId,
+          stepId: logicalStepId,
+          attempt,
+          agentId: agent.id,
+          paymentMethod: 'x402',
+          endpoint: url,
+        })
 
-      if (response.ok) {
-        const settle = parseSettlementHeader(response)
-        const txHash = extractTxHash(settle)
-        const settlementFailed =
-          settle?.success === false || Boolean(settle?.error || settle?.errorReason)
-        if (settlementFailed) {
-          const reason = settle?.errorReason || settle?.error || 'x402 settlement failed'
-          // The settlement header is definitive evidence that nothing was
-          // charged, which is exactly what makes this a terminal failure.
-          paymentAttempt = failPaymentAttempt(paymentAttempt, 'x402_settlement_reported_failure')
-          x402FailureReason = reason
-          logger.warn('x402_settlement_reported_failure', {
-            correlationId: context.correlationId,
-            agentId: agent.id,
+        const response = await activeX402Fetch(url, {
+          headers: correlationHeaders,
+        })
+        const data = await parseResponseBody(response)
+
+        if (response.ok) {
+          const settle = parseSettlementHeader(response)
+          const txHash = extractTxHash(settle)
+          const settlementFailed =
+            settle?.success === false || Boolean(settle?.error || settle?.errorReason)
+          if (settlementFailed) {
+            const reason = settle?.errorReason || settle?.error || 'x402 settlement failed'
+            // The settlement header is definitive evidence that nothing was
+            // charged, which is exactly what makes this a terminal failure.
+            paymentAttempt = failPaymentAttempt(paymentAttempt, 'x402_settlement_reported_failure')
+            x402FailureReason = reason
+            logger.warn('x402_settlement_reported_failure', {
+              correlationId,
+              runId,
+              stepId: logicalStepId,
+              attempt,
+              agentId: agent.id,
+              paymentMethod: 'x402',
+              reason,
+            })
+
+            if (x402Attempt < maxX402Attempts) {
+              broadcastFn?.({
+                type: 'x402_retry',
+                correlationId,
+                runId,
+                stepId: logicalStepId,
+                attempt,
+                nextAttempt: x402Attempt + 1,
+                agent: agent.name,
+                agentId: agent.id,
+                attemptId: paymentAttempt.id,
+                paymentOutcome: paymentAttempt.outcome,
+                failureReason: paymentAttempt.failureReason,
+                reason,
+                fallback: false,
+                timestamp: new Date().toISOString(),
+              })
+              continue
+            }
+          } else {
+            const verification = txHash ? 'verified' : 'unverified'
+            // x402 settles the quoted USDC price in USDC.
+            settlement = buildSettlement(quote, {
+              method: 'x402',
+              asset: quote.asset,
+              issuer: quote.issuer,
+              network: quote.network,
+              amount: quote.amount,
+              txHash,
+              explorerUrl: buildExplorerUrl(txHash),
+            })
+            paymentAttempt = confirmPaymentAttempt(paymentAttempt, {
+              txHash,
+              explorerUrl: buildExplorerUrl(txHash),
+              proof: txHash ? { source: 'x402-settlement-header', txHash } : null,
+              settlement,
+            })
+            logger.info('x402_request_complete', {
+              correlationId,
+              runId,
+              stepId: logicalStepId,
+              attempt,
+              agentId: agent.id,
+              paymentMethod: 'x402',
+              txHash: txHash || null,
+            })
+            broadcastFn?.({
+              type: 'x402_payment',
+              correlationId,
+              runId,
+              stepId: logicalStepId,
+              attempt,
+              agent: agent.name,
+              agentId: agent.id,
+              flow: '402 -> sign -> settle -> 200',
+              protocol: 'x402',
+              amount: settlement.amount,
+              currency: settlement.asset,
+              asset: settlement.asset,
+              issuer: settlement.issuer,
+              network: settlement.network,
+              quotedAmount: quote.amount,
+              quotedAsset: quote.asset,
+              verification,
+              txHash: txHash || null,
+              explorerUrl: buildExplorerUrl(txHash),
+              timestamp: new Date().toISOString(),
+            })
+          }
+
+          return {
+            result: data.result || JSON.stringify(data),
+            correlationId,
+            runId,
+            stepId: logicalStepId,
+            attempt,
             paymentMethod: 'x402',
-            reason,
-          })
-        } else {
-          const verification = txHash ? 'verified' : 'unverified'
-          // x402 settles the quoted USDC price in USDC.
-          settlement = buildSettlement(quote, {
-            method: 'x402',
-            asset: quote.asset,
-            issuer: quote.issuer,
-            network: quote.network,
-            amount: quote.amount,
-            txHash,
-            explorerUrl: buildExplorerUrl(txHash),
-          })
-          paymentAttempt = confirmPaymentAttempt(paymentAttempt, {
-            txHash,
-            explorerUrl: buildExplorerUrl(txHash),
-            proof: txHash ? { source: 'x402-settlement-header', txHash } : null,
+            paymentSuccess: !settlementFailed,
+            paidVia: !settlementFailed ? 'x402' : 'none',
+            txHash: !settlementFailed ? txHash || null : null,
+            explorerUrl: !settlementFailed ? buildExplorerUrl(txHash) : null,
+            warning:
+              !settlementFailed && !txHash
+                ? 'x402 settlement completed without transaction hash header'
+                : undefined,
+            // The premium endpoint served this call remotely - we never touched
+            // the Anthropic client ourselves, so provider token usage is
+            // genuinely unknown here, not zero.
+            usage: unavailableUsage(agent.model || null, 'x402_remote_call'),
+            // Likewise, there's no raw Anthropic content-block response to
+            // normalize for a remote x402 call.
+            responseMeta: null,
+            // The settled attempt travels with the result so run history can
+            // persist it and the run summary can report it (#131).
+            paymentAttempt,
+            paymentReconciliationRequired: false,
+            quote,
             settlement,
-          })
-          broadcastFn?.({
-            type: 'x402_payment',
-            agent: agent.name,
-            agentId: agent.id,
-            flow: '402 -> sign -> settle -> 200',
-            protocol: 'x402',
-            amount: settlement.amount,
-            currency: settlement.asset,
-            asset: settlement.asset,
-            issuer: settlement.issuer,
-            network: settlement.network,
             quotedAmount: quote.amount,
             quotedAsset: quote.asset,
-            verification,
-            txHash: txHash || null,
-            explorerUrl: buildExplorerUrl(txHash),
+            quotedIssuer: quote.issuer,
+            quotedNetwork: quote.network,
+            quotedAmountExact: quote.amountExact,
+            settledAmount: settlement ? settlement.amount : null,
+            settledAsset: settlement ? settlement.asset : null,
+            settledIssuer: settlement ? settlement.issuer : null,
+            settledNetwork: settlement ? settlement.network : null,
+            settledAmountExact: settlement ? settlement.amountExact : null,
+          }
+        }
+
+        const responseExcerpt =
+          typeof data === 'string' ? data.substring(0, 120) : JSON.stringify(data).substring(0, 120)
+        const reason = `x402 endpoint returned ${response.status}: ${responseExcerpt}`
+        // A 4xx is a rejection, so nothing was settled. A 5xx does not
+        // establish whether the request reached settlement, so it stays
+        // unknown rather than authorising a second charge.
+        paymentAttempt =
+          response.status >= 500
+            ? markPaymentAttemptUnknown(paymentAttempt, 'http_5xx')
+            : failPaymentAttempt(paymentAttempt, 'http_4xx_rejected')
+        x402FailureReason = reason
+        logger.warn('x402_request_failed_status', {
+          correlationId,
+          runId,
+          stepId: logicalStepId,
+          attempt,
+          agentId: agent.id,
+          paymentMethod: 'x402',
+          reason,
+        })
+
+        if (response.status < 500 && x402Attempt < maxX402Attempts) {
+          logger.info('x402_retry_attempt', {
+            correlationId,
+            runId,
+            stepId: logicalStepId,
+            attempt,
+            nextAttempt: x402Attempt + 1,
+            agentId: agent.id,
+            reason,
+          })
+          broadcastFn?.({
+            type: 'x402_retry',
+            correlationId,
+            runId,
+            stepId: logicalStepId,
+            attempt,
+            nextAttempt: x402Attempt + 1,
+            agent: agent.name,
+            agentId: agent.id,
+            attemptId: paymentAttempt.id,
+            paymentOutcome: paymentAttempt.outcome,
+            failureReason: paymentAttempt.failureReason,
+            reason,
+            fallback: false,
             timestamp: new Date().toISOString(),
           })
+          continue
         }
-
-        return {
-          result: data.result || JSON.stringify(data),
+        break
+      } catch (err) {
+        const reason = summarizeError(err)
+        // No response came back. That says nothing about whether the request
+        // settled — this is precisely the case that must not pay again.
+        paymentAttempt = markPaymentAttemptUnknown(paymentAttempt, 'transport_error')
+        x402FailureReason = reason
+        logger.warn('x402_flow_failed', {
+          correlationId,
+          runId,
+          stepId: logicalStepId,
+          attempt,
+          agentId: agent.id,
           paymentMethod: 'x402',
-          paymentSuccess: !settlementFailed,
-          paidVia: !settlementFailed ? 'x402' : 'none',
-          txHash: !settlementFailed ? txHash || null : null,
-          explorerUrl: !settlementFailed ? buildExplorerUrl(txHash) : null,
-          warning:
-            !settlementFailed && !txHash
-              ? 'x402 settlement completed without transaction hash header'
-              : undefined,
-          // The premium endpoint served this call remotely - we never touched
-          // the Anthropic client ourselves, so provider token usage is
-          // genuinely unknown here, not zero.
-          usage: unavailableUsage(agent.model || null, 'x402_remote_call'),
-          // Likewise, there's no raw Anthropic content-block response to
-          // normalize for a remote x402 call.
-          responseMeta: null,
-          // The settled attempt travels with the result so run history can
-          // persist it and the run summary can report it (#131).
-          paymentAttempt,
-          paymentReconciliationRequired: false,
-          quote,
-          settlement,
-          quotedAmount: quote.amount,
-          quotedAsset: quote.asset,
-          quotedIssuer: quote.issuer,
-          quotedNetwork: quote.network,
-          quotedAmountExact: quote.amountExact,
-          settledAmount: settlement ? settlement.amount : null,
-          settledAsset: settlement ? settlement.asset : null,
-          settledIssuer: settlement ? settlement.issuer : null,
-          settledNetwork: settlement ? settlement.network : null,
-          settledAmountExact: settlement ? settlement.amountExact : null,
-        }
+          reason,
+        })
+        break
       }
-
-      const responseExcerpt =
-        typeof data === 'string' ? data.substring(0, 120) : JSON.stringify(data).substring(0, 120)
-      const reason = `x402 endpoint returned ${response.status}: ${responseExcerpt}`
-      // A 4xx is a rejection, so nothing was settled. A 5xx does not
-      // establish whether the request reached settlement, so it stays
-      // unknown rather than authorising a second charge.
-      paymentAttempt =
-        response.status >= 500
-          ? markPaymentAttemptUnknown(paymentAttempt, 'http_5xx')
-          : failPaymentAttempt(paymentAttempt, 'http_4xx_rejected')
-      x402FailureReason = reason
-      logger.warn('x402_request_failed_status', {
-        correlationId: context.correlationId,
-        agentId: agent.id,
-        paymentMethod: 'x402',
-        reason,
-      })
-    } catch (err) {
-      const reason = summarizeError(err)
-      // No response came back. That says nothing about whether the request
-      // settled — this is precisely the case that must not pay again.
-      paymentAttempt = markPaymentAttemptUnknown(paymentAttempt, 'transport_error')
-      x402FailureReason = reason
-      logger.warn('x402_flow_failed', {
-        correlationId: context.correlationId,
-        agentId: agent.id,
-        paymentMethod: 'x402',
-        reason,
-      })
     }
 
     // Reconcile before deciding anything: an unresolved outcome is not a
@@ -342,7 +444,10 @@ async function callAgentViaX402(agent, input, broadcastFn, context = {}) {
         probe: context.paymentProbe,
       })
       logger.info('x402_settlement_reconciled', {
-        correlationId: context.correlationId,
+        correlationId,
+        runId,
+        stepId: logicalStepId,
+        attempt,
         agentId: agent.id,
         attemptId: paymentAttempt.id,
         paymentOutcome: paymentAttempt.outcome,
@@ -353,8 +458,14 @@ async function callAgentViaX402(agent, input, broadcastFn, context = {}) {
     fallbackPermitted = canAttemptFallback(paymentAttempt)
 
     if (fallbackPermitted) {
+      const nextAttempt = attempt + 1
       broadcastFn?.({
         type: 'x402_retry',
+        correlationId,
+        runId,
+        stepId: logicalStepId,
+        attempt,
+        nextAttempt,
         agent: agent.name,
         agentId: agent.id,
         attemptId: paymentAttempt.id,
@@ -365,19 +476,28 @@ async function callAgentViaX402(agent, input, broadcastFn, context = {}) {
         timestamp: new Date().toISOString(),
       })
       logger.warn('x402_flow_failed_falling_back', {
-        correlationId: context.correlationId,
+        correlationId,
+        runId,
+        stepId: logicalStepId,
+        attempt,
+        nextAttempt,
         agentId: agent.id,
         paymentMethod: 'x402',
         attemptId: paymentAttempt.id,
         failureReason: paymentAttempt.failureReason,
         reason: x402FailureReason,
       })
+      attempt = nextAttempt
     } else {
       // The earlier attempt may already have settled. Surface it as an
       // unresolved payment instead of starting a second settlement that
       // would charge one logical call twice.
       broadcastFn?.({
         type: 'x402_settlement_unresolved',
+        correlationId,
+        runId,
+        stepId: logicalStepId,
+        attempt,
         agent: agent.name,
         agentId: agent.id,
         attemptId: paymentAttempt.id,
@@ -389,7 +509,10 @@ async function callAgentViaX402(agent, input, broadcastFn, context = {}) {
         timestamp: new Date().toISOString(),
       })
       logger.warn('x402_settlement_awaiting_reconciliation', {
-        correlationId: context.correlationId,
+        correlationId,
+        runId,
+        stepId: logicalStepId,
+        attempt,
         agentId: agent.id,
         paymentMethod: 'x402',
         attemptId: paymentAttempt.id,
@@ -409,11 +532,16 @@ async function callAgentViaX402(agent, input, broadcastFn, context = {}) {
   try {
     result = await serviceFn(input, {
       onRetryAttempt: (retry) => {
+        const retryAttempt = sanitizeAttemptNumber(retry?.attempt) || attempt
+        attempt = Math.max(attempt, retryAttempt + 1)
         broadcastFn?.({
           type: 'anthropic_retry',
+          correlationId,
+          runId,
+          stepId: logicalStepId,
           agent: agent.name,
           agentId: agent.id,
-          attempt: retry.attempt,
+          attempt: retryAttempt,
           maxRetries: retry.maxRetries,
           delayMs: retry.delayMs,
           status: retry.status,
@@ -459,7 +587,10 @@ async function callAgentViaX402(agent, input, broadcastFn, context = {}) {
       )
     } catch (err) {
       logger.error('xlm_fallback_payment_failed', {
-        correlationId: context.correlationId,
+        correlationId,
+        runId,
+        stepId: logicalStepId,
+        attempt,
         agentId: agent.id,
         paymentMethod: 'stellar-xlm-direct',
         error: err.message,
@@ -528,6 +659,10 @@ async function callAgentViaX402(agent, input, broadcastFn, context = {}) {
   }
   return {
     result,
+    correlationId,
+    runId,
+    stepId: logicalStepId,
+    attempt,
     paymentMethod: settled ? (paymentResult.success ? 'stellar-xlm' : 'x402') : 'none',
     paymentSuccess: settled,
     paidVia: settled ? (paymentResult.success ? 'stellar-xlm-direct' : 'x402') : 'none',
@@ -617,6 +752,8 @@ export async function orchestrate(task, budget, broadcastFn, context = {}) {
     throw abortErr
   }
 
+  const correlationId = sanitizeCorrelationToken(context.correlationId) || null
+  const runId = sanitizeCorrelationToken(context.runId) || null
   const startTime = Date.now()
   const results = []
   const payments = []
@@ -633,6 +770,8 @@ export async function orchestrate(task, budget, broadcastFn, context = {}) {
 
   broadcastFn?.({
     type: 'orchestrator_start',
+    correlationId,
+    runId,
     task,
     budget,
     x402Configured: !!x402Fetch,
@@ -780,12 +919,19 @@ Respond ONLY with valid JSON (no markdown, no code fences):
 
   broadcastFn?.({
     type: 'orchestrator_plan',
+    correlationId,
+    runId,
     plan: plan.plan,
     subtaskCount: plan.subtasks?.length || 0,
     timestamp: new Date().toISOString(),
   })
 
-  for (const subtask of plan.subtasks || []) {
+  const subtasksList = plan.subtasks || []
+  for (let stepIndex = 0; stepIndex < subtasksList.length; stepIndex += 1) {
+    const subtask = subtasksList[stepIndex]
+    const stepId = sanitizeCorrelationToken(subtask.stepId) || `step-${stepIndex}`
+    subtask.stepId = stepId
+
     if (context.signal?.aborted) {
       const abortErr = new Error('Orchestration aborted')
       abortErr.code = 'REQUEST_ABORTED'
@@ -794,7 +940,7 @@ Respond ONLY with valid JSON (no markdown, no code fences):
 
     const agent = getAgentById(subtask.agentId)
     if (!agent) {
-      results.push({ agentId: subtask.agentId, stepId: subtask.stepId, error: 'Agent not found' })
+      results.push({ agentId: subtask.agentId, stepId, error: 'Agent not found' })
       continue
     }
 
@@ -803,9 +949,15 @@ Respond ONLY with valid JSON (no markdown, no code fences):
     if (exceedsBudget(totalSpent, cost, exactBudget)) {
       broadcastFn?.({
         ...buildBudgetLimitEvent(agent, exactBudget, totalSpent),
+        correlationId,
+        runId,
+        stepId,
         timestamp: new Date().toISOString(),
       })
-      results.push(buildSkipResult(agent, exactBudget, totalSpent))
+      results.push({
+        ...buildSkipResult(agent, exactBudget, totalSpent),
+        stepId,
+      })
       continue
     }
 
@@ -821,6 +973,10 @@ Respond ONLY with valid JSON (no markdown, no code fences):
 
     broadcastFn?.({
       type: 'agent_call',
+      correlationId,
+      runId,
+      stepId,
+      attempt: 1,
       agent: agent.name,
       agentId: agent.id,
       input: activeInput.substring(0, 100) + (activeInput.length > 100 ? '...' : ''),
@@ -834,7 +990,13 @@ Respond ONLY with valid JSON (no markdown, no code fences):
       timestamp: new Date().toISOString(),
     })
 
-    const agentResponse = await callAgentViaX402(agent, activeInput, broadcastFn, context)
+    const agentResponse = await callAgentViaX402(agent, activeInput, broadcastFn, {
+      ...context,
+      correlationId,
+      runId,
+      stepId,
+    })
+    const stepAttempt = agentResponse?.attempt || 1
 
     if (agentResponse?.paymentAttempt) {
       paymentAttempts = upsertPaymentAttempt(paymentAttempts, agentResponse.paymentAttempt)
@@ -843,6 +1005,10 @@ Respond ONLY with valid JSON (no markdown, no code fences):
     if (agentResponse?.paymentReconciliationRequired) {
       broadcastFn?.({
         type: 'payment_reconciliation_required',
+        correlationId,
+        runId,
+        stepId,
+        attempt: stepAttempt,
         agent: agent.name,
         agentId: agent.id,
         attemptId: agentResponse.paymentAttempt.id,
@@ -879,6 +1045,10 @@ Respond ONLY with valid JSON (no markdown, no code fences):
     if (agentResponse.responseMeta?.truncated || agentResponse.responseMeta?.empty) {
       broadcastFn?.({
         type: 'agent_response_incomplete',
+        correlationId,
+        runId,
+        stepId,
+        attempt: stepAttempt,
         agent: agent.name,
         agentId: agent.id,
         truncated: !!agentResponse.responseMeta.truncated,
@@ -890,7 +1060,10 @@ Respond ONLY with valid JSON (no markdown, no code fences):
 
     const agentResult = {
       agentId: agent.id,
-      stepId: subtask.stepId,
+      stepId,
+      attempt: stepAttempt,
+      correlationId,
+      runId,
       agentName: agent.name,
       model: agent.model,
       input: subtask.input,
@@ -930,6 +1103,10 @@ Respond ONLY with valid JSON (no markdown, no code fences):
 
     broadcastFn?.({
       type: 'agent_response',
+      correlationId,
+      runId,
+      stepId,
+      attempt: stepAttempt,
       agent: agent.name,
       agentId: agent.id,
       resultPreview:
@@ -954,13 +1131,20 @@ Respond ONLY with valid JSON (no markdown, no code fences):
 
     if (agentResponse.paymentSuccess) {
       logger.info('payment_settled', {
-        correlationId: context.correlationId,
+        correlationId,
+        runId,
+        stepId,
+        attempt: stepAttempt,
         agentId: agent.id,
         paymentMethod: agentResponse.paidVia,
         txHash: agentResponse.txHash || null,
       })
       broadcastFn?.({
         type: 'payment',
+        correlationId,
+        runId,
+        stepId,
+        attempt: stepAttempt,
         from: 'Orchestrator',
         to: agent.name,
         // The settled amount and asset, never the quote standing in for them.
@@ -1000,6 +1184,8 @@ Respond ONLY with valid JSON (no markdown, no code fences):
 
   broadcastFn?.({
     type: 'orchestrator_complete',
+    correlationId,
+    runId,
     // `totalSpent` is the quoted/reserved amount the budget guardrail tracked.
     // Settled totals are reported separately, per asset (#130).
     totalSpent: quotedTotal,
@@ -1026,6 +1212,8 @@ Respond ONLY with valid JSON (no markdown, no code fences):
   })
 
   return {
+    correlationId,
+    runId,
     task,
     plan: plan.plan,
     budget: typeof budget === 'number' ? budget : exactBudget.toNumber(),

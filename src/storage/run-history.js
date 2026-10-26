@@ -34,6 +34,10 @@ function toAuditEvent(event) {
   return {
     type: event.type || 'unknown',
     timestamp: event.timestamp || new Date().toISOString(),
+    correlationId: event.correlationId || null,
+    runId: event.runId || null,
+    stepId: event.stepId || null,
+    attempt: event.attempt ?? null,
     agentId: event.agentId || null,
     agent: event.agent || null,
     cost: event.cost || null,
@@ -125,10 +129,11 @@ export class InMemoryRunHistoryStore {
 
   async init() {}
 
-  async createRun({ task, budget, source, idempotencyKey, idempotencyFingerprint }) {
+  async createRun({ task, budget, source, correlationId, idempotencyKey, idempotencyFingerprint }) {
     const now = new Date().toISOString()
     const run = {
       id: createRunId(),
+      correlationId: correlationId || null,
       task,
       budget,
       source: source || 'api',
@@ -200,6 +205,7 @@ export class InMemoryRunHistoryStore {
     if (!run || !attempt) return null
     run.paymentAttempts = upsertPaymentAttempt(run.paymentAttempts, attempt)
     run.pendingPaymentAttempts = selectPendingAttempts(run.paymentAttempts)
+    run.paymentAttemptSummary = summarizePaymentAttempts(run.paymentAttempts)
     run.updatedAt = new Date().toISOString()
     return attempt
   }
