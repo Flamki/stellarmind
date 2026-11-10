@@ -20,6 +20,257 @@ const LEGACY_VERSION = 0 // Unversioned files
 // to look like it is still progressing forever.
 export const INTERRUPTED_REASON_SERVER_RESTART = 'server_restart'
 
+export const VALID_RUN_STATUSES = ['running', 'completed', 'failed', 'interrupted', 'partial']
+
+function createFilterError(field, reason, code = 'INVALID_FILTER') {
+  const err = new Error(`Invalid run history query parameter '${field}': ${reason}`)
+  err.status = 400
+  err.code = code
+  err.details = [{ field, reason }]
+  return err
+}
+
+/**
+ * Deterministic descending comparator by `(createdAt DESC, id DESC)`.
+ * Breaks timestamp ties using `id` so pagination order is total and stable.
+ */
+export function compareRunsDescending(a, b) {
+  const aMs = Date.parse(a?.createdAt || '')
+  const bMs = Date.parse(b?.createdAt || '')
+  const safeAMs = Number.isFinite(aMs) ? aMs : 0
+  const safeBMs = Number.isFinite(bMs) ? bMs : 0
+  if (safeBMs !== safeAMs) {
+    return safeBMs - safeAMs
+  }
+  const aId = String(a?.id || '')
+  const bId = String(b?.id || '')
+  if (bId === aId) return 0
+  return bId > aId ? 1 : -1
+}
+
+/**
+ * Encode a run's `(createdAt, id)` anchor into an opaque base64url cursor.
+ * @param {{ createdAt: string, id: string }} run
+ * @returns {string}
+ */
+export function encodeRunCursor(run) {
+  if (!run || typeof run.createdAt !== 'string' || typeof run.id !== 'string' || !run.id) {
+    throw createFilterError(
+      'cursor',
+      'Cannot encode cursor from incomplete run anchor',
+      'INVALID_CURSOR'
+    )
+  }
+  const payload = JSON.stringify({
+    v: 1,
+    createdAt: run.createdAt,
+    id: run.id,
+  })
+  return Buffer.from(payload, 'utf8').toString('base64url')
+}
+
+/**
+ * Decode and validate an opaque base64url pagination cursor.
+ * @param {string} cursor
+ * @returns {{ v: 1, createdAt: string, createdAtMs: number, id: string }}
+ */
+export function decodeRunCursor(cursor) {
+  if (typeof cursor !== 'string' || cursor.trim().length === 0) {
+    throw createFilterError('cursor', 'Cursor must be a non-empty string', 'INVALID_CURSOR')
+  }
+  const trimmed = cursor.trim()
+  if (!/^[A-Za-z0-9_-]+$/.test(trimmed)) {
+    throw createFilterError(
+      'cursor',
+      'Cursor contains invalid base64url characters',
+      'INVALID_CURSOR'
+    )
+  }
+
+  let parsed
+  try {
+    const json = Buffer.from(trimmed, 'base64url').toString('utf8')
+    parsed = JSON.parse(json)
+  } catch {
+    throw createFilterError('cursor', 'Malformed cursor token', 'INVALID_CURSOR')
+  }
+
+  if (
+    !parsed ||
+    typeof parsed !== 'object' ||
+    parsed.v !== 1 ||
+    typeof parsed.id !== 'string' ||
+    parsed.id.trim().length === 0 ||
+    typeof parsed.createdAt !== 'string'
+  ) {
+    throw createFilterError(
+      'cursor',
+      'Cursor payload is missing required anchor fields',
+      'INVALID_CURSOR'
+    )
+  }
+
+  const createdAtMs = Date.parse(parsed.createdAt)
+  if (!Number.isFinite(createdAtMs)) {
+    throw createFilterError('cursor', 'Cursor contains an invalid timestamp', 'INVALID_CURSOR')
+  }
+
+  return {
+    v: 1,
+    createdAt: parsed.createdAt,
+    createdAtMs,
+    id: parsed.id,
+  }
+}
+
+/**
+ * Validate and normalize listRuns query parameters (`limit`, `cursor`, `status`,
+ * `createdAfter`, `createdBefore`, `includeEvents`).
+ */
+export function parseRunListOptions(options = {}, maxLimit = 200) {
+  let limit = 20
+  if (options.limit !== undefined && options.limit !== null && options.limit !== '') {
+    const rawLimit = String(options.limit).trim()
+    if (!/^-?\d+$/.test(rawLimit)) {
+      throw createFilterError('limit', 'limit must be an integer between 1 and ' + maxLimit)
+    }
+    const parsedLimit = Number.parseInt(rawLimit, 10)
+    if (!Number.isInteger(parsedLimit) || parsedLimit < 1 || parsedLimit > maxLimit) {
+      throw createFilterError('limit', `limit must be between 1 and ${maxLimit}`)
+    }
+    limit = parsedLimit
+  }
+
+  let decodedCursor = null
+  if (options.cursor !== undefined && options.cursor !== null && options.cursor !== '') {
+    decodedCursor = decodeRunCursor(options.cursor)
+  }
+
+  let statuses = null
+  if (options.status !== undefined && options.status !== null && options.status !== '') {
+    const rawStatuses = Array.isArray(options.status)
+      ? options.status
+      : String(options.status)
+          .split(',')
+          .map((s) => s.trim())
+          .filter(Boolean)
+
+    if (rawStatuses.length === 0) {
+      throw createFilterError('status', `status must be one of: ${VALID_RUN_STATUSES.join(', ')}`)
+    }
+    for (const st of rawStatuses) {
+      if (!VALID_RUN_STATUSES.includes(st)) {
+        throw createFilterError(
+          'status',
+          `Unknown status '${st}'. Allowed values: ${VALID_RUN_STATUSES.join(', ')}`
+        )
+      }
+    }
+    statuses = Array.from(new Set(rawStatuses))
+  }
+
+  const rawCreatedAfter = options.createdAfter ?? options.from ?? options.since
+  let createdAfter = null
+  let createdAfterMs = null
+  if (rawCreatedAfter !== undefined && rawCreatedAfter !== null && rawCreatedAfter !== '') {
+    if (typeof rawCreatedAfter !== 'string') {
+      throw createFilterError('createdAfter', 'createdAfter must be an ISO-8601 date string')
+    }
+    createdAfterMs = Date.parse(rawCreatedAfter)
+    if (!Number.isFinite(createdAfterMs)) {
+      throw createFilterError('createdAfter', `Invalid ISO-8601 date '${rawCreatedAfter}'`)
+    }
+    createdAfter = new Date(createdAfterMs).toISOString()
+  }
+
+  const rawCreatedBefore = options.createdBefore ?? options.to ?? options.until
+  let createdBefore = null
+  let createdBeforeMs = null
+  if (rawCreatedBefore !== undefined && rawCreatedBefore !== null && rawCreatedBefore !== '') {
+    if (typeof rawCreatedBefore !== 'string') {
+      throw createFilterError('createdBefore', 'createdBefore must be an ISO-8601 date string')
+    }
+    createdBeforeMs = Date.parse(rawCreatedBefore)
+    if (!Number.isFinite(createdBeforeMs)) {
+      throw createFilterError('createdBefore', `Invalid ISO-8601 date '${rawCreatedBefore}'`)
+    }
+    createdBefore = new Date(createdBeforeMs).toISOString()
+  }
+
+  if (createdAfterMs !== null && createdBeforeMs !== null && createdAfterMs > createdBeforeMs) {
+    throw createFilterError(
+      'createdAfter',
+      'createdAfter must be earlier than or equal to createdBefore'
+    )
+  }
+
+  const includeEvents =
+    options.includeEvents === true || String(options.includeEvents || '').toLowerCase() === 'true'
+
+  return {
+    limit,
+    decodedCursor,
+    statuses,
+    createdAfter,
+    createdAfterMs,
+    createdBefore,
+    createdBeforeMs,
+    includeEvents,
+  }
+}
+
+/**
+ * Convert a full run record into a lightweight summary suitable for list responses.
+ * Full `events`, `results`, `output`, and `result` payloads are omitted unless
+ * `includeEvents` is true, while preserving summary metrics and counts.
+ */
+export function toRunListSummary(run, { includeEvents = false } = {}) {
+  const normalized = normalizeRunRecord({ ...run, runId: run.id })
+  const eventCount = Array.isArray(normalized.events) ? normalized.events.length : 0
+  const stepCount = Array.isArray(normalized.results) ? normalized.results.length : 0
+  const txCount = Array.isArray(normalized.txProofs)
+    ? normalized.txProofs.length
+    : (normalized.summary?.txCount ?? 0)
+
+  if (includeEvents) {
+    return {
+      ...normalized,
+      eventCount,
+      stepCount,
+      txCount,
+    }
+  }
+
+  const summaryRecord = {
+    id: normalized.id,
+    runId: normalized.id,
+    task: normalized.task,
+    budget: normalized.budget,
+    source: normalized.source,
+    status: normalized.status,
+    createdAt: normalized.createdAt,
+    updatedAt: normalized.updatedAt,
+    completedAt: normalized.completedAt || null,
+    interruptedAt: normalized.interruptedAt || null,
+    interruptedReason: normalized.interruptedReason || null,
+    summary: normalized.summary,
+    plan: normalized.plan,
+    error: normalized.error,
+    outputAvailable: normalized.outputAvailable,
+    eventCount,
+    stepCount,
+    txCount,
+    txProofs: normalized.txProofs,
+    usageSummary: normalized.usage?.summary || null,
+    paymentAttemptSummary: normalized.paymentAttemptSummary || null,
+    pendingPaymentCount: Array.isArray(normalized.pendingPaymentAttempts)
+      ? normalized.pendingPaymentAttempts.length
+      : 0,
+  }
+
+  return summaryRecord
+}
+
 function createRunId() {
   return `run_${Date.now()}_${crypto.randomBytes(4).toString('hex')}`
 }
@@ -383,9 +634,87 @@ export class InMemoryRunHistoryStore {
   }
 
   async listRecent(limit = 20) {
-    return this.runs
+    return [...this.runs]
+      .sort(compareRunsDescending)
       .slice(0, normalizeLimit(limit, 20, this.maxRuns))
       .map((run) => normalizeRunRecord({ ...run, runId: run.id }))
+  }
+
+  /**
+   * Cursor-paginated, filterable run listing with deterministic `(createdAt DESC, id DESC)`
+   * ordering and lightweight summary projection (Issue #141).
+   *
+   * @param {Object} [options]
+   * @returns {Promise<{
+   *   runs: Array<Object>,
+   *   count: number,
+   *   totalMatching: number,
+   *   nextCursor: string | null,
+   *   hasMore: boolean,
+   *   filters: Object
+   * }>}
+   */
+  async listRuns(options = {}) {
+    const parsed = parseRunListOptions(options, this.maxRuns)
+
+    const matching = this.runs
+      .filter((run) => {
+        if (parsed.statuses && !parsed.statuses.includes(run.status)) {
+          return false
+        }
+        const createdMs = Date.parse(run.createdAt || '')
+        if (parsed.createdAfterMs !== null) {
+          if (!Number.isFinite(createdMs) || createdMs < parsed.createdAfterMs) {
+            return false
+          }
+        }
+        if (parsed.createdBeforeMs !== null) {
+          if (!Number.isFinite(createdMs) || createdMs > parsed.createdBeforeMs) {
+            return false
+          }
+        }
+        return true
+      })
+      .sort(compareRunsDescending)
+
+    const totalMatching = matching.length
+
+    const afterCursor = parsed.decodedCursor
+      ? matching.filter(
+          (run) =>
+            compareRunsDescending(
+              { createdAt: parsed.decodedCursor.createdAt, id: parsed.decodedCursor.id },
+              run
+            ) < 0
+        )
+      : matching
+
+    const pageSlice = afterCursor.slice(0, parsed.limit)
+    const hasMore = afterCursor.length > parsed.limit
+    const lastEntry = pageSlice[pageSlice.length - 1]
+    const nextCursor = hasMore && lastEntry ? encodeRunCursor(lastEntry) : null
+
+    const runs = pageSlice.map((run) =>
+      toRunListSummary(run, { includeEvents: parsed.includeEvents })
+    )
+
+    return {
+      runs,
+      count: runs.length,
+      totalMatching,
+      nextCursor,
+      hasMore,
+      filters: {
+        limit: parsed.limit,
+        status: parsed.statuses
+          ? parsed.statuses.length === 1
+            ? parsed.statuses[0]
+            : parsed.statuses
+          : null,
+        createdAfter: parsed.createdAfter,
+        createdBefore: parsed.createdBefore,
+      },
+    }
   }
 
   async flush() {

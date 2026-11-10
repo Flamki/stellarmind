@@ -259,7 +259,7 @@ paths:
 
   /runs:
     get:
-      summary: List recent runs
+      summary: List recent runs with cursor pagination and filters
       operationId: listRuns
       tags: [Orchestration]
       parameters:
@@ -268,10 +268,43 @@ paths:
           required: false
           schema:
             type: integer
+            minimum: 1
+            maximum: 200
             default: 20
+          description: Page size (1-200)
+        - name: cursor
+          in: query
+          required: false
+          schema:
+            type: string
+          description:
+            Opaque base64url pagination cursor returned as nextCursor from a previous page
+        - name: status
+          in: query
+          required: false
+          schema:
+            type: string
+          description:
+            Filter by run status (e.g. running, completed, failed, interrupted, partial;
+            comma-separated supported)
+        - name: createdAfter
+          in: query
+          required: false
+          schema:
+            type: string
+            format: date-time
+          description: Include only runs created at or after this ISO-8601 timestamp
+        - name: createdBefore
+          in: query
+          required: false
+          schema:
+            type: string
+            format: date-time
+          description: Include only runs created at or before this ISO-8601 timestamp
       responses:
         '200':
-          description: Recent runs
+          description:
+            Paginated run summaries ordered deterministically by (createdAt DESC, id DESC)
           content:
             application/json:
               schema:
@@ -279,10 +312,21 @@ paths:
                 properties:
                   count:
                     type: integer
+                  totalMatching:
+                    type: integer
+                  nextCursor:
+                    type: string
+                    nullable: true
+                  hasMore:
+                    type: boolean
+                  filters:
+                    type: object
                   runs:
                     type: array
                     items:
                       $ref: '#/components/schemas/RunDetail'
+        '400':
+          description: Invalid cursor or filter value (INVALID_CURSOR or INVALID_FILTER)
 
   /budget:
     get:

@@ -536,12 +536,36 @@ export function registerOrchestrationRoutes(app, deps = {}) {
 
   app.get('/api/runs', async (req, res, next) => {
     try {
+      if (typeof runHistoryStore.listRuns === 'function') {
+        const result = await runHistoryStore.listRuns({
+          limit: req.query.limit,
+          cursor: req.query.cursor,
+          status: req.query.status,
+          createdAfter: req.query.createdAfter ?? req.query.from ?? req.query.since,
+          createdBefore: req.query.createdBefore ?? req.query.to ?? req.query.until,
+          includeEvents: req.query.includeEvents,
+        })
+        return res.json({
+          storage: config.runHistoryStorage,
+          file: config.runHistoryStorage === 'file' ? config.runHistoryFile : null,
+          count: result.count,
+          totalMatching: result.totalMatching,
+          nextCursor: result.nextCursor,
+          hasMore: result.hasMore,
+          filters: result.filters,
+          runs: result.runs,
+        })
+      }
+
       const limit = req.query.limit || 20
       const runs = await runHistoryStore.listRecent(limit)
       res.json({
         storage: config.runHistoryStorage,
         file: config.runHistoryStorage === 'file' ? config.runHistoryFile : null,
         count: runs.length,
+        totalMatching: runs.length,
+        nextCursor: null,
+        hasMore: false,
         runs,
       })
     } catch (err) {
