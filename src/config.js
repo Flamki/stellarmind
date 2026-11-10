@@ -97,4 +97,9 @@ export const config = {
   // Per-transaction operation lookups in getTransactions
   horizonOpsMaxConcurrency: Math.max(1, toNumberOr(process.env.HORIZON_OPS_MAX_CONCURRENCY, 4)),
   horizonOpsCacheSize: Math.max(0, toNumberOr(process.env.HORIZON_OPS_CACHE_SIZE, 500)),
+
+  // Bounded cache for x402 settlement wallet readiness checks (#157)
+  walletReadinessTtlMs: Math.max(0, toNumberOr(process.env.WALLET_READINESS_TTL_MS, 30000)),
+  walletReadinessCacheSize: Math.max(1, toNumberOr(process.env.WALLET_READINESS_CACHE_SIZE, 32)),
+  settlementAsset: networkProfile.usdc,
 }

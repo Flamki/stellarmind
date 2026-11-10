@@ -9,7 +9,14 @@ import {
   runCode,
   createAnthropicMessage,
 } from './services.js'
-import { getBalance, sendPayment } from '../stellar/wallet.js'
+import {
+  sendPayment,
+  checkWalletReadiness,
+  refreshWalletReadiness,
+  clearWalletReadinessCache,
+  matchesSettlementAsset,
+  findSettlementBalance,
+} from '../stellar/wallet.js'
 import { logger } from '../logger.js'
 
 import { x402Client, x402HTTPClient, wrapFetchWithPayment } from '@x402/fetch'
@@ -76,6 +83,7 @@ let x402Fetch = null
 let x402InitError = null
 let x402WalletReady = null
 let x402WalletHint = null
+let x402WalletReadiness = null
 
 if (config.orchestratorSecret) {
   try {
@@ -100,44 +108,67 @@ if (config.orchestratorSecret) {
   logger.warn('x402_client_disabled', { reason: x402InitError })
 }
 
-async function checkX402WalletReadiness() {
-  if (!config.orchestratorAddress) {
-    x402WalletReady = false
-    x402WalletHint = 'ORCHESTRATOR_STELLAR_ADDRESS is not configured'
-    logger.warn('x402_wallet_not_ready', { reason: x402WalletHint })
-    return
-  }
-
+export async function checkX402WalletReadiness(options = {}) {
   try {
-    const balances = await getBalance(config.orchestratorAddress)
-    const usdcBalance = balances.find((balance) => balance.asset === 'USDC')
-    const usdcAmount = Number.parseFloat(usdcBalance?.balance || '0')
+    const snapshot = await checkWalletReadiness({
+      address: options.address !== undefined ? options.address : config.orchestratorAddress,
+      networkProfile: options.networkProfile || config.networkProfile,
+      asset: options.asset || options.settlementAsset,
+      getBalance: options.getBalance,
+      ttlMs: options.ttlMs,
+      cacheSize: options.cacheSize,
+      now: options.now,
+      refresh: Boolean(options.refresh || options.forceRefresh),
+    })
 
-    if (!usdcBalance) {
-      x402WalletReady = false
-      x402WalletHint = 'No USDC trustline on orchestrator wallet. Run: npm run setup:usdc'
-      logger.warn('x402_wallet_not_ready', { reason: x402WalletHint })
-      return
+    x402WalletReady = snapshot.ready
+    x402WalletHint = snapshot.reason
+    x402WalletReadiness = snapshot
+
+    if (snapshot.ready) {
+      logger.info('x402_wallet_ready', {
+        address: snapshot.address,
+        asset: snapshot.asset.code,
+        issuer: snapshot.asset.issuer,
+        contractId: snapshot.asset.contractId,
+        usdcBalance: snapshot.balance,
+        checkedAt: snapshot.checkedAt,
+        cached: snapshot.cached,
+      })
+    } else {
+      logger.warn('x402_wallet_not_ready', {
+        address: snapshot.address,
+        reasonCode: snapshot.reasonCode,
+        reason: snapshot.reason,
+        checkedAt: snapshot.checkedAt,
+        cached: snapshot.cached,
+        upstreamError: snapshot.upstreamError,
+      })
     }
 
-    if (!Number.isFinite(usdcAmount) || usdcAmount <= 0) {
-      x402WalletReady = false
-      const faucet = config.networkProfile.funding.faucetUrl
-      x402WalletHint = faucet
-        ? `USDC balance is 0. Fund ${config.networkProfile.label} USDC via ${faucet}`
-        : 'USDC balance is 0. Fund the orchestrator wallet with USDC to enable x402 payments.'
-      logger.warn('x402_wallet_not_ready', { reason: x402WalletHint })
-      return
-    }
-
-    x402WalletReady = true
-    x402WalletHint = null
-    logger.info('x402_wallet_ready', { usdcBalance: usdcBalance.balance })
+    return snapshot
   } catch (err) {
     x402WalletReady = false
     x402WalletHint = `Unable to verify x402 wallet readiness: ${summarizeError(err)}`
     logger.warn('x402_wallet_not_ready', { reason: x402WalletHint })
+    return null
   }
+}
+
+export async function refreshX402WalletReadiness(options = {}) {
+  return checkX402WalletReadiness({ ...options, refresh: true })
+}
+
+export function getX402WalletReadiness() {
+  return x402WalletReadiness
+}
+
+export {
+  checkWalletReadiness,
+  refreshWalletReadiness,
+  clearWalletReadinessCache,
+  matchesSettlementAsset,
+  findSettlementBalance,
 }
 
 if (x402Fetch) {
@@ -631,6 +662,22 @@ export async function orchestrate(task, budget, broadcastFn, context = {}) {
   let unpaidCount = 0
   let accumulatedContext = ''
 
+  const shouldCheckReadiness =
+    Boolean(context.refreshWalletReadiness) ||
+    Boolean(context.walletReadinessOptions) ||
+    typeof context.getBalance === 'function' ||
+    (Boolean(x402Fetch) && context.x402Fetch === undefined)
+
+  if (shouldCheckReadiness) {
+    await checkX402WalletReadiness({
+      ...(context.walletReadinessOptions || {}),
+      ...(typeof context.getBalance === 'function' ? { getBalance: context.getBalance } : {}),
+      refresh: Boolean(context.refreshWalletReadiness || context.walletReadinessOptions?.refresh),
+    })
+  } else if (!x402WalletReadiness && !config.orchestratorAddress) {
+    await checkX402WalletReadiness()
+  }
+
   broadcastFn?.({
     type: 'orchestrator_start',
     task,
@@ -639,6 +686,7 @@ export async function orchestrate(task, budget, broadcastFn, context = {}) {
     x402InitError,
     x402WalletReady,
     x402WalletHint,
+    x402WalletReadiness,
     paymentFlow: x402Fetch ? 'x402-http402' : 'stellar-xlm-fallback',
     timestamp: new Date().toISOString(),
   })
@@ -1019,6 +1067,7 @@ Respond ONLY with valid JSON (no markdown, no code fences):
     unpaidCount,
     x402WalletReady,
     x402WalletHint,
+    x402WalletReadiness,
     usageSummary,
     paymentAttemptSummary,
     pendingPaymentCount,
@@ -1053,6 +1102,7 @@ Respond ONLY with valid JSON (no markdown, no code fences):
     x402Configured: !!x402Fetch,
     x402WalletReady,
     x402WalletHint,
+    x402WalletReadiness,
     results,
     payments: successfulPayments,
     txCount: successfulTxs.length,
@@ -1083,11 +1133,30 @@ export async function previewOrchestration(task, budget, broadcastFn, context = 
   const exactBudget = AssetAmount.from(budget, 'USDC')
   let totalQuote = AssetAmount.zero('USDC')
 
+  const shouldCheckReadiness =
+    Boolean(context.refreshWalletReadiness) ||
+    Boolean(context.walletReadinessOptions) ||
+    typeof context.getBalance === 'function' ||
+    (Boolean(x402Fetch) && context.x402Fetch === undefined)
+
+  if (shouldCheckReadiness) {
+    await checkX402WalletReadiness({
+      ...(context.walletReadinessOptions || {}),
+      ...(typeof context.getBalance === 'function' ? { getBalance: context.getBalance } : {}),
+      refresh: Boolean(context.refreshWalletReadiness || context.walletReadinessOptions?.refresh),
+    })
+  } else if (!x402WalletReadiness && !config.orchestratorAddress) {
+    await checkX402WalletReadiness()
+  }
+
   broadcastFn?.({
     type: 'orchestrator_preview_start',
     task,
     budget,
     x402Configured: !!x402Fetch,
+    x402WalletReady,
+    x402WalletHint,
+    x402WalletReadiness,
     timestamp: new Date().toISOString(),
   })
 
@@ -1280,6 +1349,7 @@ Respond ONLY with valid JSON (no markdown, no code fences):
     x402Configured: !!x402Fetch,
     x402WalletReady,
     x402WalletHint,
+    x402WalletReadiness,
   }
 }
 

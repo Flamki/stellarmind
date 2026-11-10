@@ -387,6 +387,7 @@ Run the wallet availability tests:
 
 ```bash
 node tests/wallet-availability.test.js
+node tests/wallet-readiness-refresh.test.js
 ```
 
 Tests validate:
@@ -397,6 +398,11 @@ Tests validate:
 - Partial availability is correctly reported
 - Error types map to appropriate HTTP status codes
 - Correlation IDs are included in all responses
+- Settlement wallet readiness matches the configured network profile's `USDC` issuer or contract
+  identity (rejecting same-code tokens from other issuers), refreshes after funding or cache
+  expiration without a restart, deduplicates concurrent in-flight checks, and separates upstream
+  Horizon errors from confirmed zero balances (`WALLET_READINESS_TTL_MS`,
+  `WALLET_READINESS_CACHE_SIZE`)
 
 ## See Also
 
