@@ -95,10 +95,12 @@ describe('SSE Heartbeat & Stale-Client Cleanup', () => {
       tracker.addClient(badRes)
 
       safeBroadcast(clients, tracker, { type: 'test' })
+      safeBroadcast(clients, tracker, { type: 'test' })
+      safeBroadcast(clients, tracker, { type: 'test' })
 
       assert.strictEqual(clients.length, 1)
       assert.strictEqual(clients[0], goodRes)
-      assert.ok(goodRes.written.length > 0)
+      assert.strictEqual(goodRes.written.length, 3)
     })
   })
 

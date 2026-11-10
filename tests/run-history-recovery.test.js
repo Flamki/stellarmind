@@ -92,7 +92,8 @@ await test('preserves existing events, results, plan, usage and txProofs on inte
   assert.equal(after.events[1].type, 'run_interrupted')
   assert.equal(after.events[1].reason, INTERRUPTED_REASON_SERVER_RESTART)
   assert.equal(after.plan, null)
-  assert.equal(after.results, null)
+  assert.deepEqual(after.results, [])
+  assert.equal(after.output, null)
   assert.deepEqual(after.txProofs, [])
 })
 

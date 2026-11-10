@@ -51,8 +51,10 @@ User → Orchestrator (Claude plans tasks)
 ### Running Tests
 
 ```bash
-npm run demo    # Runs 3 automated tasks with budget enforcement
-npm test        # Same as demo
+npm test            # Discovers and runs every offline regression suite in src/ and tests/
+npm run smoke       # Boots the server and runs HTTP smoke checks
+npm run demo        # Opt-in: runs 3 live-funded automated tasks with budget enforcement
+npm run test:load   # Opt-in: runs k6 load test scenarios against a running instance
 ```
 
 ### Security Hygiene

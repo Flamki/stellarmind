@@ -14,9 +14,9 @@ import path from 'node:path'
 const failures = []
 let passed = 0
 
-function test(name, fn) {
+async function test(name, fn) {
   try {
-    fn()
+    await fn()
     passed += 1
     console.log(`  ✓ ${name}`)
   } catch (err) {
@@ -35,20 +35,20 @@ async function readRepoFile(filePath) {
 // ─── Test Configuration Files ───────────────────────────────────
 console.log('Dockerfile Configuration')
 
-test('Dockerfile exposes port 3001', async () => {
+await test('Dockerfile exposes port 3001', async () => {
   const dockerfile = await readRepoFile('Dockerfile')
   assert.ok(dockerfile.includes('EXPOSE 3001'), 'Dockerfile should expose port 3001')
   assert.ok(!dockerfile.includes('EXPOSE 3000'), 'Dockerfile should not expose port 3000')
 })
 
-test('Dockerfile health check uses /healthz', async () => {
+await test('Dockerfile health check uses /healthz', async () => {
   const dockerfile = await readRepoFile('Dockerfile')
   assert.ok(dockerfile.includes('/healthz'), 'Health check should use /healthz endpoint')
   assert.ok(!dockerfile.includes('/health '), 'Health check should not use /health endpoint')
   assert.ok(!dockerfile.includes('/health||'), 'Health check should not use /health endpoint')
 })
 
-test('Dockerfile health check respects PORT env var', async () => {
+await test('Dockerfile health check respects PORT env var', async () => {
   const dockerfile = await readRepoFile('Dockerfile')
   assert.ok(
     dockerfile.includes('${PORT:-3001}') || dockerfile.includes('localhost:3001'),
@@ -58,7 +58,7 @@ test('Dockerfile health check respects PORT env var', async () => {
 
 console.log('docker-compose.yml Configuration')
 
-test('docker-compose maps port 3001:3001', async () => {
+await test('docker-compose maps port 3001:3001', async () => {
   const compose = await readRepoFile('docker-compose.yml')
   assert.ok(
     compose.includes("'3001:3001'") || compose.includes('"3001:3001"'),
@@ -70,12 +70,12 @@ test('docker-compose maps port 3001:3001', async () => {
   )
 })
 
-test('docker-compose sets PORT=3001 environment variable', async () => {
+await test('docker-compose sets PORT=3001 environment variable', async () => {
   const compose = await readRepoFile('docker-compose.yml')
   assert.ok(compose.includes('PORT=3001'), 'docker-compose should set PORT=3001')
 })
 
-test('docker-compose health check uses /healthz', async () => {
+await test('docker-compose health check uses /healthz', async () => {
   const compose = await readRepoFile('docker-compose.yml')
   assert.ok(compose.includes('/healthz'), 'Health check should use /healthz endpoint')
   assert.ok(
@@ -84,7 +84,7 @@ test('docker-compose health check uses /healthz', async () => {
   )
 })
 
-test('docker-compose health check uses port 3001', async () => {
+await test('docker-compose health check uses port 3001', async () => {
   const compose = await readRepoFile('docker-compose.yml')
   assert.ok(
     compose.includes('localhost:3001/healthz'),
@@ -94,19 +94,19 @@ test('docker-compose health check uses port 3001', async () => {
 
 console.log('Server Configuration')
 
-test('src/config.js defaults to port 3001', async () => {
+await test('src/config.js defaults to port 3001', async () => {
   const config = await readRepoFile('src/config.js')
   assert.ok(config.includes('process.env.PORT || 3001'), 'config.js should default to port 3001')
 })
 
 console.log('Environment Configuration')
 
-test('.env.example documents PORT=3001', async () => {
+await test('.env.example documents PORT=3001', async () => {
   const envExample = await readRepoFile('.env.example')
   assert.ok(envExample.includes('PORT=3001'), '.env.example should document PORT=3001')
 })
 
-test('.env.example reference table shows default 3001', async () => {
+await test('.env.example reference table shows default 3001', async () => {
   const envExample = await readRepoFile('.env.example')
   const lines = envExample.split('\n')
   const portLine = lines.find((line) => line.includes('| PORT'))
@@ -125,7 +125,7 @@ test('.env.example reference table shows default 3001', async () => {
 
 console.log('Documentation')
 
-test('README examples use port 3001', async () => {
+await test('README examples use port 3001', async () => {
   const readme = await readRepoFile('README.md')
   const port3001Count = (readme.match(/localhost:3001/g) || []).length
   const port3000Count = (readme.match(/localhost:3000/g) || []).length
@@ -134,7 +134,7 @@ test('README examples use port 3001', async () => {
   assert.strictEqual(port3000Count, 0, 'README should not have examples using port 3000')
 })
 
-test('docs/repository-map.md uses port 3001', async () => {
+await test('docs/repository-map.md uses port 3001', async () => {
   const repoMap = await readRepoFile('docs/repository-map.md')
   assert.ok(
     repoMap.includes('localhost:3001') || !repoMap.includes('localhost:300'),
@@ -145,16 +145,16 @@ test('docs/repository-map.md uses port 3001', async () => {
 
 console.log('Health Check Endpoint')
 
-test('/healthz endpoint is implemented in server', async () => {
-  const server = await readRepoFile('src/server.js')
-  assert.ok(server.includes("app.get('/healthz'"), 'Server should implement GET /healthz')
+await test('/healthz endpoint is implemented in server', async () => {
+  const appSource = await readRepoFile('src/app.js')
+  assert.ok(appSource.includes("app.get('/healthz'"), 'Server should implement GET /healthz')
 })
 
-test('/healthz returns required fields', async () => {
-  const server = await readRepoFile('src/server.js')
-  const healthzSection = server.slice(
-    server.indexOf("app.get('/healthz'"),
-    server.indexOf("app.get('/healthz'") + 500
+await test('/healthz returns required fields', async () => {
+  const appSource = await readRepoFile('src/app.js')
+  const healthzSection = appSource.slice(
+    appSource.indexOf("app.get('/healthz'"),
+    appSource.indexOf("app.get('/healthz'") + 500
   )
 
   assert.ok(healthzSection.includes('status'), '/healthz should return status field')
@@ -164,7 +164,7 @@ test('/healthz returns required fields', async () => {
 
 console.log('Port Configuration Consistency')
 
-test('All configuration files use consistent port 3001', async () => {
+await test('All configuration files use consistent port 3001', async () => {
   const dockerfile = await readRepoFile('Dockerfile')
   const compose = await readRepoFile('docker-compose.yml')
   const config = await readRepoFile('src/config.js')
@@ -183,7 +183,7 @@ test('All configuration files use consistent port 3001', async () => {
   assert.ok(envExample.includes('PORT=3001'))
 })
 
-test('All health checks use /healthz endpoint', async () => {
+await test('All health checks use /healthz endpoint', async () => {
   const dockerfile = await readRepoFile('Dockerfile')
   const compose = await readRepoFile('docker-compose.yml')
 

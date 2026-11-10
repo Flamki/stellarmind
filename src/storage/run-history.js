@@ -200,6 +200,7 @@ export class InMemoryRunHistoryStore {
     if (!run || !attempt) return null
     run.paymentAttempts = upsertPaymentAttempt(run.paymentAttempts, attempt)
     run.pendingPaymentAttempts = selectPendingAttempts(run.paymentAttempts)
+    run.paymentAttemptSummary = summarizePaymentAttempts(run.paymentAttempts)
     run.updatedAt = new Date().toISOString()
     return attempt
   }

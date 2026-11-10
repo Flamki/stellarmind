@@ -119,6 +119,7 @@ await withTempFile('invalid', async (testPath) => {
   if (!corruptedFile) {
     throw new Error('Corrupted file was not preserved')
   }
+  await fs.unlink(path.join(testDir, corruptedFile)).catch(() => {})
 
   // Check that new valid file was created
   const content = await fs.readFile(testPath, 'utf8')

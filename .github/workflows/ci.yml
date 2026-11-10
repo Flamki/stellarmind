@@ -67,14 +67,11 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
-      # `npm test` already runs tests/orchestrator.budget.test.js, so the
-      # separate `npm run test:budget` step that used to live here executed the
-      # same file twice inside one job.
-      - name: Run unit tests
+      # `npm test` discovers and executes every offline regression suite under
+      # `src/` and `tests/` (including unit, API validation, pricing, security,
+      # storage recovery, and SSE suites).
+      - name: Run offline regression suites
         run: npm test
-
-      - name: API validation tests
-        run: npm run test:validation
 
   smoke:
     name: Smoke

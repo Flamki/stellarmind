@@ -53,6 +53,11 @@ function emit(level, message, fields = {}) {
 }
 
 export const logger = {
+  debug(message, fields) {
+    if (process.env.LOG_LEVEL === 'debug') {
+      emit('debug', message, fields)
+    }
+  },
   info(message, fields) {
     emit('info', message, fields)
   },
