@@ -301,6 +301,19 @@ export class InMemoryRunHistoryStore {
     run.result = result
     run.outputAvailable = true
     run.txProofs = txProofs
+    run.executionMetadata = (run.results || []).map((step) => ({
+      stepId: step.stepId || null,
+      agentId: step.agentId || null,
+      provider: step.provider || step.executionMeta?.provider || null,
+      actualModel: step.actualModel || step.executionMeta?.actualModel || null,
+      configuredModel: step.model || step.executionMeta?.configuredModel || null,
+      fallbackUsed: Boolean(step.executionMeta?.fallbackUsed),
+      fallbackReason: step.executionMeta?.fallbackReason || null,
+      isDemo: Boolean(step.isDemo || step.executionMeta?.isDemo),
+      promptVersion: step.promptVersion || step.executionMeta?.promptVersion || null,
+      promptDigest: step.promptDigest || step.executionMeta?.promptDigest || null,
+      promptTemplate: step.executionMeta?.promptTemplate || step.agentId || null,
+    }))
     // Attempts produced by this run. `unknown` ones stay pending so a later
     // reconciliation pass can resolve them without a second settlement
     // (#131) — they are never reported as settled charges.

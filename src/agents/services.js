@@ -2,6 +2,7 @@ import Anthropic from '@anthropic-ai/sdk'
 import { config } from '../config.js'
 import { usageFromMessage, unavailableUsage } from './usage.js'
 import { normalizeContent } from './response-normalization.js'
+import { AGENT_PROMPT_TEMPLATES, buildPromptRevision } from '../prompts/index.js'
 
 export let anthropic = new Anthropic({ apiKey: config.anthropicApiKey })
 
@@ -205,14 +206,34 @@ This function handles a basic Stellar payment operation suitable for agent-to-ag
  * Try Claude API, fall back to cached/demo response if credits exhausted
  */
 async function callClaude(model, maxTokens, prompt, fallbackFn, fallbackInput, options = {}) {
-  if (!config.anthropicApiKey) {
+  const promptName = options.promptName || 'inline'
+  const templateForRevision = options.promptTemplate || prompt
+  const promptRev = buildPromptRevision(promptName, templateForRevision)
+  const configuredModel = options.configuredModel || model
+  const apiKeyPresent =
+    options.apiKey !== undefined ? Boolean(options.apiKey) : Boolean(config.anthropicApiKey)
+
+  if (!apiKeyPresent && typeof options.createMessage !== 'function') {
     console.log('  ℹ️  No API key — using demo response')
     options.onUsage?.(unavailableUsage(model, 'no_api_key'))
+    options.onExecutionMeta?.({
+      provider: 'demo',
+      actualModel: 'demo',
+      configuredModel,
+      fallbackUsed: true,
+      fallbackReason: 'no_api_key',
+      isDemo: true,
+      promptVersion: promptRev.revision,
+      promptDigest: promptRev.digest,
+      promptTemplate: promptRev.template,
+    })
     return fallbackFn(fallbackInput)
   }
 
   try {
-    const msg = await createAnthropicMessage(
+    const createFn =
+      typeof options.createMessage === 'function' ? options.createMessage : createAnthropicMessage
+    const msg = await createFn(
       {
         model,
         max_tokens: maxTokens,
@@ -223,7 +244,19 @@ async function callClaude(model, maxTokens, prompt, fallbackFn, fallbackInput, o
       }
     )
     claudeAvailable = true
-    options.onUsage?.(usageFromMessage(msg, model))
+    const actualModel = msg?.model || model
+    options.onUsage?.(usageFromMessage(msg, actualModel))
+    options.onExecutionMeta?.({
+      provider: 'anthropic',
+      actualModel,
+      configuredModel,
+      fallbackUsed: Boolean(options.modelFallbackUsed),
+      fallbackReason: options.modelFallbackUsed ? 'primary_model_unavailable' : null,
+      isDemo: false,
+      promptVersion: promptRev.revision,
+      promptDigest: promptRev.digest,
+      promptTemplate: promptRev.template,
+    })
 
     // Combine every text block (not just content[0]) and surface
     // stop/completion metadata so callers can tell a truncated or empty
@@ -231,11 +264,11 @@ async function callClaude(model, maxTokens, prompt, fallbackFn, fallbackInput, o
     const normalized = normalizeContent(msg)
     options.onResponseMeta?.(normalized)
     if (normalized.truncated) {
-      console.warn(`  WARNING: Claude response truncated at token limit (model: ${model})`)
+      console.warn(`  WARNING: Claude response truncated at token limit (model: ${actualModel})`)
     }
     if (normalized.empty) {
       console.warn(
-        `  WARNING: Claude response had no text content (model: ${model}, blocks: ${
+        `  WARNING: Claude response had no text content (model: ${actualModel}, blocks: ${
           normalized.blockTypes.join(', ') || 'none'
         })`
       )
@@ -253,6 +286,17 @@ async function callClaude(model, maxTokens, prompt, fallbackFn, fallbackInput, o
         claudeAvailable = false
       }
       options.onUsage?.(unavailableUsage(model, 'credits_exhausted_fallback'))
+      options.onExecutionMeta?.({
+        provider: 'demo',
+        actualModel: 'demo',
+        configuredModel,
+        fallbackUsed: true,
+        fallbackReason: 'credits_exhausted',
+        isDemo: true,
+        promptVersion: promptRev.revision,
+        promptDigest: promptRev.digest,
+        promptTemplate: promptRev.template,
+      })
       return fallbackFn(fallbackInput)
     }
     options.onUsage?.(unavailableUsage(model, 'error'))
@@ -269,8 +313,13 @@ async function callClaudeWithModelFallback(
   fallbackInput,
   options = {}
 ) {
+  const configuredModel = options.configuredModel || `${primaryModel} (fallback: ${fallbackModel})`
   try {
-    return await callClaude(primaryModel, maxTokens, prompt, fallbackFn, fallbackInput, options)
+    return await callClaude(primaryModel, maxTokens, prompt, fallbackFn, fallbackInput, {
+      ...options,
+      configuredModel,
+      modelFallbackUsed: false,
+    })
   } catch (err) {
     const message = String(err?.message || '').toLowerCase()
     const isModelResolutionError =
@@ -278,7 +327,11 @@ async function callClaudeWithModelFallback(
     if (!isModelResolutionError || !fallbackModel || fallbackModel === primaryModel) throw err
 
     console.warn(`  Primary model ${primaryModel} unavailable, retrying with ${fallbackModel}`)
-    return callClaude(fallbackModel, maxTokens, prompt, fallbackFn, fallbackInput, options)
+    return callClaude(fallbackModel, maxTokens, prompt, fallbackFn, fallbackInput, {
+      ...options,
+      configuredModel,
+      modelFallbackUsed: true,
+    })
   }
 }
 
@@ -293,60 +346,59 @@ export function isClaudeAvailable() {
  * Research Agent — Claude Haiku for fast research
  */
 export async function runResearch(topic, options = {}) {
-  return callClaude(
-    AGENT_MODELS.research,
-    512,
-    `You are a research agent. Research this topic thoroughly but concisely (4-5 sentences with key facts and data points): ${topic}`,
-    FALLBACKS.research,
-    topic,
-    options
-  )
+  const promptTemplate = options.promptTemplate || AGENT_PROMPT_TEMPLATES['research-bot']
+  const prompt = options.promptOverride || promptTemplate.replace('{topic}', topic)
+  return callClaude(AGENT_MODELS.research, 512, prompt, FALLBACKS.research, topic, {
+    ...options,
+    promptName: 'research-bot',
+    promptTemplate: options.promptOverride || promptTemplate,
+  })
 }
 
 /**
  * Summary Agent — Claude Haiku for summarization
  */
 export async function runSummary(text, options = {}) {
-  return callClaude(
-    AGENT_MODELS.summary,
-    256,
-    `You are a summarization agent. Summarize the following text in 2-3 clear, concise sentences capturing the key points:\n\n${text}`,
-    FALLBACKS.summary,
-    text,
-    options
-  )
+  const promptTemplate = options.promptTemplate || AGENT_PROMPT_TEMPLATES['summary-bot']
+  const prompt = options.promptOverride || promptTemplate.replace('{text}', text)
+  return callClaude(AGENT_MODELS.summary, 256, prompt, FALLBACKS.summary, text, {
+    ...options,
+    promptName: 'summary-bot',
+    promptTemplate: options.promptOverride || promptTemplate,
+  })
 }
 
 /**
  * Analysis Agent — Claude Sonnet for deep analysis (premium tier)
  */
 export async function runAnalysis(topic, options = {}) {
+  const promptTemplate = options.promptTemplate || AGENT_PROMPT_TEMPLATES['analyst-bot']
+  const prompt = options.promptOverride || promptTemplate.replace('{topic}', topic)
   return callClaudeWithModelFallback(
     AGENT_MODELS.analysisPrimary,
     AGENT_MODELS.analysisFallback,
     800,
-    `You are a strategic analysis agent. Provide a structured analysis of the following topic. Include:
-1. **Key Findings** (3-4 bullet points)
-2. **Risks** (2-3 potential concerns)
-3. **Opportunities** (2-3 actionable opportunities)
-
-Topic: ${topic}`,
+    prompt,
     FALLBACKS.analysis,
     topic,
-    options
+    {
+      ...options,
+      promptName: 'analyst-bot',
+      promptTemplate: options.promptOverride || promptTemplate,
+      configuredModel: MODEL_LABELS.analysis,
+    }
   )
 }
 
 /**
  * Code Agent — Claude Haiku for code tasks
  */
-export async function runCode(prompt, options = {}) {
-  return callClaude(
-    AGENT_MODELS.code,
-    600,
-    `You are a code assistant agent. Help with the following code task. Be concise and provide working code:\n\n${prompt}`,
-    FALLBACKS.code,
-    prompt,
-    options
-  )
+export async function runCode(promptInput, options = {}) {
+  const promptTemplate = options.promptTemplate || AGENT_PROMPT_TEMPLATES['code-bot']
+  const prompt = options.promptOverride || promptTemplate.replace('{prompt}', promptInput)
+  return callClaude(AGENT_MODELS.code, 600, prompt, FALLBACKS.code, promptInput, {
+    ...options,
+    promptName: 'code-bot',
+    promptTemplate: options.promptOverride || promptTemplate,
+  })
 }

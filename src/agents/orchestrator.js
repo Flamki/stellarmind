@@ -53,6 +53,7 @@ import {
   XLM_FALLBACK_POLICY,
 } from './settlement.js'
 import { normalizeContent } from './response-normalization.js'
+import { getAgentPromptRevision } from '../prompts/index.js'
 
 // const anthropic = ... (imported from services.js)
 
@@ -265,6 +266,19 @@ async function callAgentViaX402(agent, input, broadcastFn, context = {}) {
           })
         }
 
+        const defaultPromptRev = getAgentPromptRevision(agent.id)
+        const remoteMeta = {
+          provider: data?.provider || (data?.isDemo ? 'demo' : 'x402-remote'),
+          actualModel: data?.actualModel || (data?.isDemo ? 'demo' : data?.model || agent.model),
+          configuredModel: agent.model || null,
+          fallbackUsed: Boolean(data?.fallbackUsed),
+          fallbackReason: data?.fallbackReason || null,
+          isDemo: Boolean(data?.isDemo),
+          promptVersion: data?.promptVersion || defaultPromptRev.revision,
+          promptDigest: data?.promptDigest || defaultPromptRev.digest,
+          promptTemplate: data?.promptTemplate || defaultPromptRev.template,
+        }
+
         return {
           result: data.result || JSON.stringify(data),
           paymentMethod: 'x402',
@@ -283,6 +297,12 @@ async function callAgentViaX402(agent, input, broadcastFn, context = {}) {
           // Likewise, there's no raw Anthropic content-block response to
           // normalize for a remote x402 call.
           responseMeta: null,
+          executionMeta: remoteMeta,
+          provider: remoteMeta.provider,
+          actualModel: remoteMeta.actualModel,
+          promptVersion: remoteMeta.promptVersion,
+          promptDigest: remoteMeta.promptDigest,
+          isDemo: remoteMeta.isDemo,
           // The settled attempt travels with the result so run history can
           // persist it and the run summary can report it (#131).
           paymentAttempt,
@@ -406,6 +426,7 @@ async function callAgentViaX402(agent, input, broadcastFn, context = {}) {
   let result
   let capturedUsage = null
   let capturedResponseMeta = null
+  let capturedExecutionMeta = null
   try {
     result = await serviceFn(input, {
       onRetryAttempt: (retry) => {
@@ -432,9 +453,25 @@ async function callAgentViaX402(agent, input, broadcastFn, context = {}) {
       onResponseMeta: (meta) => {
         capturedResponseMeta = meta
       },
+      onExecutionMeta: (meta) => {
+        capturedExecutionMeta = meta
+      },
     })
   } catch (err) {
     result = `Error: ${err.message}`
+  }
+
+  const defaultPromptRev = getAgentPromptRevision(agent.id)
+  const resolvedExecutionMeta = capturedExecutionMeta || {
+    provider: capturedUsage && !capturedUsage.unavailable ? 'anthropic' : 'custom',
+    actualModel: capturedUsage?.model || agent.model || 'unknown',
+    configuredModel: agent.model || null,
+    fallbackUsed: false,
+    fallbackReason: null,
+    isDemo: false,
+    promptVersion: defaultPromptRev.revision,
+    promptDigest: defaultPromptRev.digest,
+    promptTemplate: defaultPromptRev.template,
   }
 
   let paymentResult = { success: false, txHash: null }
@@ -535,6 +572,12 @@ async function callAgentViaX402(agent, input, broadcastFn, context = {}) {
     explorerUrl: paymentResult.explorerUrl || buildExplorerUrl(settledTxHash),
     usage: capturedUsage || unavailableUsage(agent.model || null, 'no_usage_captured'),
     responseMeta: capturedResponseMeta,
+    executionMeta: resolvedExecutionMeta,
+    provider: resolvedExecutionMeta.provider,
+    actualModel: resolvedExecutionMeta.actualModel,
+    promptVersion: resolvedExecutionMeta.promptVersion,
+    promptDigest: resolvedExecutionMeta.promptDigest,
+    isDemo: resolvedExecutionMeta.isDemo,
     paymentAttempt,
     paymentReconciliationRequired,
     // Quote vs settlement, kept explicitly separate (#130).
@@ -893,6 +936,13 @@ Respond ONLY with valid JSON (no markdown, no code fences):
       stepId: subtask.stepId,
       agentName: agent.name,
       model: agent.model,
+      provider: agentResponse.provider || agentResponse.executionMeta?.provider || null,
+      actualModel: agentResponse.actualModel || agentResponse.executionMeta?.actualModel || null,
+      promptVersion:
+        agentResponse.promptVersion || agentResponse.executionMeta?.promptVersion || null,
+      promptDigest: agentResponse.promptDigest || agentResponse.executionMeta?.promptDigest || null,
+      isDemo: Boolean(agentResponse.isDemo || agentResponse.executionMeta?.isDemo),
+      executionMeta: agentResponse.executionMeta || null,
       input: subtask.input,
       output: agentResponse.result,
       // `cost`/`currency` remain the quoted price for compatibility. The
