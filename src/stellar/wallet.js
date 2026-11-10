@@ -1,4 +1,4 @@
-import { Keypair, Horizon, TransactionBuilder, Operation, Asset } from '@stellar/stellar-sdk'
+import { Keypair, Horizon, TransactionBuilder, Operation, Asset, Memo } from '@stellar/stellar-sdk'
 import { config } from '../config.js'
 import { explorerTxUrl, getFriendbotUrl } from './network.js'
 
@@ -187,44 +187,382 @@ export function getKeypair(secretKey) {
 }
 
 /**
- * Send XLM payment between two wallets (for demo agent-to-agent payments)
+ * Classify a Horizon / network submission error into a structured outcome:
+ *  - 'rejected': known terminal failure (e.g. tx_bad_seq, tx_insufficient_balance, HTTP 400)
+ *  - 'uncertain': timeout or transport drop where the transaction may or may not have landed
  */
-export async function sendPayment(senderSecret, recipientPublic, amount, memo = '') {
-  try {
-    const senderKeypair = Keypair.fromSecret(senderSecret)
-    const senderAccount = await server.loadAccount(senderKeypair.publicKey())
+export function classifySubmissionError(err) {
+  const status = err?.response?.status ?? err?.status ?? null
+  const resultCodes = err?.response?.data?.extras?.result_codes || err?.extras?.result_codes || null
+  const txCode = resultCodes?.transaction || null
+  const msg = String(err?.message || 'Submission failed')
 
-    const txBuilder = new TransactionBuilder(senderAccount, {
-      fee: '100',
-      networkPassphrase: profile.passphrase,
-    })
-
-    txBuilder.addOperation(
-      Operation.payment({
-        destination: recipientPublic,
-        asset: Asset.native(),
-        amount: String(amount),
-      })
-    )
-
-    if (memo) {
-      txBuilder.addMemo(new (await import('@stellar/stellar-sdk')).Memo('text', memo.slice(0, 28)))
-    }
-
-    txBuilder.setTimeout(30)
-    const tx = txBuilder.build()
-    tx.sign(senderKeypair)
-
-    const result = await server.submitTransaction(tx)
+  if (
+    err?.code === 'ETIMEDOUT' ||
+    err?.code === 'ECONNRESET' ||
+    err?.code === 'EPIPE' ||
+    status === 504 ||
+    status === 502 ||
+    status === 503 ||
+    /timeout|timed out|socket hang up|network/i.test(msg)
+  ) {
     return {
-      success: true,
-      txHash: result.hash,
-      ledger: result.ledger,
-      explorerUrl: explorerTxUrl(profile, result.hash),
+      outcome: 'uncertain',
+      code: 'SUBMISSION_UNCERTAIN',
+      txCode,
+      retryableAfterReconcile: true,
+      error: msg,
     }
+  }
+
+  if (txCode === 'tx_bad_seq' || /tx_bad_seq|bad_seq/i.test(msg)) {
+    return {
+      outcome: 'rejected',
+      code: 'TX_BAD_SEQ',
+      txCode: 'tx_bad_seq',
+      retryableWithFreshSequence: true,
+      error: msg,
+    }
+  }
+
+  return {
+    outcome: 'rejected',
+    code: txCode ? txCode.toUpperCase() : status === 400 ? 'TX_REJECTED' : 'SUBMISSION_FAILED',
+    txCode,
+    retryableWithFreshSequence: false,
+    error: msg,
+  }
+}
+
+/**
+ * Per-account Stellar transaction submission coordinator (Issue #133).
+ *
+ * Serializes `loadAccount` + transaction build + `submitTransaction` per payer
+ * public key so concurrent orchestrations sharing the payer wallet acquire
+ * strictly increasing sequence numbers without colliding, while allowing
+ * distinct payer accounts to progress in parallel.
+ *
+ * Explicit deployment boundary: coordinates submissions within a single Node.js
+ * process (`deploymentBoundary: 'single-process'`).
+ */
+export class PayerSubmissionCoordinator {
+  constructor(options = {}) {
+    this.waitTimeoutMs = Math.max(50, Number(options.waitTimeoutMs ?? 15000))
+    this.maxQueuePerAccount = Math.max(1, Number(options.maxQueuePerAccount ?? 50))
+    this.maxRetries = Math.max(0, Number(options.maxRetries ?? 1))
+    this._queues = new Map() // payerPublicKey -> { active: boolean, waiters: Array }
+  }
+
+  getState() {
+    const accounts = {}
+    for (const [account, state] of this._queues.entries()) {
+      accounts[account] = {
+        active: state.active,
+        queued: state.waiters.length,
+      }
+    }
+    return {
+      deploymentBoundary: 'single-process',
+      singleProcessOnly: true,
+      waitTimeoutMs: this.waitTimeoutMs,
+      maxQueuePerAccount: this.maxQueuePerAccount,
+      maxRetries: this.maxRetries,
+      accounts,
+    }
+  }
+
+  /**
+   * Acquire exclusive submission turn for `payerPublicKey` with bounded wait timeout,
+   * execute `taskFn`, and always release the queue slot in `finally`.
+   */
+  async runExclusive(payerPublicKey, taskFn, options = {}) {
+    const key = String(payerPublicKey || 'default')
+    const waitTimeoutMs = Math.max(10, Number(options.waitTimeoutMs ?? this.waitTimeoutMs))
+
+    let state = this._queues.get(key)
+    if (!state) {
+      state = { active: false, waiters: [] }
+      this._queues.set(key, state)
+    }
+
+    if (state.active) {
+      if (state.waiters.length >= this.maxQueuePerAccount) {
+        const err = new Error(
+          `Payer submission queue full for ${key} (${state.waiters.length} waiting)`
+        )
+        err.code = 'PAYER_QUEUE_FULL'
+        err.outcome = 'rejected'
+        throw err
+      }
+
+      await new Promise((resolve, reject) => {
+        const waiter = {
+          resolve: () => {
+            clearTimeout(timer)
+            resolve()
+          },
+          reject: (err) => {
+            clearTimeout(timer)
+            reject(err)
+          },
+        }
+        const timer = setTimeout(() => {
+          const idx = state.waiters.indexOf(waiter)
+          if (idx !== -1) state.waiters.splice(idx, 1)
+          const err = new Error(
+            `Timed out after ${waitTimeoutMs}ms waiting for payer submission queue (${key})`
+          )
+          err.code = 'PAYER_QUEUE_TIMEOUT'
+          err.outcome = 'rejected'
+          reject(err)
+        }, waitTimeoutMs)
+
+        state.waiters.push(waiter)
+      })
+    } else {
+      state.active = true
+    }
+
+    try {
+      return await taskFn()
+    } finally {
+      if (state.waiters.length > 0) {
+        const nextWaiter = state.waiters.shift()
+        nextWaiter.resolve()
+      } else {
+        state.active = false
+        this._queues.delete(key)
+      }
+    }
+  }
+}
+
+export const defaultSubmissionCoordinator = new PayerSubmissionCoordinator()
+
+/**
+ * Send XLM payment between two wallets with per-payer sequence coordination,
+ * structured failure outcomes, and reconciliation-before-retry (Issue #133).
+ */
+export async function sendPayment(senderSecret, recipientPublic, amount, memo = '', options = {}) {
+  const coordinator = options.coordinator || defaultSubmissionCoordinator
+  const horizonServer = options.horizonServer || server
+  const networkPassphrase = options.networkPassphrase || profile.passphrase
+  const maxRetries =
+    options.maxRetries !== undefined
+      ? Math.max(0, Number(options.maxRetries))
+      : coordinator.maxRetries
+  const reconcileTx = options.reconcileTx
+
+  let senderKeypair
+  try {
+    senderKeypair = options.senderKeypair || Keypair.fromSecret(senderSecret)
   } catch (err) {
-    console.error('Payment failed:', err.message)
-    return { success: false, error: err.message }
+    return {
+      success: false,
+      outcome: 'rejected',
+      code: 'INVALID_SENDER_SECRET',
+      error: err.message,
+      attempts: 0,
+    }
+  }
+
+  const payerPublicKey = senderKeypair.publicKey()
+
+  try {
+    return await coordinator.runExclusive(
+      payerPublicKey,
+      async () => {
+        let attempts = 0
+        const maxAttempts = 1 + maxRetries
+
+        while (attempts < maxAttempts) {
+          attempts += 1
+          let senderAccount
+          try {
+            senderAccount = await horizonServer.loadAccount(payerPublicKey)
+          } catch (loadErr) {
+            return {
+              success: false,
+              outcome: 'rejected',
+              code: 'ACCOUNT_LOAD_FAILED',
+              error: loadErr.message,
+              payerPublicKey,
+              attempts,
+            }
+          }
+
+          let tx
+          let candidateTxHash = null
+          let sequenceUsed = null
+          try {
+            if (typeof options.buildTransaction === 'function') {
+              const built = await options.buildTransaction({
+                senderAccount,
+                senderKeypair,
+                recipientPublic,
+                amount: String(amount),
+                memo,
+                networkPassphrase,
+              })
+              tx = built.tx || built
+              candidateTxHash =
+                built.txHash || (typeof tx.hash === 'function' ? tx.hash().toString('hex') : null)
+              sequenceUsed =
+                built.sequence || senderAccount.sequenceNumber?.() || senderAccount.sequence || null
+            } else {
+              const txBuilder = new TransactionBuilder(senderAccount, {
+                fee: '100',
+                networkPassphrase,
+              })
+
+              txBuilder.addOperation(
+                Operation.payment({
+                  destination: recipientPublic,
+                  asset: Asset.native(),
+                  amount: String(amount),
+                })
+              )
+
+              if (memo) {
+                txBuilder.addMemo(new Memo('text', memo.slice(0, 28)))
+              }
+
+              txBuilder.setTimeout(30)
+              tx = txBuilder.build()
+              tx.sign(senderKeypair)
+              candidateTxHash = tx.hash().toString('hex')
+              sequenceUsed = tx.sequence || senderAccount.sequenceNumber?.() || null
+            }
+          } catch (buildErr) {
+            return {
+              success: false,
+              outcome: 'rejected',
+              code: 'TX_BUILD_FAILED',
+              error: buildErr.message,
+              payerPublicKey,
+              attempts,
+            }
+          }
+
+          try {
+            const result = await horizonServer.submitTransaction(tx)
+            const resolvedHash = result.hash || candidateTxHash
+            return {
+              success: true,
+              outcome: 'confirmed',
+              code: 'SUBMITTED',
+              txHash: resolvedHash,
+              ledger: result.ledger,
+              sequence: sequenceUsed,
+              payerPublicKey,
+              attempts,
+              explorerUrl: explorerTxUrl(profile, resolvedHash),
+            }
+          } catch (submitErr) {
+            const classified = classifySubmissionError(submitErr)
+
+            // If outcome is uncertain, we MUST reconcile the prior submission before
+            // deciding whether a retry is safe.
+            if (classified.outcome === 'uncertain') {
+              let reconciliation = null
+              if (typeof reconcileTx === 'function') {
+                try {
+                  reconciliation = await reconcileTx({
+                    txHash: candidateTxHash,
+                    payerPublicKey,
+                    sequence: sequenceUsed,
+                    attempt: attempts,
+                  })
+                } catch {
+                  reconciliation = { settled: 'unknown' }
+                }
+              } else if (candidateTxHash && typeof horizonServer.transactions === 'function') {
+                try {
+                  const txRecord = await horizonServer
+                    .transactions()
+                    .transaction(candidateTxHash)
+                    .call()
+                  if (txRecord && txRecord.successful !== false) {
+                    reconciliation = {
+                      settled: true,
+                      txHash: txRecord.hash || candidateTxHash,
+                      ledger: txRecord.ledger,
+                    }
+                  }
+                } catch (lookupErr) {
+                  if (lookupErr?.response?.status === 404 || lookupErr?.status === 404) {
+                    reconciliation = { settled: false }
+                  } else {
+                    reconciliation = { settled: 'unknown' }
+                  }
+                }
+              }
+
+              if (reconciliation?.settled === true) {
+                const confirmedHash = reconciliation.txHash || candidateTxHash
+                return {
+                  success: true,
+                  outcome: 'confirmed',
+                  code: 'RECONCILED_AFTER_UNCERTAIN_SUBMIT',
+                  reconciled: true,
+                  txHash: confirmedHash,
+                  ledger: reconciliation.ledger ?? null,
+                  sequence: sequenceUsed,
+                  payerPublicKey,
+                  attempts,
+                  explorerUrl: explorerTxUrl(profile, confirmedHash),
+                }
+              }
+
+              if (reconciliation?.settled === false && attempts < maxAttempts) {
+                // Prior attempt is confirmed NOT to have settled; safe to retry with a fresh sequence
+                continue
+              }
+
+              // Outcome remains uncertain (or retry budget exhausted): do NOT retry
+              return {
+                success: false,
+                outcome: 'uncertain',
+                code: classified.code,
+                reconciliationRequired: true,
+                txHash: candidateTxHash,
+                sequence: sequenceUsed,
+                payerPublicKey,
+                attempts,
+                error: classified.error,
+              }
+            }
+
+            // Known terminal rejection: retry only if retryableWithFreshSequence (e.g. tx_bad_seq) and within retry budget
+            if (classified.retryableWithFreshSequence && attempts < maxAttempts) {
+              continue
+            }
+
+            return {
+              success: false,
+              outcome: 'rejected',
+              code: classified.code,
+              txCode: classified.txCode,
+              txHash: candidateTxHash,
+              sequence: sequenceUsed,
+              payerPublicKey,
+              attempts,
+              error: classified.error,
+            }
+          }
+        }
+      },
+      { waitTimeoutMs: options.waitTimeoutMs }
+    )
+  } catch (queueErr) {
+    return {
+      success: false,
+      outcome: queueErr.outcome || 'rejected',
+      code: queueErr.code || 'PAYER_QUEUE_ERROR',
+      payerPublicKey,
+      attempts: 0,
+      error: queueErr.message,
+    }
   }
 }
 

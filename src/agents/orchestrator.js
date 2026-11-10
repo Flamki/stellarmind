@@ -491,6 +491,19 @@ async function callAgentViaX402(agent, input, broadcastFn, context = {}) {
         : null,
       settlement,
     })
+  } else if (paymentResult.outcome === 'uncertain' || paymentResult.reconciliationRequired) {
+    paymentAttempt = markPaymentAttemptUnknown(paymentAttempt, {
+      method: 'stellar-xlm-direct',
+      txHash,
+      reason: paymentResult.code || 'stellar_xlm_submission_uncertain',
+      detail: paymentResult.error || null,
+    })
+  } else if (fallbackPermitted && directPayment && paymentResult.outcome === 'rejected') {
+    paymentAttempt = failPaymentAttempt(paymentAttempt, {
+      method: 'stellar-xlm-direct',
+      reason: paymentResult.code || 'stellar_xlm_submission_rejected',
+      detail: paymentResult.error || null,
+    })
   }
 
   const paymentReconciliationRequired = paymentAttempt.outcome === 'unknown'
