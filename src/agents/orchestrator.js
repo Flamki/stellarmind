@@ -8,6 +8,8 @@ import {
   runAnalysis,
   runCode,
   createAnthropicMessage,
+  buildProvenance,
+  summarizeRunProvenance,
 } from './services.js'
 import { getBalance, sendPayment } from '../stellar/wallet.js'
 import { logger } from '../logger.js'
@@ -265,6 +267,14 @@ async function callAgentViaX402(agent, input, broadcastFn, context = {}) {
           })
         }
 
+        const remoteProvenance = buildProvenance({
+          source: data?.provenance?.source || (data?.isDemo ? 'demo' : 'live'),
+          isDemo: Boolean(data?.provenance?.isDemo ?? data?.isDemo),
+          fallbackReason: data?.provenance?.fallbackReason || data?.fallbackReason || null,
+          model: data?.provenance?.model || (data?.isDemo ? 'demo' : data?.model || agent.model),
+          configuredModel: agent.model || null,
+        })
+
         return {
           result: data.result || JSON.stringify(data),
           paymentMethod: 'x402',
@@ -283,6 +293,10 @@ async function callAgentViaX402(agent, input, broadcastFn, context = {}) {
           // Likewise, there's no raw Anthropic content-block response to
           // normalize for a remote x402 call.
           responseMeta: null,
+          provenance: remoteProvenance,
+          outputSource: remoteProvenance.source,
+          isDemo: remoteProvenance.isDemo,
+          fallbackReason: remoteProvenance.fallbackReason,
           // The settled attempt travels with the result so run history can
           // persist it and the run summary can report it (#131).
           paymentAttempt,
@@ -406,6 +420,7 @@ async function callAgentViaX402(agent, input, broadcastFn, context = {}) {
   let result
   let capturedUsage = null
   let capturedResponseMeta = null
+  let capturedProvenance = null
   try {
     result = await serviceFn(input, {
       onRetryAttempt: (retry) => {
@@ -432,10 +447,41 @@ async function callAgentViaX402(agent, input, broadcastFn, context = {}) {
       onResponseMeta: (meta) => {
         capturedResponseMeta = meta
       },
+      onProvenance: (prov) => {
+        capturedProvenance = prov
+      },
     })
   } catch (err) {
     result = `Error: ${err.message}`
   }
+
+  if (result && typeof result === 'object' && typeof result.text === 'string') {
+    if (result.provenance && !capturedProvenance) {
+      capturedProvenance = result.provenance
+    }
+    result = result.text
+  }
+
+  const resolvedProvenance =
+    capturedProvenance ||
+    buildProvenance({
+      source:
+        capturedUsage?.reason === 'no_api_key' ||
+        capturedUsage?.reason === 'credits_exhausted_fallback'
+          ? 'demo'
+          : 'live',
+      isDemo:
+        capturedUsage?.reason === 'no_api_key' ||
+        capturedUsage?.reason === 'credits_exhausted_fallback',
+      fallbackReason:
+        capturedUsage?.reason === 'no_api_key'
+          ? 'no_api_key'
+          : capturedUsage?.reason === 'credits_exhausted_fallback'
+            ? 'credits_exhausted'
+            : null,
+      model: capturedUsage?.model || agent.model || null,
+      configuredModel: agent.model || null,
+    })
 
   let paymentResult = { success: false, txHash: null }
   const directPayment =
@@ -535,6 +581,10 @@ async function callAgentViaX402(agent, input, broadcastFn, context = {}) {
     explorerUrl: paymentResult.explorerUrl || buildExplorerUrl(settledTxHash),
     usage: capturedUsage || unavailableUsage(agent.model || null, 'no_usage_captured'),
     responseMeta: capturedResponseMeta,
+    provenance: resolvedProvenance,
+    outputSource: resolvedProvenance.source,
+    isDemo: resolvedProvenance.isDemo,
+    fallbackReason: resolvedProvenance.fallbackReason,
     paymentAttempt,
     paymentReconciliationRequired,
     // Quote vs settlement, kept explicitly separate (#130).
@@ -893,6 +943,11 @@ Respond ONLY with valid JSON (no markdown, no code fences):
       stepId: subtask.stepId,
       agentName: agent.name,
       model: agent.model,
+      provenance: agentResponse.provenance || null,
+      outputSource: agentResponse.outputSource || agentResponse.provenance?.source || 'live',
+      isDemo: Boolean(agentResponse.isDemo || agentResponse.provenance?.isDemo),
+      fallbackReason:
+        agentResponse.fallbackReason ?? agentResponse.provenance?.fallbackReason ?? null,
       input: subtask.input,
       output: agentResponse.result,
       // `cost`/`currency` remain the quoted price for compatibility. The
@@ -934,6 +989,10 @@ Respond ONLY with valid JSON (no markdown, no code fences):
       agentId: agent.id,
       resultPreview:
         typeof agentResponse.result === 'string' ? agentResponse.result.substring(0, 150) : '',
+      provenance: agentResult.provenance,
+      outputSource: agentResult.outputSource,
+      isDemo: agentResult.isDemo,
+      fallbackReason: agentResult.fallbackReason,
       cost: agent.price,
       currency: agent.currency,
       quotedAmount: agentResponse.quotedAmount ?? agent.price,
@@ -997,6 +1056,7 @@ Respond ONLY with valid JSON (no markdown, no code fences):
   // Provider token usage, aggregated separately from the settled marketplace
   // totals above (totalSpent / paymentProtocol / etc. are untouched by this).
   const usageSummary = summarizeUsageByPhase(usageEntries)
+  const provenanceSummary = summarizeRunProvenance(results)
 
   broadcastFn?.({
     type: 'orchestrator_complete',
@@ -1020,6 +1080,10 @@ Respond ONLY with valid JSON (no markdown, no code fences):
     x402WalletReady,
     x402WalletHint,
     usageSummary,
+    provenanceSummary,
+    provenanceMode: provenanceSummary.provenanceMode,
+    demoStepCount: provenanceSummary.demoStepCount,
+    liveStepCount: provenanceSummary.liveStepCount,
     paymentAttemptSummary,
     pendingPaymentCount,
     timestamp: new Date().toISOString(),
@@ -1063,6 +1127,10 @@ Respond ONLY with valid JSON (no markdown, no code fences):
       entries: usageEntries,
       summary: usageSummary,
     },
+    provenanceSummary,
+    provenanceMode: provenanceSummary.provenanceMode,
+    demoStepCount: provenanceSummary.demoStepCount,
+    liveStepCount: provenanceSummary.liveStepCount,
     // Payment attempts, so run history can persist them and a later
     // reconciliation pass can resolve the unknown ones (#131).
     paymentAttempts,

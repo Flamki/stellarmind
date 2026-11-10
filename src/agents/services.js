@@ -127,53 +127,109 @@ export async function createAnthropicMessage(payload, options = {}) {
   }
 }
 
+export const DEMO_DISCLAIMER =
+  'Note: Illustrative demo output only — no live model or external sources were queried.'
+
+export function buildProvenance({
+  source = 'live',
+  isDemo = false,
+  fallbackReason = null,
+  model = null,
+  configuredModel = null,
+} = {}) {
+  return {
+    source,
+    isDemo: Boolean(isDemo),
+    fallbackReason: fallbackReason || null,
+    model: isDemo ? 'demo' : model,
+    configuredModel: configuredModel || model || null,
+  }
+}
+
+export function summarizeRunProvenance(results = []) {
+  const executed = (results || []).filter((item) => !item?.skipped && !item?.error)
+  let liveStepCount = 0
+  let modelFallbackStepCount = 0
+  let demoStepCount = 0
+  const fallbackReasons = new Set()
+
+  for (const step of executed) {
+    const prov = step?.provenance
+    const source = prov?.source || (step?.isDemo ? 'demo' : 'live')
+    if (source === 'demo' || prov?.isDemo || step?.isDemo) {
+      demoStepCount += 1
+    } else if (source === 'model-fallback') {
+      modelFallbackStepCount += 1
+      liveStepCount += 1
+    } else {
+      liveStepCount += 1
+    }
+    if (prov?.fallbackReason) {
+      fallbackReasons.add(prov.fallbackReason)
+    }
+  }
+
+  let provenanceMode = 'live'
+  if (demoStepCount > 0 && liveStepCount > 0) {
+    provenanceMode = 'mixed'
+  } else if (demoStepCount > 0 && liveStepCount === 0) {
+    provenanceMode = 'demo'
+  }
+
+  return {
+    provenanceMode,
+    isDemo: demoStepCount > 0,
+    liveStepCount,
+    modelFallbackStepCount,
+    demoStepCount,
+    fallbackReasons: Array.from(fallbackReasons),
+  }
+}
+
 /**
- * Intelligent fallback responses — used when Claude API credits are exhausted.
- * These demonstrate the agent architecture even without live AI.
- * In production, every call would use real Claude API.
+ * Illustrative demo fallback responses — used when Claude API credentials are absent or rate-limited.
+ * Explicitly labeled as illustrative demo content so callers never mistake them for live retrieved data.
  */
-const FALLBACKS = {
-  research: (topic) => `[Research Agent — Powered by Claude Haiku]
+export const FALLBACKS = {
+  research: (topic) => `[DEMO — Research Agent Illustrative Output]
 
-Research findings on "${topic}":
+Illustrative overview for "${topic}":
 
-• The global AI-powered payments market is projected to exceed $40B by 2027, driven by the convergence of machine learning and blockchain settlement layers.
-• Stellar's x402 protocol enables HTTP-native micropayments, allowing AI agents to autonomously pay for API services without human intervention — settlement occurs in ~5 seconds with fees under $0.001.
-• Key players include Anthropic (Claude), OpenAI, and emerging agent frameworks like AutoGPT, which are exploring on-chain payment rails for agent-to-agent commerce.
-• The intersection of agentic AI and programmable money represents a paradigm shift: agents can now discover, negotiate, and pay for services in real-time using stablecoins on networks like Stellar.
+• Programmable payment protocols can pair with autonomous software agents to automate per-request settlement.
+• Stellar's x402 HTTP 402 flow illustrates how an agent can receive a price quote, authorize a payment, and retry with proof of settlement.
+• Spending guardrails and per-run budgets help bound autonomous agent expenditures during multi-step workflows.
 
-Sources: Stellar Development Foundation, x402 Protocol Specification, Anthropic Research 2025.`,
+${DEMO_DISCLAIMER}`,
 
-  summary: (text) => `[Summary Agent — Powered by Claude Haiku]
+  summary: (text) => `[DEMO — Summary Agent Illustrative Output]
 
-Key Takeaway: ${text.substring(0, 80)}...
+Illustrative Summary: ${text.substring(0, 80)}...
 
-The core insight is that autonomous AI agents require programmable payment infrastructure to operate at scale. Stellar's x402 protocol provides this by enabling HTTP 402 "Payment Required" flows where agents can discover service pricing, sign transactions, and receive responses — all without human intervention. This represents a fundamental shift from subscription-based API access to per-call micropayment models.`,
+This illustrative summary demonstrates how a downstream agent condenses prior step context within an x402 micropayment workflow without invoking a live language model.
 
-  analysis: (topic) => `[Analysis Agent — Powered by Claude Sonnet]
+${DEMO_DISCLAIMER}`,
 
-Strategic Analysis: "${topic}"
+  analysis: (topic) => `[DEMO — Analysis Agent Illustrative Output]
 
-**Key Findings:**
-• Agent-to-agent payment systems are an emerging category with significant first-mover advantage potential
-• The x402 protocol on Stellar provides sub-5-second settlement and near-zero fees, making per-call micropayments economically viable for the first time
-• Claude and similar LLMs can serve as autonomous orchestrators, decomposing complex tasks and hiring specialist agents
-• Budget enforcement (spending policies) is a critical differentiator for enterprise adoption
+Illustrative Strategic Analysis: "${topic}"
 
-**Risks:**
-• Claude API latency (1-3s per call) may limit real-time agent workflows
-• Testnet-to-mainnet migration requires USDC liquidity and regulatory considerations
-• Dependency on centralized AI providers creates single points of failure
+**Key Findings (Illustrative):**
+• Agent-to-agent micropayment workflows benefit from explicit budget caps and deterministic settlement tracking
+• Separating payment settlement state from model output provenance prevents conflating paid calls with live model execution
 
-**Opportunities:**
-• First-mover advantage in the AI agent marketplace vertical on Stellar
-• Soroban smart contracts could enable on-chain spending policies
-• Multi-model support (Claude, GPT-4, Gemini) would widen the marketplace appeal`,
+**Risks (Illustrative):**
+• Upstream model rate limits or missing credentials can trigger fallback demo responses
+• Network latency requires bounded timeouts and retry policies
 
-  code: (prompt) => `[Code Agent — Powered by Claude Haiku]
+**Opportunities (Illustrative):**
+• Auditable per-step provenance lets operators distinguish live model outputs from demo fallbacks
+
+${DEMO_DISCLAIMER}`,
+
+  code: (prompt) => `[DEMO — Code Agent Illustrative Output]
 
 \`\`\`javascript
-// Solution for: ${prompt.substring(0, 60)}
+// Illustrative snippet for: ${prompt.substring(0, 60)}
 import { Keypair, Networks, TransactionBuilder, Operation, Asset } from '@stellar/stellar-sdk';
 
 async function executeAgentPayment(senderSecret, recipientPublic, amount) {
@@ -198,21 +254,36 @@ async function executeAgentPayment(senderSecret, recipientPublic, amount) {
 }
 \`\`\`
 
-This function handles a basic Stellar payment operation suitable for agent-to-agent micropayments.`,
+${DEMO_DISCLAIMER}`,
 }
 
 /**
  * Try Claude API, fall back to cached/demo response if credits exhausted
  */
 async function callClaude(model, maxTokens, prompt, fallbackFn, fallbackInput, options = {}) {
-  if (!config.anthropicApiKey) {
+  const configuredModel = options.configuredModel || model
+  const apiKeyPresent =
+    options.apiKey !== undefined ? Boolean(options.apiKey) : Boolean(config.anthropicApiKey)
+
+  if (!apiKeyPresent && typeof options.createMessage !== 'function') {
     console.log('  ℹ️  No API key — using demo response')
     options.onUsage?.(unavailableUsage(model, 'no_api_key'))
-    return fallbackFn(fallbackInput)
+    const provenance = buildProvenance({
+      source: 'demo',
+      isDemo: true,
+      fallbackReason: 'no_api_key',
+      model: 'demo',
+      configuredModel,
+    })
+    options.onProvenance?.(provenance)
+    const text = fallbackFn(fallbackInput)
+    return options.withProvenance ? { text, provenance } : text
   }
 
   try {
-    const msg = await createAnthropicMessage(
+    const createFn =
+      typeof options.createMessage === 'function' ? options.createMessage : createAnthropicMessage
+    const msg = await createFn(
       {
         model,
         max_tokens: maxTokens,
@@ -223,7 +294,16 @@ async function callClaude(model, maxTokens, prompt, fallbackFn, fallbackInput, o
       }
     )
     claudeAvailable = true
-    options.onUsage?.(usageFromMessage(msg, model))
+    const actualModel = msg?.model || model
+    options.onUsage?.(usageFromMessage(msg, actualModel))
+    const provenance = buildProvenance({
+      source: options.modelFallbackUsed ? 'model-fallback' : 'live',
+      isDemo: false,
+      fallbackReason: options.modelFallbackUsed ? 'primary_model_unavailable' : null,
+      model: actualModel,
+      configuredModel,
+    })
+    options.onProvenance?.(provenance)
 
     // Combine every text block (not just content[0]) and surface
     // stop/completion metadata so callers can tell a truncated or empty
@@ -231,29 +311,37 @@ async function callClaude(model, maxTokens, prompt, fallbackFn, fallbackInput, o
     const normalized = normalizeContent(msg)
     options.onResponseMeta?.(normalized)
     if (normalized.truncated) {
-      console.warn(`  WARNING: Claude response truncated at token limit (model: ${model})`)
+      console.warn(`  WARNING: Claude response truncated at token limit (model: ${actualModel})`)
     }
     if (normalized.empty) {
       console.warn(
-        `  WARNING: Claude response had no text content (model: ${model}, blocks: ${
+        `  WARNING: Claude response had no text content (model: ${actualModel}, blocks: ${
           normalized.blockTypes.join(', ') || 'none'
         })`
       )
     }
-    return normalized.text
+    return options.withProvenance ? { text: normalized.text, provenance } : normalized.text
   } catch (err) {
     console.error(`Claude API error: ${err.message}`)
-    if (
-      err.message?.includes('credit balance') ||
-      err.message?.includes('rate_limit') ||
-      err.status === 429
-    ) {
+    const isRateLimit = err.message?.includes('rate_limit') || err.status === 429
+    const isCreditsExhausted = err.message?.includes('credit balance')
+    if (isCreditsExhausted || isRateLimit) {
       if (claudeAvailable) {
         console.log('  ⚠️  Claude API credits exhausted — switching to demo responses')
         claudeAvailable = false
       }
+      const fallbackReason = isRateLimit ? 'rate_limited' : 'credits_exhausted'
       options.onUsage?.(unavailableUsage(model, 'credits_exhausted_fallback'))
-      return fallbackFn(fallbackInput)
+      const provenance = buildProvenance({
+        source: 'demo',
+        isDemo: true,
+        fallbackReason,
+        model: 'demo',
+        configuredModel,
+      })
+      options.onProvenance?.(provenance)
+      const text = fallbackFn(fallbackInput)
+      return options.withProvenance ? { text, provenance } : text
     }
     options.onUsage?.(unavailableUsage(model, 'error'))
     throw err
@@ -269,8 +357,13 @@ async function callClaudeWithModelFallback(
   fallbackInput,
   options = {}
 ) {
+  const configuredModel = options.configuredModel || `${primaryModel} (fallback: ${fallbackModel})`
   try {
-    return await callClaude(primaryModel, maxTokens, prompt, fallbackFn, fallbackInput, options)
+    return await callClaude(primaryModel, maxTokens, prompt, fallbackFn, fallbackInput, {
+      ...options,
+      configuredModel,
+      modelFallbackUsed: false,
+    })
   } catch (err) {
     const message = String(err?.message || '').toLowerCase()
     const isModelResolutionError =
@@ -278,7 +371,11 @@ async function callClaudeWithModelFallback(
     if (!isModelResolutionError || !fallbackModel || fallbackModel === primaryModel) throw err
 
     console.warn(`  Primary model ${primaryModel} unavailable, retrying with ${fallbackModel}`)
-    return callClaude(fallbackModel, maxTokens, prompt, fallbackFn, fallbackInput, options)
+    return callClaude(fallbackModel, maxTokens, prompt, fallbackFn, fallbackInput, {
+      ...options,
+      configuredModel,
+      modelFallbackUsed: true,
+    })
   }
 }
 

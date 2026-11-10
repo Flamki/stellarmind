@@ -19,6 +19,41 @@ function formatSettlementLabel(item) {
   return 'unsettled'
 }
 
+/** Output provenance for a single step (issue #151). */
+function formatStepProvenanceLabel(item) {
+  const source = item?.outputSource || item?.provenance?.source
+  const isDemo = Boolean(item?.isDemo || item?.provenance?.isDemo || source === 'demo')
+  const reason = item?.fallbackReason || item?.provenance?.fallbackReason
+  if (isDemo) {
+    return reason ? `DEMO (${reason})` : 'DEMO'
+  }
+  if (source === 'model-fallback') {
+    return 'LIVE (model-fallback)'
+  }
+  return 'LIVE'
+}
+
+/** Run-level provenance label (issue #151). */
+function formatRunProvenanceLabel(runOrResult) {
+  const summary = runOrResult?.provenanceSummary || runOrResult?.summary?.provenanceSummary
+  const mode =
+    runOrResult?.provenanceMode ||
+    summary?.provenanceMode ||
+    runOrResult?.summary?.provenanceMode ||
+    'live'
+  const demoCount =
+    runOrResult?.demoStepCount ?? summary?.demoStepCount ?? runOrResult?.summary?.demoStepCount ?? 0
+  const liveCount =
+    runOrResult?.liveStepCount ?? summary?.liveStepCount ?? runOrResult?.summary?.liveStepCount ?? 0
+  if (mode === 'mixed') {
+    return `MIXED (${liveCount} live, ${demoCount} demo)`
+  }
+  if (mode === 'demo' || demoCount > 0) {
+    return 'DEMO (illustrative)'
+  }
+  return 'LIVE'
+}
+
 function setResultTag(text, tone = '') {
   const tag = document.getElementById('result-tag')
   tag.textContent = text
@@ -116,7 +151,7 @@ function showResult(r) {
   for (const x of r.results || []) {
     details += x.skipped
       ? `\n[SKIPPED] ${x.agentId}: ${x.reason}\n`
-      : `\n--- ${x.agentName} (quoted ${x.cost} ${x.currency}; settled ${formatSettlementLabel(x)}) ---\n${x.output}\n`
+      : `\n--- ${x.agentName} [${formatStepProvenanceLabel(x)}] (quoted ${x.cost} ${x.currency}; settled ${formatSettlementLabel(x)}) ---\n${x.output}\n`
   }
 
   out.textContent = `FINAL ANSWER\n${finalAnswer}\n\nAGENT DETAILS${details}`
@@ -128,8 +163,11 @@ function showResult(r) {
     )
     .join(' ')
 
+  const provenanceLabel = formatRunProvenanceLabel(r)
+
   ch.innerHTML = `
     <div class="chip">Agents: <span class="v">${r.agentsUsed || 0}</span></div>
+    <div class="chip">Source: <span class="v">${provenanceLabel}</span></div>
     <div class="chip">Quoted: <span class="v">${r.quotedTotal || r.totalSpent || '0'} USDC</span></div>
     <div class="chip">Settled: <span class="v">${formatAssetTotals(r.settledTotals)}</span></div>
     <div class="chip">TXs: <span class="v">${r.txCount || 0}</span></div>
@@ -288,9 +326,11 @@ function renderRunDetail(run) {
     document.getElementById('detail-outputs').innerHTML = outputs
       .map((o, i) => {
         const agent = o.agent || o.agentId || `step-${i + 1}`
-        const content = o.content || o.result || o.response || o.text || JSON.stringify(o, null, 2)
+        const provLabel = formatStepProvenanceLabel(o)
+        const content =
+          o.output || o.content || o.result || o.response || o.text || JSON.stringify(o, null, 2)
         return `<div class="output-item">
-          <div class="output-header">${i + 1}. ${escapeHtml(agent)}</div>
+          <div class="output-header">${i + 1}. ${escapeHtml(agent)} [${escapeHtml(provLabel)}]</div>
           <pre class="output-content">${escapeHtml(content)}</pre>
         </div>`
       })

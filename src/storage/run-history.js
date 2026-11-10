@@ -53,6 +53,15 @@ function toAuditEvent(event) {
     totalSpent: event.totalSpent || null,
     quotedTotal: event.quotedTotal || null,
     reason: event.reason || null,
+    outputSource: event.outputSource || event.provenance?.source || null,
+    isDemo:
+      typeof event.isDemo === 'boolean'
+        ? event.isDemo
+        : typeof event.provenance?.isDemo === 'boolean'
+          ? event.provenance.isDemo
+          : null,
+    fallbackReason: event.fallbackReason || event.provenance?.fallbackReason || null,
+    provenanceMode: event.provenanceMode || event.provenanceSummary?.provenanceMode || null,
   }
 }
 
@@ -294,6 +303,10 @@ export class InMemoryRunHistoryStore {
       xlmFallbackCount: result.xlmFallbackCount,
       unpaidCount: result.unpaidCount,
       elapsed: result.elapsed,
+      provenanceMode: result.provenanceMode || result.provenanceSummary?.provenanceMode || 'live',
+      demoStepCount: result.demoStepCount ?? result.provenanceSummary?.demoStepCount ?? 0,
+      liveStepCount: result.liveStepCount ?? result.provenanceSummary?.liveStepCount ?? 0,
+      provenanceSummary: result.provenanceSummary || null,
     }
     run.plan = result.plan || null
     run.results = Array.isArray(result.results) ? result.results : completedOutput || []
