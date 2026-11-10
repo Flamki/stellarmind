@@ -2,6 +2,7 @@ import fs from 'node:fs/promises'
 import path from 'node:path'
 import crypto from 'node:crypto'
 import { summarizeUsageByPhase } from '../agents/usage.js'
+import { resolveFinalOutput } from '../agents/plan-validator.js'
 import {
   reconcilePaymentAttempt,
   selectPendingAttempts,
@@ -85,10 +86,38 @@ function normalizeRunRecord(run) {
           ? run.results
           : null
 
+  const resolvedResults = Array.isArray(run.results) ? run.results : (outputFromRun ?? [])
+  const resolvedFinalOutput =
+    run.finalOutput ??
+    run.result?.finalOutput ??
+    (run.status === 'completed' || (Array.isArray(resolvedResults) && resolvedResults.length > 0)
+      ? resolveFinalOutput(
+          {
+            finalStepId: run.finalStepId ?? run.result?.finalStepId ?? null,
+            subtasks: run.result?.subtasks,
+          },
+          Array.isArray(resolvedResults) ? resolvedResults : []
+        )
+      : run.status === 'failed'
+        ? {
+            available: false,
+            status: 'failed',
+            stepId: run.finalStepId ?? null,
+            agentId: null,
+            agentName: null,
+            output: null,
+            reason: run.error?.message || run.summary?.error || 'Run failed',
+            partialResultsAvailable: false,
+            completedStepCount: 0,
+          }
+        : null)
+
   const normalized = {
     ...run,
     plan: run.plan ?? run.result?.plan ?? null,
-    results: Array.isArray(run.results) ? run.results : (outputFromRun ?? []),
+    finalStepId: run.finalStepId ?? run.result?.finalStepId ?? resolvedFinalOutput?.stepId ?? null,
+    finalOutput: resolvedFinalOutput,
+    results: resolvedResults,
     output: outputFromRun ?? null,
     error: run.error ?? null,
     summary: run.summary ?? null,
@@ -114,6 +143,33 @@ function normalizeRunRecord(run) {
   }
 
   return normalized
+}
+
+export function buildRunExportPayload(run) {
+  const normalized = normalizeRunRecord(run)
+  if (!normalized) return null
+  const finalOutput =
+    normalized.finalOutput ||
+    resolveFinalOutput(
+      { finalStepId: normalized.finalStepId },
+      Array.isArray(normalized.results) ? normalized.results : []
+    )
+  return {
+    id: normalized.id,
+    runId: normalized.runId || normalized.id,
+    task: normalized.task,
+    budget: normalized.budget,
+    status: normalized.status,
+    createdAt: normalized.createdAt,
+    completedAt: normalized.completedAt,
+    plan: normalized.plan,
+    finalStepId: normalized.finalStepId ?? finalOutput.stepId ?? null,
+    finalOutput,
+    summary: normalized.summary,
+    results: normalized.results || [],
+    txProofs: normalized.txProofs || [],
+    exportedAt: new Date().toISOString(),
+  }
 }
 
 export class InMemoryRunHistoryStore {
@@ -272,6 +328,15 @@ export class InMemoryRunHistoryStore {
         ? result.results
         : null
 
+    const completedResults = Array.isArray(result.results) ? result.results : completedOutput || []
+    const finalOutput =
+      result.finalOutput ||
+      resolveFinalOutput(
+        { finalStepId: result.finalStepId, subtasks: result.subtasks },
+        completedResults
+      )
+    const finalStepId = result.finalStepId ?? finalOutput.stepId ?? null
+
     run.status = 'completed'
     run.completedAt = new Date().toISOString()
     run.updatedAt = run.completedAt
@@ -294,9 +359,13 @@ export class InMemoryRunHistoryStore {
       xlmFallbackCount: result.xlmFallbackCount,
       unpaidCount: result.unpaidCount,
       elapsed: result.elapsed,
+      finalStepId,
+      finalOutput,
     }
     run.plan = result.plan || null
-    run.results = Array.isArray(result.results) ? result.results : completedOutput || []
+    run.finalStepId = finalStepId
+    run.finalOutput = finalOutput
+    run.results = completedResults
     run.output = completedOutput || run.results || null
     run.result = result
     run.outputAvailable = true

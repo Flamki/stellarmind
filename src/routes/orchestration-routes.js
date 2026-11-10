@@ -4,6 +4,7 @@ import { logger } from '../logger.js'
 import { config } from '../config.js'
 import { OrchestrationAdmissionQueue } from '../agents/orchestration-queue.js'
 import { previewOrchestration, executePlan, activePlansStore } from '../agents/orchestrator.js'
+import { buildRunExportPayload } from '../storage/run-history.js'
 
 export function registerOrchestrationRoutes(app, deps = {}) {
   const {
@@ -571,6 +572,21 @@ export function registerOrchestrationRoutes(app, deps = {}) {
         return next(err)
       }
       res.json(run)
+    } catch (err) {
+      next(err)
+    }
+  })
+
+  app.get('/api/runs/:id/export', async (req, res, next) => {
+    try {
+      const run = await runHistoryStore.getRun(req.params.id)
+      if (!run) {
+        const err = new Error(`Run '${req.params.id}' not found`)
+        err.status = 404
+        err.code = 'RUN_NOT_FOUND'
+        return next(err)
+      }
+      res.json(buildRunExportPayload(run))
     } catch (err) {
       next(err)
     }

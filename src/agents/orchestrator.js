@@ -1,7 +1,8 @@
 import crypto from 'node:crypto'
 import { config } from '../config.js'
 import { AGENTS, getAgentById } from './registry.js'
-import { validatePlan } from './plan-validator.js'
+import { validatePlan, isFailedStepResult, resolveFinalOutput } from './plan-validator.js'
+export { isFailedStepResult, resolveFinalOutput }
 import {
   runResearch,
   runSummary,
@@ -404,6 +405,7 @@ async function callAgentViaX402(agent, input, broadcastFn, context = {}) {
     await new Promise((resolve) => setTimeout(resolve, context.agentDelayMs))
   }
   let result
+  let agentError = null
   let capturedUsage = null
   let capturedResponseMeta = null
   try {
@@ -434,7 +436,8 @@ async function callAgentViaX402(agent, input, broadcastFn, context = {}) {
       },
     })
   } catch (err) {
-    result = `Error: ${err.message}`
+    agentError = err?.message || 'Agent execution failed'
+    result = `Error: ${agentError}`
   }
 
   let paymentResult = { success: false, txHash: null }
@@ -528,6 +531,7 @@ async function callAgentViaX402(agent, input, broadcastFn, context = {}) {
   }
   return {
     result,
+    error: agentError || undefined,
     paymentMethod: settled ? (paymentResult.success ? 'stellar-xlm' : 'x402') : 'none',
     paymentSuccess: settled,
     paidVia: settled ? (paymentResult.success ? 'stellar-xlm-direct' : 'x402') : 'none',
@@ -772,8 +776,25 @@ Respond ONLY with valid JSON (no markdown, no code fences):
       plan = {
         plan: `Multi-agent workflow: ${subtasks.map((s) => s.agentId).join(' -> ')} (${subtasks.length} agents, ${budget} USDC budget)`,
         subtasks,
+        finalStepId: subtasks.length > 0 ? subtasks[subtasks.length - 1].stepId : null,
       }
     }
+  }
+
+  const normalizedSubtasks = (plan.subtasks || []).map((s, i) => ({
+    ...s,
+    stepId:
+      typeof s?.stepId === 'string' && s.stepId.trim().length > 0 ? s.stepId.trim() : `step-${i}`,
+  }))
+  plan = {
+    ...plan,
+    subtasks: normalizedSubtasks,
+    finalStepId:
+      plan.finalStepId !== undefined && plan.finalStepId !== null
+        ? plan.finalStepId
+        : normalizedSubtasks.length > 0
+          ? normalizedSubtasks[normalizedSubtasks.length - 1].stepId
+          : null,
   }
 
   usageEntries.push(planningUsageEntry)
@@ -782,6 +803,7 @@ Respond ONLY with valid JSON (no markdown, no code fences):
     type: 'orchestrator_plan',
     plan: plan.plan,
     subtaskCount: plan.subtasks?.length || 0,
+    finalStepId: plan.finalStepId ?? null,
     timestamp: new Date().toISOString(),
   })
 
@@ -805,7 +827,11 @@ Respond ONLY with valid JSON (no markdown, no code fences):
         ...buildBudgetLimitEvent(agent, exactBudget, totalSpent),
         timestamp: new Date().toISOString(),
       })
-      results.push(buildSkipResult(agent, exactBudget, totalSpent))
+      results.push({
+        ...buildSkipResult(agent, exactBudget, totalSpent),
+        stepId: subtask.stepId,
+        agentName: agent.name,
+      })
       continue
     }
 
@@ -855,7 +881,7 @@ Respond ONLY with valid JSON (no markdown, no code fences):
       })
     }
 
-    if (agentResponse && agentResponse.result) {
+    if (agentResponse && agentResponse.result && !agentResponse.error) {
       accumulatedContext =
         typeof agentResponse.result === 'string'
           ? agentResponse.result
@@ -895,6 +921,7 @@ Respond ONLY with valid JSON (no markdown, no code fences):
       model: agent.model,
       input: subtask.input,
       output: agentResponse.result,
+      error: agentResponse.error || null,
       // `cost`/`currency` remain the quoted price for compatibility. The
       // settled values below report what was actually transferred (#130).
       cost: agent.price,
@@ -997,6 +1024,7 @@ Respond ONLY with valid JSON (no markdown, no code fences):
   // Provider token usage, aggregated separately from the settled marketplace
   // totals above (totalSpent / paymentProtocol / etc. are untouched by this).
   const usageSummary = summarizeUsageByPhase(usageEntries)
+  const finalOutput = resolveFinalOutput(plan, results)
 
   broadcastFn?.({
     type: 'orchestrator_complete',
@@ -1022,12 +1050,16 @@ Respond ONLY with valid JSON (no markdown, no code fences):
     usageSummary,
     paymentAttemptSummary,
     pendingPaymentCount,
+    finalStepId: finalOutput.stepId,
+    finalOutput,
     timestamp: new Date().toISOString(),
   })
 
   return {
     task,
     plan: plan.plan,
+    finalStepId: finalOutput.stepId,
+    finalOutput,
     budget: typeof budget === 'number' ? budget : exactBudget.toNumber(),
     budgetExact: exactBudget.toJSON(),
     // Quoted/reserved cost: the sum of the prices the budget guardrail admitted
@@ -1157,6 +1189,11 @@ Respond ONLY with valid JSON (no markdown, no code fences):
       )
 
       plan = parsePlanResponse(planResponse)
+      const validated = validatePlan(plan)
+      if (!validated.valid) {
+        throw new Error(`plan_validation_failed:${validated.reason}`)
+      }
+      plan = validated.plan
     } catch (err) {
       logger.warn('orchestrator_preview_planning_fallback', {
         correlationId: context.correlationId,
@@ -1202,11 +1239,33 @@ Respond ONLY with valid JSON (no markdown, no code fences):
         remaining = remaining.minus(codeCost)
       }
 
+      subtasks.forEach((s, i) => {
+        s.stepId = `step-${i}`
+      })
+
       plan = {
         plan: `Multi-agent workflow: ${subtasks.map((s) => s.agentId).join(' → ')} (${subtasks.length} agents, ${budget} USDC budget)`,
         subtasks,
+        finalStepId: subtasks.length > 0 ? subtasks[subtasks.length - 1].stepId : null,
       }
     }
+  }
+
+  const normalizedPreviewSubtasks = (plan.subtasks || []).map((s, i) => ({
+    ...s,
+    stepId:
+      typeof s?.stepId === 'string' && s.stepId.trim().length > 0 ? s.stepId.trim() : `step-${i}`,
+  }))
+  const previewFinalStepId =
+    plan.finalStepId !== undefined && plan.finalStepId !== null
+      ? plan.finalStepId
+      : normalizedPreviewSubtasks.length > 0
+        ? normalizedPreviewSubtasks[normalizedPreviewSubtasks.length - 1].stepId
+        : null
+  plan = {
+    ...plan,
+    subtasks: normalizedPreviewSubtasks,
+    finalStepId: previewFinalStepId,
   }
 
   const steps = []
@@ -1224,6 +1283,8 @@ Respond ONLY with valid JSON (no markdown, no code fences):
     pricesAtPreview[agent.id] = agent.price
 
     steps.push({
+      stepId: subtask.stepId,
+      isFinalStep: subtask.stepId === plan.finalStepId,
       agentId: agent.id,
       agentName: agent.name,
       model: agent.model,
@@ -1243,6 +1304,7 @@ Respond ONLY with valid JSON (no markdown, no code fences):
     budget: typeof budget === 'number' ? budget : exactBudget.toNumber(),
     budgetExact: exactBudget.toJSON(),
     plan: plan.plan,
+    finalStepId: plan.finalStepId,
     subtasks: plan.subtasks,
     steps,
     totalQuote: formatAmount(totalQuote),
@@ -1259,6 +1321,7 @@ Respond ONLY with valid JSON (no markdown, no code fences):
     planId,
     totalQuote: planRecord.totalQuote,
     stepCount: steps.length,
+    finalStepId: plan.finalStepId,
     expiresAt,
     timestamp: new Date().toISOString(),
   })
@@ -1269,6 +1332,7 @@ Respond ONLY with valid JSON (no markdown, no code fences):
     budget: planRecord.budget,
     budgetExact: planRecord.budgetExact,
     plan: plan.plan,
+    finalStepId: plan.finalStepId,
     steps,
     totalQuote: planRecord.totalQuote,
     totalQuoteExact: planRecord.totalQuoteExact,
@@ -1331,6 +1395,7 @@ export async function executePlan(planId, broadcastFn, context = {}) {
     plan: {
       plan: planRecord.plan,
       subtasks: planRecord.subtasks,
+      finalStepId: planRecord.finalStepId,
     },
   })
 }

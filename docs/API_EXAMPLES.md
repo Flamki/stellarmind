@@ -656,6 +656,18 @@ curl -s -X POST http://localhost:3001/api/orchestrate \
 {
   "task": "Explain why x402 on Stellar matters for AI agents.",
   "plan": "Multi-agent workflow: research-bot → summary-bot → analyst-bot → code-bot (4 agents, 0.15 USDC budget)",
+  "finalStepId": "step-3",
+  "finalOutput": {
+    "available": true,
+    "status": "completed",
+    "stepId": "step-3",
+    "agentId": "code-bot",
+    "agentName": "💻 Code Agent",
+    "output": "[Code Agent — Powered by Claude Haiku]\n\n```javascript\n// Stellar x402 payment wrapper...\n```",
+    "reason": null,
+    "partialResultsAvailable": true,
+    "completedStepCount": 4
+  },
   "budget": 0.15,
   "totalSpent": "0.1000",
   "quotedTotal": "0.1000",
