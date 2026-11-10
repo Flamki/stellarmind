@@ -1,7 +1,7 @@
 import crypto from 'node:crypto'
 import { config } from '../config.js'
 import { AGENTS, getAgentById } from './registry.js'
-import { validatePlan } from './plan-validator.js'
+import { validatePlan, assembleStepContext } from './plan-validator.js'
 import {
   runResearch,
   runSummary,
@@ -629,7 +629,7 @@ export async function orchestrate(task, budget, broadcastFn, context = {}) {
   let x402PaymentCount = 0
   let xlmFallbackCount = 0
   let unpaidCount = 0
-  let accumulatedContext = ''
+  const stepOutcomesById = new Map()
 
   broadcastFn?.({
     type: 'orchestrator_start',
@@ -653,7 +653,14 @@ export async function orchestrate(task, budget, broadcastFn, context = {}) {
     await new Promise((resolve) => setTimeout(resolve, context.initialDelayMs))
   }
   if (context.plan) {
-    plan = context.plan
+    const validated = validatePlan(context.plan)
+    if (!validated.valid) {
+      const err = new Error(`Invalid orchestration plan: ${validated.reason}`)
+      err.code = 'INVALID_PLAN'
+      err.reason = validated.reason
+      throw err
+    }
+    plan = validated.plan
     planningUsageEntry = recordUsageEntry('planning', null, null)
   } else {
     try {
@@ -794,35 +801,106 @@ Respond ONLY with valid JSON (no markdown, no code fences):
 
     const agent = getAgentById(subtask.agentId)
     if (!agent) {
+      stepOutcomesById.set(subtask.stepId, {
+        stepId: subtask.stepId,
+        agentId: subtask.agentId,
+        status: 'failed',
+        error: 'Agent not found',
+      })
       results.push({ agentId: subtask.agentId, stepId: subtask.stepId, error: 'Agent not found' })
+      continue
+    }
+
+    const contextAssembly = assembleStepContext(subtask, stepOutcomesById, {
+      maxContextChars: context.maxContextChars,
+    })
+
+    if (contextAssembly.shouldSkip) {
+      stepOutcomesById.set(subtask.stepId, {
+        stepId: subtask.stepId,
+        agentId: agent.id,
+        status: 'skipped',
+        skipped: true,
+        reason: contextAssembly.skipReason,
+      })
+      broadcastFn?.({
+        type: 'step_skipped_dependency_failure',
+        stepId: subtask.stepId,
+        agent: agent.name,
+        agentId: agent.id,
+        failedDependencies: contextAssembly.contextMeta.failedStepIds,
+        onDependencyFailure: subtask.onDependencyFailure,
+        timestamp: new Date().toISOString(),
+      })
+      results.push({
+        agentId: agent.id,
+        stepId: subtask.stepId,
+        agentName: agent.name,
+        input: subtask.input,
+        skipped: true,
+        status: 'skipped',
+        reason: contextAssembly.skipReason,
+        failedDependencies: contextAssembly.contextMeta.failedStepIds,
+        dependsOn: subtask.dependsOn,
+        onDependencyFailure: subtask.onDependencyFailure,
+        contextMeta: contextAssembly.contextMeta,
+      })
       continue
     }
 
     const cost = agentCost(agent)
 
     if (exceedsBudget(totalSpent, cost, exactBudget)) {
+      stepOutcomesById.set(subtask.stepId, {
+        stepId: subtask.stepId,
+        agentId: agent.id,
+        status: 'skipped',
+        skipped: true,
+        reason: 'budget_limit',
+      })
       broadcastFn?.({
         ...buildBudgetLimitEvent(agent, exactBudget, totalSpent),
         timestamp: new Date().toISOString(),
       })
-      results.push(buildSkipResult(agent, exactBudget, totalSpent))
+      results.push({
+        ...buildSkipResult(agent, exactBudget, totalSpent),
+        stepId: subtask.stepId,
+        dependsOn: subtask.dependsOn,
+        contextMeta: contextAssembly.contextMeta,
+      })
       continue
     }
 
     let activeInput = subtask.input
-    if (accumulatedContext) {
+    const assembledContextText = contextAssembly.contextText
+    if (assembledContextText) {
       if (agent.id === 'summary-bot')
-        activeInput = `Summarize the following findings related to "${subtask.input}":\n\n${accumulatedContext.substring(0, 3000)}`
+        activeInput = `Summarize the following findings related to "${subtask.input}":\n\n${assembledContextText}`
       else if (agent.id === 'analyst-bot')
-        activeInput = `Analyze this topic: "${subtask.input}"\n\nContext:\n${accumulatedContext.substring(0, 3000)}`
+        activeInput = `Analyze this topic: "${subtask.input}"\n\nContext:\n${assembledContextText}`
       else if (agent.id === 'code-bot')
-        activeInput = `Action: "${subtask.input}"\n\nContext:\n${accumulatedContext.substring(0, 3000)}`
+        activeInput = `Action: "${subtask.input}"\n\nContext:\n${assembledContextText}`
+      else activeInput = `${subtask.input}\n\nContext:\n${assembledContextText}`
+    }
+
+    if (contextAssembly.contextMeta.truncated) {
+      broadcastFn?.({
+        type: 'step_context_truncated',
+        stepId: subtask.stepId,
+        agent: agent.name,
+        agentId: agent.id,
+        contextMeta: contextAssembly.contextMeta,
+        timestamp: new Date().toISOString(),
+      })
     }
 
     broadcastFn?.({
       type: 'agent_call',
       agent: agent.name,
       agentId: agent.id,
+      stepId: subtask.stepId,
+      dependsOn: subtask.dependsOn,
+      contextMeta: contextAssembly.contextMeta,
       input: activeInput.substring(0, 100) + (activeInput.length > 100 ? '...' : ''),
       // `cost` is the quote the run reserved for this step, in the registry's
       // currency. The settled asset/amount are reported on agent_response and
@@ -834,7 +912,36 @@ Respond ONLY with valid JSON (no markdown, no code fences):
       timestamp: new Date().toISOString(),
     })
 
-    const agentResponse = await callAgentViaX402(agent, activeInput, broadcastFn, context)
+    let agentResponse
+    let thrownStepError = null
+    try {
+      agentResponse = await callAgentViaX402(agent, activeInput, broadcastFn, context)
+    } catch (stepErr) {
+      thrownStepError = stepErr
+    }
+
+    if (thrownStepError) {
+      const errorMessage = thrownStepError.message || 'Step execution failed'
+      stepOutcomesById.set(subtask.stepId, {
+        stepId: subtask.stepId,
+        agentId: agent.id,
+        status: 'failed',
+        error: errorMessage,
+      })
+      results.push({
+        agentId: agent.id,
+        stepId: subtask.stepId,
+        agentName: agent.name,
+        model: agent.model,
+        input: subtask.input,
+        status: 'failed',
+        error: errorMessage,
+        dependsOn: subtask.dependsOn,
+        onDependencyFailure: subtask.onDependencyFailure,
+        contextMeta: contextAssembly.contextMeta,
+      })
+      continue
+    }
 
     if (agentResponse?.paymentAttempt) {
       paymentAttempts = upsertPaymentAttempt(paymentAttempts, agentResponse.paymentAttempt)
@@ -855,12 +962,17 @@ Respond ONLY with valid JSON (no markdown, no code fences):
       })
     }
 
-    if (agentResponse && agentResponse.result) {
-      accumulatedContext =
-        typeof agentResponse.result === 'string'
-          ? agentResponse.result
-          : JSON.stringify(agentResponse.result)
-    }
+    const isErrorResult =
+      Boolean(agentResponse?.error) ||
+      (typeof agentResponse?.result === 'string' && /^Error:/i.test(agentResponse.result.trim()))
+
+    stepOutcomesById.set(subtask.stepId, {
+      stepId: subtask.stepId,
+      agentId: agent.id,
+      status: isErrorResult ? 'failed' : 'succeeded',
+      output: isErrorResult ? null : agentResponse?.result,
+      error: isErrorResult ? agentResponse?.error || agentResponse?.result : null,
+    })
     totalSpent = totalSpent.plus(cost)
 
     const bucket = paymentBucket(agentResponse.paidVia)
@@ -923,6 +1035,11 @@ Respond ONLY with valid JSON (no markdown, no code fences):
       // stays visible here as a pending charge, never as a settled one.
       paymentAttempt: agentResponse.paymentAttempt || null,
       paymentReconciliationRequired: !!agentResponse.paymentReconciliationRequired,
+      status: isErrorResult ? 'failed' : 'succeeded',
+      error: isErrorResult ? agentResponse?.error || agentResponse?.result : null,
+      dependsOn: subtask.dependsOn,
+      onDependencyFailure: subtask.onDependencyFailure,
+      contextMeta: contextAssembly.contextMeta,
     }
 
     results.push(agentResult)
@@ -1103,7 +1220,14 @@ export async function previewOrchestration(task, budget, broadcastFn, context = 
   }
 
   if (context.plan) {
-    plan = context.plan
+    const validated = validatePlan(context.plan)
+    if (!validated.valid) {
+      const err = new Error(`Invalid orchestration plan: ${validated.reason}`)
+      err.code = 'INVALID_PLAN'
+      err.reason = validated.reason
+      throw err
+    }
+    plan = validated.plan
     planningUsageEntry = recordUsageEntry('planning', null, null)
   } else {
     try {
