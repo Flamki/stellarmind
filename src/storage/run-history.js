@@ -19,6 +19,148 @@ const LEGACY_VERSION = 0 // Unversioned files
 // promise, no timer, nothing left executing it — so it must not be allowed
 // to look like it is still progressing forever.
 export const INTERRUPTED_REASON_SERVER_RESTART = 'server_restart'
+export const DEFAULT_MAX_EVENTS_PER_RUN = 200
+export const DEFAULT_MAX_EVENT_BYTES_PER_RUN = 65536
+
+export class ActiveRunCapacityExceededError extends Error {
+  constructor(activeCount, maxActiveRuns) {
+    super(
+      `Active run capacity exceeded (${activeCount}/${maxActiveRuns} active runs). Please retry after current runs complete.`
+    )
+    this.name = 'ActiveRunCapacityExceededError'
+    this.code = 'ACTIVE_RUN_CAPACITY_EXCEEDED'
+    this.status = 429
+    this.activeCount = activeCount
+    this.maxActiveRuns = maxActiveRuns
+  }
+}
+
+function measureEventBytes(event) {
+  return Buffer.byteLength(JSON.stringify(event), 'utf8')
+}
+
+/**
+ * Enforces configurable count and byte bounds on a run's event array.
+ * Drops oldest events first when limits are exceeded, marks `eventsTruncated: true`
+ * and `droppedEventCount`, and leaves `summary`, `txProofs`, `paymentAttempts`,
+ * `results`, and `output` untouched (Issue #138).
+ */
+export function enforceEventRetentionBounds(
+  run,
+  {
+    maxEventsPerRun = DEFAULT_MAX_EVENTS_PER_RUN,
+    maxEventBytesPerRun = DEFAULT_MAX_EVENT_BYTES_PER_RUN,
+  } = {}
+) {
+  if (!run || typeof run !== 'object') return run
+  if (!Array.isArray(run.events)) {
+    run.events = []
+  }
+
+  let droppedNow = 0
+
+  if (
+    Number.isFinite(maxEventsPerRun) &&
+    maxEventsPerRun >= 0 &&
+    run.events.length > maxEventsPerRun
+  ) {
+    const excess = run.events.length - maxEventsPerRun
+    run.events.splice(0, excess)
+    droppedNow += excess
+  }
+
+  let eventSizes = run.events.map(measureEventBytes)
+  let totalBytes = eventSizes.reduce((acc, n) => acc + n, 0)
+
+  if (Number.isFinite(maxEventBytesPerRun) && maxEventBytesPerRun >= 0) {
+    while (run.events.length > 0 && totalBytes > maxEventBytesPerRun) {
+      totalBytes -= eventSizes.shift()
+      run.events.shift()
+      droppedNow += 1
+    }
+  }
+
+  const previousDropped = Number.isInteger(run.droppedEventCount) ? run.droppedEventCount : 0
+  const totalDropped = previousDropped + droppedNow
+  const truncated = Boolean(run.eventsTruncated) || totalDropped > 0
+
+  run.eventsTruncated = truncated
+  run.droppedEventCount = totalDropped
+  run.retainedEventCount = run.events.length
+  run.retainedEventBytes = totalBytes
+  run.eventRetention = {
+    truncated,
+    droppedEventCount: totalDropped,
+    retainedEventCount: run.events.length,
+    retainedEventBytes: totalBytes,
+    maxEventsPerRun,
+    maxEventBytesPerRun,
+  }
+
+  return run
+}
+
+/**
+ * Deterministic comparator for terminal run retention: newest terminal completion
+ * (or update/creation) first, with `id DESC` tie-breaker.
+ */
+export function compareTerminalRunsDescending(a, b) {
+  const aTs = a?.completedAt || a?.interruptedAt || a?.updatedAt || a?.createdAt || ''
+  const bTs = b?.completedAt || b?.interruptedAt || b?.updatedAt || b?.createdAt || ''
+  const aMs = Date.parse(aTs)
+  const bMs = Date.parse(bTs)
+  const safeAMs = Number.isFinite(aMs) ? aMs : 0
+  const safeBMs = Number.isFinite(bMs) ? bMs : 0
+  if (safeBMs !== safeAMs) {
+    return safeBMs - safeAMs
+  }
+  if (
+    Number.isInteger(a?._terminalSeq) &&
+    Number.isInteger(b?._terminalSeq) &&
+    b._terminalSeq !== a._terminalSeq
+  ) {
+    return b._terminalSeq - a._terminalSeq
+  }
+  const aId = String(a?.id || '')
+  const bId = String(b?.id || '')
+  if (bId === aId) return 0
+  return bId > aId ? 1 : -1
+}
+
+function parseStoreOptions(maxRunsOrOptions = 200, extraOptions = {}) {
+  if (typeof maxRunsOrOptions === 'object' && maxRunsOrOptions !== null) {
+    return {
+      maxRuns: normalizeLimit(maxRunsOrOptions.maxRuns, 200, 100000),
+      maxActiveRuns:
+        maxRunsOrOptions.maxActiveRuns !== undefined
+          ? Math.max(1, Number.parseInt(maxRunsOrOptions.maxActiveRuns, 10))
+          : Infinity,
+      maxEventsPerRun:
+        maxRunsOrOptions.maxEventsPerRun !== undefined
+          ? Math.max(0, Number.parseInt(maxRunsOrOptions.maxEventsPerRun, 10))
+          : DEFAULT_MAX_EVENTS_PER_RUN,
+      maxEventBytesPerRun:
+        maxRunsOrOptions.maxEventBytesPerRun !== undefined
+          ? Math.max(0, Number.parseInt(maxRunsOrOptions.maxEventBytesPerRun, 10))
+          : DEFAULT_MAX_EVENT_BYTES_PER_RUN,
+    }
+  }
+  return {
+    maxRuns: normalizeLimit(maxRunsOrOptions, 200, 100000),
+    maxActiveRuns:
+      extraOptions.maxActiveRuns !== undefined
+        ? Math.max(1, Number.parseInt(extraOptions.maxActiveRuns, 10))
+        : Infinity,
+    maxEventsPerRun:
+      extraOptions.maxEventsPerRun !== undefined
+        ? Math.max(0, Number.parseInt(extraOptions.maxEventsPerRun, 10))
+        : DEFAULT_MAX_EVENTS_PER_RUN,
+    maxEventBytesPerRun:
+      extraOptions.maxEventBytesPerRun !== undefined
+        ? Math.max(0, Number.parseInt(extraOptions.maxEventBytesPerRun, 10))
+        : DEFAULT_MAX_EVENT_BYTES_PER_RUN,
+  }
+}
 
 function createRunId() {
   return `run_${Date.now()}_${crypto.randomBytes(4).toString('hex')}`
@@ -95,6 +237,9 @@ function normalizeRunRecord(run) {
     usage: run.usage ?? null,
     txProofs: Array.isArray(run.txProofs) ? run.txProofs : [],
     events: Array.isArray(run.events) ? run.events : [],
+    eventsTruncated: Boolean(run.eventsTruncated),
+    droppedEventCount: Number.isInteger(run.droppedEventCount) ? run.droppedEventCount : 0,
+    eventRetention: run.eventRetention || null,
   }
 
   normalized.outputAvailable = Boolean(
@@ -117,15 +262,55 @@ function normalizeRunRecord(run) {
 }
 
 export class InMemoryRunHistoryStore {
-  constructor(maxRuns = 200) {
-    this.maxRuns = maxRuns
+  constructor(maxRuns = 200, options = {}) {
+    const parsed = parseStoreOptions(maxRuns, options)
+    this.maxRuns = parsed.maxRuns
+    this.maxActiveRuns = parsed.maxActiveRuns
+    this.maxEventsPerRun = parsed.maxEventsPerRun
+    this.maxEventBytesPerRun = parsed.maxEventBytesPerRun
     this.runs = []
     this.idempotencyMap = new Map()
+    this._seq = 0
   }
 
   async init() {}
 
+  /**
+   * Prunes terminal runs to `this.maxRuns` in deterministic `(completedAt/updatedAt DESC, id DESC)`
+   * order while NEVER evicting active (`status === 'running'`) runs (Issue #138).
+   */
+  _pruneRuns() {
+    const activeRuns = []
+    const terminalRuns = []
+    for (const run of this.runs) {
+      if (run.status === 'running') {
+        activeRuns.push(run)
+      } else {
+        terminalRuns.push(run)
+      }
+    }
+
+    terminalRuns.sort(compareTerminalRunsDescending)
+    const retainedTerminal = terminalRuns.slice(0, this.maxRuns)
+    this.runs = [...activeRuns, ...retainedTerminal]
+  }
+
+  _applyEventBounds(run) {
+    return enforceEventRetentionBounds(run, {
+      maxEventsPerRun: this.maxEventsPerRun,
+      maxEventBytesPerRun: this.maxEventBytesPerRun,
+    })
+  }
+
   async createRun({ task, budget, source, idempotencyKey, idempotencyFingerprint }) {
+    const activeCount = this.runs.reduce(
+      (count, entry) => (entry.status === 'running' ? count + 1 : count),
+      0
+    )
+    if (Number.isFinite(this.maxActiveRuns) && activeCount >= this.maxActiveRuns) {
+      throw new ActiveRunCapacityExceededError(activeCount, this.maxActiveRuns)
+    }
+
     const now = new Date().toISOString()
     const run = {
       id: createRunId(),
@@ -143,6 +328,18 @@ export class InMemoryRunHistoryStore {
       outputAvailable: false,
       error: null,
       events: [],
+      eventsTruncated: false,
+      droppedEventCount: 0,
+      retainedEventCount: 0,
+      retainedEventBytes: 0,
+      eventRetention: {
+        truncated: false,
+        droppedEventCount: 0,
+        retainedEventCount: 0,
+        retainedEventBytes: 0,
+        maxEventsPerRun: this.maxEventsPerRun,
+        maxEventBytesPerRun: this.maxEventBytesPerRun,
+      },
       txProofs: [],
       // Payment attempts for this run (#131). Each entry is one logical
       // charge; an `unknown` attempt stays here until reconciliation
@@ -156,7 +353,7 @@ export class InMemoryRunHistoryStore {
       idempotencyFingerprint: idempotencyFingerprint || null,
     }
     this.runs.unshift(run)
-    this.runs = this.runs.slice(0, this.maxRuns)
+    this._pruneRuns()
     if (idempotencyKey) {
       this.idempotencyMap.set(idempotencyKey, {
         runId: run.id,
@@ -185,6 +382,7 @@ export class InMemoryRunHistoryStore {
     const run = this.runs.find((entry) => entry.id === runId)
     if (!run) return
     run.events.push(toAuditEvent(event))
+    this._applyEventBounds(run)
     run.updatedAt = new Date().toISOString()
   }
 
@@ -275,6 +473,7 @@ export class InMemoryRunHistoryStore {
     run.status = 'completed'
     run.completedAt = new Date().toISOString()
     run.updatedAt = run.completedAt
+    run._terminalSeq = ++this._seq
     run.summary = {
       // `totalSpent` stays the quoted/reserved amount the budget guardrail
       // tracked. The per-asset settled totals below are the money that moved.
@@ -319,6 +518,8 @@ export class InMemoryRunHistoryStore {
       entries: result.usage?.entries || [],
       summary: result.usage?.summary || summarizeUsageByPhase([]),
     }
+    this._applyEventBounds(run)
+    this._pruneRuns()
   }
 
   async failRun(runId, err) {
@@ -327,6 +528,7 @@ export class InMemoryRunHistoryStore {
     run.status = 'failed'
     run.completedAt = new Date().toISOString()
     run.updatedAt = run.completedAt
+    run._terminalSeq = ++this._seq
     run.summary = {
       error: err?.message || 'unknown error',
     }
@@ -337,6 +539,8 @@ export class InMemoryRunHistoryStore {
     run.output = null
     run.results = Array.isArray(run.results) ? run.results : []
     run.outputAvailable = false
+    this._applyEventBounds(run)
+    this._pruneRuns()
   }
 
   /**
@@ -376,7 +580,12 @@ export class InMemoryRunHistoryStore {
           timestamp: now,
         })
       )
+      this._applyEventBounds(run)
       recoveredIds.push(run.id)
+    }
+
+    if (recoveredIds.length > 0) {
+      this._pruneRuns()
     }
 
     return recoveredIds
@@ -384,7 +593,7 @@ export class InMemoryRunHistoryStore {
 
   async listRecent(limit = 20) {
     return this.runs
-      .slice(0, normalizeLimit(limit, 20, this.maxRuns))
+      .slice(0, normalizeLimit(limit, 20, Math.max(this.maxRuns, this.runs.length)))
       .map((run) => normalizeRunRecord({ ...run, runId: run.id }))
   }
 
@@ -394,8 +603,8 @@ export class InMemoryRunHistoryStore {
 }
 
 export class FileRunHistoryStore extends InMemoryRunHistoryStore {
-  constructor(filePath, maxRuns = 200) {
-    super(maxRuns)
+  constructor(filePath, maxRuns = 200, options = {}) {
+    super(maxRuns, options)
     this.filePath = filePath
     this._writeQueue = Promise.resolve()
   }
@@ -456,7 +665,8 @@ export class FileRunHistoryStore extends InMemoryRunHistoryStore {
     }
 
     if (Array.isArray(runs)) {
-      this.runs = runs.slice(0, this.maxRuns)
+      this.runs = runs.map((r) => this._applyEventBounds(r))
+      this._pruneRuns()
     }
     if (Array.isArray(idempotency)) {
       for (const [key, record] of idempotency) {
@@ -562,10 +772,11 @@ export class FileRunHistoryStore extends InMemoryRunHistoryStore {
 
   async persist() {
     const writeOp = async () => {
+      this._pruneRuns()
       const payload = JSON.stringify(
         {
           version: CURRENT_SCHEMA_VERSION,
-          runs: this.runs.slice(0, this.maxRuns),
+          runs: this.runs,
           idempotency: Array.from(this.idempotencyMap.entries()).slice(0, this.maxRuns),
         },
         null,
@@ -635,10 +846,16 @@ export class FileRunHistoryStore extends InMemoryRunHistoryStore {
 
 export async function createRunHistoryStore(config) {
   const storage = (config.runHistoryStorage || 'file').toLowerCase()
+  const storeOptions = {
+    maxRuns: config.runHistoryMaxRuns,
+    maxActiveRuns: config.runHistoryMaxActiveRuns,
+    maxEventsPerRun: config.runHistoryMaxEventsPerRun,
+    maxEventBytesPerRun: config.runHistoryMaxEventBytesPerRun,
+  }
   const store =
     storage === 'memory'
-      ? new InMemoryRunHistoryStore(config.runHistoryMaxRuns)
-      : new FileRunHistoryStore(config.runHistoryFile, config.runHistoryMaxRuns)
+      ? new InMemoryRunHistoryStore(storeOptions)
+      : new FileRunHistoryStore(config.runHistoryFile, storeOptions)
 
   await store.init()
 

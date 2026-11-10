@@ -93,6 +93,15 @@ export const config = {
     ? path.resolve(process.env.RUN_HISTORY_FILE)
     : path.join(repoRoot, 'data', 'run-history.json'),
   runHistoryMaxRuns: Math.max(10, toNumberOr(process.env.RUN_HISTORY_MAX_RUNS, 200)),
+  runHistoryMaxActiveRuns: Math.max(1, toNumberOr(process.env.RUN_HISTORY_MAX_ACTIVE_RUNS, 50)),
+  runHistoryMaxEventsPerRun: Math.max(
+    1,
+    toNumberOr(process.env.RUN_HISTORY_MAX_EVENTS_PER_RUN, 200)
+  ),
+  runHistoryMaxEventBytesPerRun: Math.max(
+    512,
+    toNumberOr(process.env.RUN_HISTORY_MAX_EVENT_BYTES_PER_RUN, 65536)
+  ),
 
   // Per-transaction operation lookups in getTransactions
   horizonOpsMaxConcurrency: Math.max(1, toNumberOr(process.env.HORIZON_OPS_MAX_CONCURRENCY, 4)),
