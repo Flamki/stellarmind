@@ -183,16 +183,20 @@ export function registerOrchestrationRoutes(app, deps = {}) {
           )
 
           result.runId = run.id
+          await runHistoryStore.drainRun?.(run.id)
           await runHistoryStore.completeRun(run.id, result)
+          await runHistoryStore.flush?.()
           return result
         } catch (err) {
           logger.error('orchestration_execution_failed', { runId: run.id, error: err.message })
+          await runHistoryStore.drainRun?.(run.id)
           await runHistoryStore.failRun(run.id, err).catch((storeErr) => {
             logger.error('run_history_fail_persist_failed', {
               runId: run.id,
               error: storeErr.message,
             })
           })
+          await runHistoryStore.flush?.().catch(() => {})
           throw err
         } finally {
           activeExecutions.delete(run.id)
@@ -422,16 +426,20 @@ export function registerOrchestrationRoutes(app, deps = {}) {
           )
 
           result.runId = run.id
+          await runHistoryStore.drainRun?.(run.id)
           await runHistoryStore.completeRun(run.id, result)
+          await runHistoryStore.flush?.()
           return result
         } catch (err) {
           logger.error('orchestration_execution_failed', { runId: run.id, error: err.message })
+          await runHistoryStore.drainRun?.(run.id)
           await runHistoryStore.failRun(run.id, err).catch((storeErr) => {
             logger.error('run_history_fail_persist_failed', {
               runId: run.id,
               error: storeErr.message,
             })
           })
+          await runHistoryStore.flush?.().catch(() => {})
           throw err
         } finally {
           activeExecutions.delete(run.id)

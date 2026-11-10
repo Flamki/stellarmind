@@ -473,7 +473,7 @@ export function createApp(dependencies = {}) {
   // Centralized Error Handler
   app.use(errorHandler)
 
-  // Cleanup function to close SSE connections
+  // Cleanup function to close SSE connections and flush pending run-history writes
   function close() {
     sseClients.forEach((res) => {
       try {
@@ -483,6 +483,7 @@ export function createApp(dependencies = {}) {
       }
     })
     sseClients.length = 0
+    return Promise.resolve(runHistoryStore?.flush?.())
   }
 
   return { app, close, admissionQueue }
