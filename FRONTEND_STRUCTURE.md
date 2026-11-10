@@ -46,17 +46,17 @@ public/
 
 ### JavaScript Modules
 
-| File               | Purpose          | Lines | Responsibility                                             |
-| ------------------ | ---------------- | ----- | ---------------------------------------------------------- |
-| `navigation.js`    | Page routing     | ~20   | `showPage()` - switches active page and updates sidebar    |
-| `budget.js`        | Budget control   | ~15   | Budget slider event listener and display update            |
-| `agents.js`        | Agent management | ~60   | `loadAgents()`, `loadAgentPage()`, `highlightAgent()`      |
-| `wallet.js`        | Wallet data      | ~40   | `loadWallets()` - fetches and displays balances            |
-| `sse.js`           | Real-time events | ~120  | `connectSSE()`, `addFeed()` - handles live event stream    |
-| `rendering.js`     | Result display   | ~180  | Progress bars, result formatting, chip rendering           |
-| `orchestration.js` | Task execution   | ~150  | `runOrchestration()`, `startLiveRun()`, `trackLiveEvent()` |
-| `pages.js`         | Page loading     | ~200  | `loadStatusPage()`, `loadTxPage()`, `saveApiKey()`         |
-| `init.js`          | Startup          | ~25   | App initialization, event listener setup                   |
+| File               | Purpose          | Lines | Responsibility                                                                                                                                                     |
+| ------------------ | ---------------- | ----- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `navigation.js`    | Page routing     | ~20   | `showPage()` - switches active page and updates sidebar                                                                                                            |
+| `budget.js`        | Budget control   | ~15   | Budget slider event listener and display update                                                                                                                    |
+| `agents.js`        | Agent management | ~60   | `loadAgents()`, `loadAgentPage()`, `highlightAgent()`                                                                                                              |
+| `wallet.js`        | Wallet data      | ~310  | `loadWallets()`, `formatBalanceAmount()`, `resolveWalletAssetView()` - dual XLM + settlement-asset display with stroop precision and trustline/availability states |
+| `sse.js`           | Real-time events | ~120  | `connectSSE()`, `addFeed()` - handles live event stream                                                                                                            |
+| `rendering.js`     | Result display   | ~180  | Progress bars, result formatting, chip rendering                                                                                                                   |
+| `orchestration.js` | Task execution   | ~150  | `runOrchestration()`, `startLiveRun()`, `trackLiveEvent()`                                                                                                         |
+| `pages.js`         | Page loading     | ~200  | `loadStatusPage()`, `loadTxPage()`, `saveApiKey()`                                                                                                                 |
+| `init.js`          | Startup          | ~25   | App initialization, event listener setup                                                                                                                           |
 
 **Total JS: ~810 lines** (organized by feature, easy to test and extend)
 

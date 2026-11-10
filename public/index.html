@@ -622,9 +622,33 @@
 
       .wc-bal {
         font-family: 'JetBrains Mono', monospace;
-        font-size: 14px;
+        font-size: 13px;
         font-weight: 700;
         color: var(--cyan);
+      }
+
+      .wc-dual-balances {
+        display: flex;
+        flex-direction: column;
+        gap: 3px;
+        align-items: center;
+      }
+
+      .wc-asset-row {
+        font-size: 12.5px;
+        line-height: 1.35;
+      }
+
+      .wc-asset-row.native .wc-native-val {
+        font-size: 11px;
+        color: var(--text-secondary);
+        font-weight: 600;
+      }
+
+      .wc-asset-missing {
+        font-size: 11px;
+        color: var(--amber);
+        font-weight: 600;
       }
 
       .wc-addr {
@@ -1310,7 +1334,7 @@
             <div class="card">
               <div class="card-h">
                 <h2>💰 Wallet Balances</h2>
-                <span class="tag green">Live</span>
+                <span class="tag green" id="wallet-freshness">Live</span>
               </div>
               <div class="card-b">
                 <div class="g3">
@@ -2280,27 +2304,252 @@
       }
 
       // ─── Load Wallets ───
+      const STELLAR_DECIMALS = 7
+      const STROOP_SCALE = 10n ** BigInt(STELLAR_DECIMALS)
+      const DEFAULT_SETTLEMENT_ASSET = {
+        code: 'USDC',
+        issuer: 'GBBD47IF6LWK7P7MDEVSCWR7DPUWV3NY3DTQEVFL4NAT4AQH3ZLLFLA5',
+      }
+
+      function escapeWalletHtml(value) {
+        return String(value ?? '')
+          .replace(/&/g, '&amp;')
+          .replace(/</g, '&lt;')
+          .replace(/>/g, '&gt;')
+          .replace(/"/g, '&quot;')
+          .replace(/'/g, '&#39;')
+      }
+
+      function parseDecimalBalance(rawValue) {
+        if (rawValue === null || rawValue === undefined) {
+          return { isValid: false, stroops: 0n, exact: '—' }
+        }
+        let str =
+          typeof rawValue === 'number' && Number.isFinite(rawValue)
+            ? rawValue.toFixed(STELLAR_DECIMALS)
+            : typeof rawValue === 'string'
+              ? rawValue.trim()
+              : ''
+        if (!str) return { isValid: false, stroops: 0n, exact: '—' }
+        if (/^[+-]?\d+(\.\d+)?e[+-]?\d+$/i.test(str)) {
+          const num = Number(str)
+          if (!Number.isFinite(num)) return { isValid: false, stroops: 0n, exact: '—' }
+          str = num.toFixed(STELLAR_DECIMALS)
+        }
+        let sign = 1n
+        if (str.startsWith('+')) str = str.slice(1)
+        else if (str.startsWith('-')) {
+          sign = -1n
+          str = str.slice(1)
+        }
+        if (!/^\d+(\.\d+)?$/.test(str)) return { isValid: false, stroops: 0n, exact: '—' }
+        const [intPart, fracRaw = ''] = str.split('.')
+        const fracClipped = fracRaw.slice(0, STELLAR_DECIMALS).padEnd(STELLAR_DECIMALS, '0')
+        const stroops = (BigInt(intPart) * STROOP_SCALE + BigInt(fracClipped)) * sign
+        const absStroops = stroops < 0n ? -stroops : stroops
+        const exactInt = absStroops / STROOP_SCALE
+        const exactFrac = (absStroops % STROOP_SCALE).toString().padStart(STELLAR_DECIMALS, '0')
+        return {
+          isValid: true,
+          stroops,
+          exact: `${stroops < 0n ? '-' : ''}${exactInt}.${exactFrac}`,
+        }
+      }
+
+      function formatBalanceAmount(rawValue) {
+        const parsed = parseDecimalBalance(rawValue)
+        if (!parsed.isValid) {
+          return { display: '—', exact: '—', isZero: false, isSmallNonZero: false, stroops: 0n }
+        }
+        if (parsed.stroops === 0n) {
+          return {
+            display: '0.00',
+            exact: parsed.exact,
+            isZero: true,
+            isSmallNonZero: false,
+            stroops: 0n,
+          }
+        }
+        const isNeg = parsed.stroops < 0n
+        const absStroops = isNeg ? -parsed.stroops : parsed.stroops
+        const intVal = absStroops / STROOP_SCALE
+        const fracStr = (absStroops % STROOP_SCALE).toString().padStart(STELLAR_DECIMALS, '0')
+        const trimmedFrac = fracStr.replace(/0+$/, '')
+        const minTwoDecimals = trimmedFrac.length < 2 ? fracStr.slice(0, 2) : trimmedFrac
+        return {
+          display: `${isNeg ? '-' : ''}${intVal}.${minTwoDecimals}`,
+          exact: parsed.exact,
+          isZero: false,
+          isSmallNonZero: absStroops > 0n && absStroops < 100000n,
+          stroops: parsed.stroops,
+        }
+      }
+
+      function findAssetBalance(balances, assetSpec) {
+        if (!Array.isArray(balances)) return { entry: null, issuerMismatch: false }
+        const code = (assetSpec?.code || 'USDC').toUpperCase()
+        const expectedIssuer = assetSpec?.issuer || null
+        if (code === 'XLM') {
+          const nativeEntry =
+            balances.find(
+              (b) =>
+                (b.asset === 'XLM' || b.asset_type === 'native') && (!b.issuer || b.issuer === null)
+            ) || balances.find((b) => b.asset === 'XLM')
+          return { entry: nativeEntry || null, issuerMismatch: false }
+        }
+        const sameCode = balances.filter(
+          (b) => String(b.asset || b.asset_code || '').toUpperCase() === code
+        )
+        if (!sameCode.length) return { entry: null, issuerMismatch: false }
+        if (expectedIssuer) {
+          const exact = sameCode.find((b) => b.issuer === expectedIssuer)
+          if (exact) return { entry: exact, issuerMismatch: false }
+          const unissued = sameCode.find(
+            (b) => b.issuer === undefined || b.issuer === null || b.issuer === ''
+          )
+          if (unissued) return { entry: unissued, issuerMismatch: false }
+          return { entry: null, issuerMismatch: true }
+        }
+        return { entry: sameCode[0], issuerMismatch: false }
+      }
+
+      function getBalanceErrorMessage(errorType) {
+        const messages = {
+          ACCOUNT_NOT_FOUND: '⚠️ Not funded',
+          TIMEOUT: '⏱️ Timeout',
+          NETWORK_ERROR: '🌐 Network error',
+          UPSTREAM_ERROR: '⚠️ Service unavailable',
+        }
+        return messages[errorType] || '⚠️ Error'
+      }
+
+      function resolveWalletAssetView(walletData, settlementAssetInput = DEFAULT_SETTLEMENT_ASSET) {
+        const settlementAsset = {
+          code: settlementAssetInput?.code || DEFAULT_SETTLEMENT_ASSET.code,
+          issuer:
+            settlementAssetInput?.issuer !== undefined
+              ? settlementAssetInput.issuer
+              : DEFAULT_SETTLEMENT_ASSET.issuer,
+        }
+        const address = walletData?.address || null
+        const shortAddress = address ? `${address.slice(0, 6)}...${address.slice(-4)}` : '...'
+        if (!walletData || walletData.available === false) {
+          const errorType = walletData?.errorType || 'UPSTREAM_ERROR'
+          return {
+            available: false,
+            state: 'unavailable',
+            address,
+            shortAddress,
+            settlementAsset,
+            errorType,
+            errorMessage: getBalanceErrorMessage(errorType),
+            errorDetail: walletData?.error || 'Wallet data unavailable',
+          }
+        }
+        const balances = Array.isArray(walletData.balances) ? walletData.balances : []
+        const { entry: xlmEntry } = findAssetBalance(balances, { code: 'XLM', issuer: null })
+        const nativeFormatted = xlmEntry
+          ? formatBalanceAmount(xlmEntry.balance)
+          : {
+              display: '0.00',
+              exact: '0.0000000',
+              isZero: true,
+              isSmallNonZero: false,
+              stroops: 0n,
+            }
+        const nativeState = !xlmEntry ? 'unfunded' : nativeFormatted.isZero ? 'zero' : 'funded'
+        const { entry: settlementEntry, issuerMismatch } = findAssetBalance(
+          balances,
+          settlementAsset
+        )
+        const settlementFormatted = settlementEntry
+          ? formatBalanceAmount(settlementEntry.balance)
+          : null
+        const settlementState = settlementEntry
+          ? settlementFormatted.isZero
+            ? 'zero'
+            : 'funded'
+          : issuerMismatch
+            ? 'issuer_mismatch'
+            : 'no_trustline'
+        return {
+          available: true,
+          state: 'available',
+          address,
+          shortAddress,
+          settlementAsset,
+          native: { code: 'XLM', state: nativeState, ...nativeFormatted },
+          settlement: {
+            code: settlementAsset.code,
+            issuer: settlementEntry?.issuer || settlementAsset.issuer || null,
+            hasTrustline: Boolean(settlementEntry),
+            issuerMismatch,
+            state: settlementState,
+            ...(settlementFormatted || {
+              display: null,
+              exact: null,
+              isZero: false,
+              isSmallNonZero: false,
+              stroops: 0n,
+            }),
+          },
+        }
+      }
+
+      function renderWalletCardHtml(view) {
+        if (!view.available) {
+          return `<div class="wc-error" data-wallet-state="unavailable" data-error-type="${escapeWalletHtml(view.errorType)}" style="color:var(--red)" title="${escapeWalletHtml(view.errorDetail)}">${escapeWalletHtml(view.errorMessage)}</div>`
+        }
+        const sCode = escapeWalletHtml(view.settlement.code)
+        const settlementRowHtml = view.settlement.hasTrustline
+          ? `<div class="wc-asset-row settlement" data-asset="${sCode}" data-trustline="present" data-balance-state="${escapeWalletHtml(view.settlement.state)}" data-exact-balance="${escapeWalletHtml(view.settlement.exact)}" title="Exact: ${escapeWalletHtml(view.settlement.exact)} ${sCode}"><span class="wc-asset-val">${escapeWalletHtml(view.settlement.display)} ${sCode}</span></div>`
+          : `<div class="wc-asset-row settlement wc-missing-trustline" data-asset="${sCode}" data-trustline="missing" data-balance-state="${escapeWalletHtml(view.settlement.state)}"><span class="wc-asset-missing">${view.settlement.issuerMismatch ? `No ${sCode} trustline (issuer mismatch)` : `No ${sCode} trustline`}</span></div>`
+        const nativeRowHtml = `<div class="wc-asset-row native" data-asset="XLM" data-balance-state="${escapeWalletHtml(view.native.state)}" data-exact-balance="${escapeWalletHtml(view.native.exact)}" title="Exact: ${escapeWalletHtml(view.native.exact)} XLM"><span class="wc-asset-val wc-native-val">${escapeWalletHtml(view.native.display)} XLM</span></div>`
+        return `<div class="wc-dual-balances" data-wallet-state="available">${settlementRowHtml}${nativeRowHtml}</div>`
+      }
+
+      function renderWalletCompactHtml(view) {
+        if (!view.available) {
+          return `<span style="color:var(--red)" data-wallet-state="unavailable" title="${escapeWalletHtml(view.errorDetail)}">${escapeWalletHtml(view.errorMessage)}</span>`
+        }
+        const sCode = escapeWalletHtml(view.settlement.code)
+        const settlementPart = view.settlement.hasTrustline
+          ? `${escapeWalletHtml(view.settlement.display)} ${sCode}`
+          : `No ${sCode} trustline`
+        const nativePart = `${escapeWalletHtml(view.native.display)} XLM`
+        return `<span class="sb-dual-bal" data-wallet-state="available" data-trustline="${view.settlement.hasTrustline ? 'present' : 'missing'}">${settlementPart} · ${nativePart}</span>`
+      }
+
       async function loadWallets() {
         try {
-          const w = await (await fetch('/api/wallet/balances')).json()
-          for (const [k, d] of Object.entries(w)) {
+          const data = await (await fetch('/api/wallet/balances')).json()
+          const wallets = data.wallets || (!data.timestamp && typeof data === 'object' ? data : {})
+          const settlementAsset = data.settlementAsset || DEFAULT_SETTLEMENT_ASSET
+          const freshEl = document.getElementById('wallet-freshness')
+          if (freshEl) {
+            const ts = data.timestamp ? new Date(data.timestamp) : null
+            const timeLabel =
+              ts && !Number.isNaN(ts.getTime())
+                ? ts.toLocaleTimeString([], {
+                    hour: '2-digit',
+                    minute: '2-digit',
+                    second: '2-digit',
+                  })
+                : 'just now'
+            freshEl.textContent = data.partialAvailability
+              ? `Partial · ${timeLabel}`
+              : `Live · ${timeLabel}`
+            freshEl.className = data.partialAvailability ? 'tag amber' : 'tag green'
+          }
+          for (const [k, d] of Object.entries(wallets)) {
             const bk = k === 'orchestrator' ? 'orch' : k
             const balEl = document.getElementById(`bal-${bk}`)
             const addrEl = document.getElementById(`addr-${bk}`)
             const mEl = document.getElementById(`mbal-${bk}`)
-            if (balEl && d.balances) {
-              const u = d.balances.find((b) => b.asset === 'USDC')
-              const x = d.balances.find((b) => b.asset === 'XLM')
-              if (u && parseFloat(u.balance) > 0) {
-                balEl.textContent = `${parseFloat(u.balance).toFixed(2)} USDC`
-                if (mEl) mEl.textContent = `${parseFloat(u.balance).toFixed(1)} USDC`
-              } else if (x) {
-                balEl.textContent = `${parseFloat(x.balance).toFixed(2)} XLM`
-                if (mEl) mEl.textContent = `${parseFloat(x.balance).toFixed(0)} XLM`
-              }
-            }
-            if (addrEl && d.address)
-              addrEl.textContent = `${d.address.slice(0, 6)}...${d.address.slice(-4)}`
+            const view = resolveWalletAssetView(d, settlementAsset)
+            if (balEl) balEl.innerHTML = renderWalletCardHtml(view)
+            if (mEl) mEl.innerHTML = renderWalletCompactHtml(view)
+            if (addrEl && view.address) addrEl.textContent = view.shortAddress
           }
         } catch {}
       }

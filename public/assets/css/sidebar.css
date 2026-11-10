@@ -206,9 +206,34 @@
 
 .sb-wv {
   font-family: 'JetBrains Mono', monospace;
-  font-size: 10px;
+  font-size: 9.5px;
   color: var(--cyan);
   font-weight: 500;
+  text-align: right;
+}
+
+.wc-dual-balances {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  align-items: center;
+}
+
+.wc-asset-row {
+  font-size: 12.5px;
+  line-height: 1.35;
+}
+
+.wc-asset-row.native .wc-native-val {
+  font-size: 11px;
+  color: var(--text-secondary);
+  font-weight: 600;
+}
+
+.wc-asset-missing {
+  font-size: 11px;
+  color: var(--amber);
+  font-weight: 600;
 }
 
 .sb-status {

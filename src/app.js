@@ -294,8 +294,14 @@ export function createApp(dependencies = {}) {
         }
       }
 
+      const settlementAsset = config.networkProfile?.usdc
+        ? { code: config.networkProfile.usdc.code, issuer: config.networkProfile.usdc.issuer }
+        : { code: 'USDC', issuer: null }
+
       const response = {
         wallets,
+        settlementAsset,
+        network: config.network,
         timestamp: new Date().toISOString(),
         correlationId: req.requestId,
       }
