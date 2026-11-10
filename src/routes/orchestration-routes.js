@@ -4,6 +4,7 @@ import { logger } from '../logger.js'
 import { config } from '../config.js'
 import { OrchestrationAdmissionQueue } from '../agents/orchestration-queue.js'
 import { previewOrchestration, executePlan, activePlansStore } from '../agents/orchestrator.js'
+import { buildRunReport, formatRunReportMarkdown } from '../storage/run-history.js'
 
 export function registerOrchestrationRoutes(app, deps = {}) {
   const {
@@ -575,6 +576,51 @@ export function registerOrchestrationRoutes(app, deps = {}) {
       next(err)
     }
   })
+
+  async function handleExportRun(req, res, next) {
+    try {
+      const run = await runHistoryStore.getRun(req.params.id)
+      if (!run) {
+        const err = new Error(`Run '${req.params.id}' not found`)
+        err.status = 404
+        err.code = 'RUN_NOT_FOUND'
+        return next(err)
+      }
+
+      const rawFormat = req.query.format
+        ? String(req.query.format).toLowerCase()
+        : req.header('accept')?.includes('text/markdown')
+          ? 'markdown'
+          : 'json'
+
+      if (rawFormat !== 'json' && rawFormat !== 'md' && rawFormat !== 'markdown') {
+        const err = new Error(
+          `Unsupported export format '${req.query.format}'. Supported formats: json, markdown.`
+        )
+        err.status = 400
+        err.code = 'INVALID_EXPORT_FORMAT'
+        return next(err)
+      }
+
+      const report = buildRunReport(run, { network: config.network })
+
+      if (rawFormat === 'md' || rawFormat === 'markdown') {
+        const markdown = formatRunReportMarkdown(report)
+        res.setHeader('Content-Type', 'text/markdown; charset=utf-8')
+        res.setHeader('Content-Disposition', `attachment; filename="run-${report.runId}-report.md"`)
+        return res.send(markdown)
+      }
+
+      res.setHeader('Content-Type', 'application/json; charset=utf-8')
+      res.setHeader('Content-Disposition', `attachment; filename="run-${report.runId}-report.json"`)
+      return res.json(report)
+    } catch (err) {
+      next(err)
+    }
+  }
+
+  app.get('/api/runs/:id/export', handleExportRun)
+  app.get('/api/runs/:id/report', handleExportRun)
 
   // Runs one reconciliation pass over this run's pending attempts. The
   // probe is injected because only a caller that can query the payment

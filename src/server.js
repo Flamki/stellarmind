@@ -5,7 +5,11 @@ import { config } from './config.js'
 import { pricingConfig } from './pricing.config.js'
 import { validateAll, formatValidationErrors } from './pricing.validator.js'
 import { logger } from './logger.js'
-import { createRunHistoryStore } from './storage/run-history.js'
+import {
+  createRunHistoryStore,
+  buildRunReport,
+  formatRunReportMarkdown,
+} from './storage/run-history.js'
 import { createApp } from './app.js'
 
 // x402 imports
@@ -87,4 +91,4 @@ if (isMainModule) {
   })
 }
 
-export { app, admissionQueue }
+export { app, admissionQueue, runHistoryStore, buildRunReport, formatRunReportMarkdown }

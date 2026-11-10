@@ -128,6 +128,11 @@ function showResult(r) {
     )
     .join(' ')
 
+  const runId = r.runId || r.id || null
+  const exportActions = runId
+    ? `<div class="chip" id="result-export-actions" style="gap:6px;">Export: <a href="${buildRunExportUrl(runId, 'json')}" download="run-${runId}-report.json" class="fi-link" onclick="exportRunReport('${runId}', 'json'); return false;">JSON</a> <a href="${buildRunExportUrl(runId, 'markdown')}" download="run-${runId}-report.md" class="fi-link" onclick="exportRunReport('${runId}', 'markdown'); return false;">Markdown</a></div>`
+    : ''
+
   ch.innerHTML = `
     <div class="chip">Agents: <span class="v">${r.agentsUsed || 0}</span></div>
     <div class="chip">Quoted: <span class="v">${r.quotedTotal || r.totalSpent || '0'} USDC</span></div>
@@ -137,6 +142,7 @@ function showResult(r) {
     <div class="chip">Time: <span class="v">${r.elapsed || '-'}</span></div>
     ${r.budgetExhausted ? '<div class="chip" style="color:var(--amber)">Budget Used</div>' : ''}
     ${txL ? `<div class="chip" style="flex-wrap:wrap;gap:4px;">Verify: ${txL}</div>` : ''}
+    ${exportActions}
   `
 
   if (activeRun) {
@@ -186,7 +192,53 @@ function closeRunDetail() {
   modal.style.display = 'none'
 }
 
+function buildRunExportUrl(runId, format = 'json') {
+  const normalized = format === 'md' || format === 'markdown' ? 'markdown' : 'json'
+  return `/api/runs/${encodeURIComponent(runId)}/export?format=${normalized}`
+}
+
+async function exportRunReport(runId, format = 'json') {
+  const normalized = format === 'md' || format === 'markdown' ? 'markdown' : 'json'
+  const ext = normalized === 'markdown' ? 'md' : 'json'
+  const url = buildRunExportUrl(runId, normalized)
+  const res = await fetch(url)
+  if (!res.ok) {
+    const errData = await res.json().catch(() => ({}))
+    throw new Error(errData.message || errData.error || `Failed to export run ${runId}`)
+  }
+  const body = await res.text()
+  const filename = `run-${runId}-report.${ext}`
+  const contentType =
+    res.headers?.get?.('content-type') ||
+    (normalized === 'markdown' ? 'text/markdown; charset=utf-8' : 'application/json; charset=utf-8')
+
+  if (typeof Blob !== 'undefined' && typeof URL !== 'undefined' && URL.createObjectURL) {
+    const blob = new Blob([body], { type: contentType })
+    const objectUrl = URL.createObjectURL(blob)
+    const link = document.createElement('a')
+    link.href = objectUrl
+    link.download = filename
+    if (document.body?.appendChild) {
+      document.body.appendChild(link)
+      link.click?.()
+      document.body.removeChild?.(link)
+    } else {
+      link.click?.()
+    }
+    URL.revokeObjectURL?.(objectUrl)
+  }
+
+  return {
+    format: normalized,
+    filename,
+    contentType,
+    body,
+    data: normalized === 'json' ? JSON.parse(body) : null,
+  }
+}
+
 function renderRunDetail(run) {
+  const runId = run.id || run.runId || 'unknown'
   const status = run.status || 'unknown'
   const statusClass = `status-${status}`
   const created = run.createdAt ? new Date(run.createdAt).toLocaleString() : '—'
@@ -208,7 +260,7 @@ function renderRunDetail(run) {
     run.budget !== undefined && run.budget !== null ? run.budget : (run.summary?.budget ?? '—')
   const task = run.task || '—'
 
-  document.getElementById('detail-run-id').innerHTML = `<code>${escapeHtml(run.id)}</code>`
+  document.getElementById('detail-run-id').innerHTML = `<code>${escapeHtml(runId)}</code>`
   document.getElementById('detail-status').textContent = status
   document.getElementById('detail-status').className = `history-status ${statusClass}`
   document.getElementById('detail-task').textContent = task
@@ -219,6 +271,14 @@ function renderRunDetail(run) {
   document.getElementById('detail-budget').textContent = budget
   const settledEl = document.getElementById('detail-settled')
   if (settledEl) settledEl.textContent = settled
+
+  const exportEl = document.getElementById('detail-export-actions')
+  if (exportEl) {
+    exportEl.innerHTML = `
+      <a href="${escapeHtml(buildRunExportUrl(runId, 'json'))}" download="run-${escapeHtml(runId)}-report.json" class="btn" id="btn-export-json" onclick="exportRunReport('${escapeHtml(runId)}', 'json'); return false;" style="padding: 6px 12px; font-size: 12px; text-decoration: none;">Export JSON</a>
+      <a href="${escapeHtml(buildRunExportUrl(runId, 'markdown'))}" download="run-${escapeHtml(runId)}-report.md" class="btn" id="btn-export-markdown" onclick="exportRunReport('${escapeHtml(runId)}', 'markdown'); return false;" style="padding: 6px 12px; font-size: 12px; text-decoration: none;">Export Markdown</a>
+    `
+  }
 
   const interruptedSection = document.getElementById('detail-interrupted-section')
   if (interrupted) {
@@ -242,19 +302,48 @@ function renderRunDetail(run) {
   // Render payment info
   const paymentSection = document.getElementById('detail-payment-section')
   const payments = []
+  const seenPaymentKeys = new Set()
+  const pushPayment = (p) => {
+    const key =
+      p.id || p.txHash || `${p.method || ''}:${p.amount || ''}:${p.asset || ''}:${p.status || ''}`
+    if (seenPaymentKeys.has(key)) return
+    if (p.txHash && seenPaymentKeys.has(`tx:${p.txHash}`)) return
+    seenPaymentKeys.add(key)
+    if (p.txHash) seenPaymentKeys.add(`tx:${p.txHash}`)
+    payments.push(p)
+  }
+
   if (run.txProofs && Array.isArray(run.txProofs) && run.txProofs.length > 0) {
-    payments.push(...run.txProofs)
+    for (const proof of run.txProofs) {
+      pushPayment({
+        ...proof,
+        status: proof.synthetic ? 'synthetic' : proof.status || 'confirmed',
+      })
+    }
   }
   if (run.paymentAttempts && Array.isArray(run.paymentAttempts)) {
     for (const pa of run.paymentAttempts) {
-      // Attempts are confirmed/unknown/failed, not `settled`.
       if (pa?.outcome === 'confirmed' && pa.txHash) {
-        payments.push({
+        pushPayment({
+          id: pa.id,
           method: pa.method,
           txHash: pa.txHash,
           explorerUrl: pa.explorerUrl,
           amount: pa.settledAmount ?? pa.amount,
           asset: pa.settledAsset ?? pa.currency,
+          network: pa.settledNetwork ?? pa.network,
+          status: pa.synthetic ? 'synthetic' : 'confirmed',
+        })
+      } else if (pa?.outcome === 'unknown' || pa?.outcome === 'pending') {
+        pushPayment({
+          id: pa.id,
+          method: pa.method || 'x402',
+          txHash: pa.txHash || null,
+          explorerUrl: null,
+          amount: pa.settledAmount ?? pa.amount,
+          asset: pa.settledAsset ?? pa.currency,
+          network: pa.settledNetwork ?? pa.network,
+          status: 'pending',
         })
       }
     }
@@ -264,15 +353,27 @@ function renderRunDetail(run) {
     document.getElementById('detail-payments').innerHTML = payments
       .map((p) => {
         const hash = p.txHash || '—'
-        const url = p.explorerUrl || `https://stellar.expert/explorer/testnet/tx/${hash}`
+        const isSynthetic =
+          p.status === 'synthetic' ||
+          p.synthetic === true ||
+          /^(?:stub|demo|synthetic|mock)[_-]/i.test(String(p.txHash || ''))
+        const isPending = p.status === 'pending' || p.outcome === 'unknown'
+        const statusLabel = isSynthetic ? 'synthetic' : isPending ? 'pending' : 'confirmed'
+        const url =
+          !isSynthetic && !isPending && p.txHash
+            ? p.explorerUrl || `https://stellar.expert/explorer/testnet/tx/${hash}`
+            : null
         const settled =
           p.amount !== undefined && p.amount !== null
             ? `${p.amount} ${p.asset || ''}`.trim()
             : 'amount not recorded'
-        return `<div class="payment-item">
+        const linkOrHash = url
+          ? `<a href="${escapeHtml(url)}" target="_blank" rel="noopener">${escapeHtml(hash.slice(0, 12))}...${escapeHtml(hash.slice(-8))}</a>`
+          : `<span>${escapeHtml(hash)}</span>`
+        return `<div class="payment-item" data-receipt-status="${escapeHtml(statusLabel)}">
           <span>${escapeHtml(settled)}</span>
-          <span>${escapeHtml(p.method || 'unknown')}</span>
-          <a href="${escapeHtml(url)}" target="_blank" rel="noopener">${escapeHtml(hash.slice(0, 12))}...${escapeHtml(hash.slice(-8))}</a>
+          <span>${escapeHtml(p.method || 'unknown')} (${escapeHtml(statusLabel)})</span>
+          ${linkOrHash}
         </div>`
       })
       .join('')
@@ -288,9 +389,18 @@ function renderRunDetail(run) {
     document.getElementById('detail-outputs').innerHTML = outputs
       .map((o, i) => {
         const agent = o.agent || o.agentId || `step-${i + 1}`
-        const content = o.content || o.result || o.response || o.text || JSON.stringify(o, null, 2)
-        return `<div class="output-item">
-          <div class="output-header">${i + 1}. ${escapeHtml(agent)}</div>
+        const outcome = o.skipped ? 'skipped' : o.error ? 'failed' : o.outcome || 'completed'
+        const content =
+          o.output ||
+          o.content ||
+          o.result ||
+          o.response ||
+          o.text ||
+          (o.skipped
+            ? `[SKIPPED] ${o.reason || 'budget limit'}`
+            : o.error || JSON.stringify(o, null, 2))
+        return `<div class="output-item" data-step-outcome="${escapeHtml(outcome)}">
+          <div class="output-header">${i + 1}. ${escapeHtml(agent)} [${escapeHtml(outcome)}]</div>
           <pre class="output-content">${escapeHtml(content)}</pre>
         </div>`
       })

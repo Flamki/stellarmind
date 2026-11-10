@@ -8,10 +8,17 @@ import {
   summarizePaymentAttempts,
   upsertPaymentAttempt,
 } from '../agents/payment-attempts.js'
+import {
+  formatSettledTotals,
+  SETTLEMENT_CONVERSION_POLICY,
+  summarizeSettledTotals,
+} from '../agents/settlement.js'
+import { DEFAULT_NETWORK, explorerTxUrl, getNetworkProfile } from '../stellar/network.js'
 
 // Schema versioning constants
 const CURRENT_SCHEMA_VERSION = 1
 const LEGACY_VERSION = 0 // Unversioned files
+export const REPORT_SCHEMA_VERSION = '1.0'
 
 // Machine-readable recovery reason (issue #139). A run left `status:
 // 'running'` in persisted history when the store is (re)initialized never
@@ -388,6 +395,29 @@ export class InMemoryRunHistoryStore {
       .map((run) => normalizeRunRecord({ ...run, runId: run.id }))
   }
 
+  async exportRun(runId, format = 'json', options = {}) {
+    const run = await this.getRun(runId)
+    if (!run) return null
+    const report = buildRunReport(run, options)
+    const normalizedFormat = String(format || 'json').toLowerCase()
+    if (normalizedFormat === 'md' || normalizedFormat === 'markdown') {
+      return {
+        format: 'markdown',
+        contentType: 'text/markdown; charset=utf-8',
+        filename: `run-${report.runId}-report.md`,
+        body: formatRunReportMarkdown(report),
+        report,
+      }
+    }
+    return {
+      format: 'json',
+      contentType: 'application/json; charset=utf-8',
+      filename: `run-${report.runId}-report.json`,
+      body: JSON.stringify(report, null, 2),
+      report,
+    }
+  }
+
   async flush() {
     return Promise.resolve()
   }
@@ -652,4 +682,578 @@ export async function createRunHistoryStore(config) {
   }
 
   return store
+}
+
+/**
+ * Redacts credentials (API keys, Stellar secret keys, bearer tokens) and
+ * deployment filesystem paths from exported text fields.
+ */
+export function redactSensitiveText(value) {
+  if (value === null || value === undefined) return null
+  if (typeof value !== 'string') {
+    try {
+      return redactSensitiveText(JSON.stringify(value))
+    } catch {
+      return String(value)
+    }
+  }
+  return value
+    .replace(/sk-ant-[A-Za-z0-9_-]+/g, '[REDACTED_API_KEY]')
+    .replace(/\bS[A-Z2-7]{55}\b/g, '[REDACTED_STELLAR_SECRET]')
+    .replace(/\bBearer\s+[A-Za-z0-9._-]+/gi, 'Bearer [REDACTED]')
+    .replace(
+      /(?:file:\/\/)?\/(?:home|tmp|var|usr|opt|etc|root|app|srv|Users|private)\/[A-Za-z0-9._/-]+/g,
+      '[REDACTED_PATH]'
+    )
+    .replace(/[A-Za-z]:\\[A-Za-z0-9._\\-]+/g, '[REDACTED_PATH]')
+}
+
+function isSyntheticReceipt(item) {
+  if (!item || typeof item !== 'object') return false
+  if (item.synthetic === true || item.isSynthetic === true || item.mode === 'demo') return true
+  const method = String(item.method || item.paidVia || item.paymentMethod || '').toLowerCase()
+  if (method.includes('stub') || method.includes('synthetic') || method.includes('demo')) {
+    return true
+  }
+  const policy = String(item.settlementPolicy || item.policy || '').toLowerCase()
+  if (policy.includes('synthetic') || policy.includes('stub')) return true
+  const txHash = String(item.txHash || '')
+  if (/^(?:stub|demo|synthetic|mock)[_-]/i.test(txHash)) return true
+  return false
+}
+
+function resolveReceiptExplorerUrl(txHash, network, existingUrl, isSynthetic) {
+  if (!txHash || isSynthetic) return null
+  const profile = getNetworkProfile(network || DEFAULT_NETWORK)
+  if (profile) {
+    return explorerTxUrl(profile, txHash)
+  }
+  return existingUrl ? redactSensitiveText(existingUrl) : null
+}
+
+function detectStepProvenanceMode(step, outputText) {
+  if (step?.synthetic === true || step?.isSynthetic === true) return 'synthetic'
+  if (step?.demo === true || step?.isDemo === true || step?.mode === 'demo') return 'demo'
+  const explicitMode =
+    step?.provenance?.mode || step?.provenance?.responseType || step?.responseType
+  if (explicitMode) return String(explicitMode)
+  if (
+    typeof outputText === 'string' &&
+    /\[Demo Response|\bDemo mode\b|Canned response/i.test(outputText)
+  ) {
+    return 'demo'
+  }
+  return 'live'
+}
+
+/**
+ * Generates a versioned, sanitized run report from a persisted run record.
+ * Omits deployment filesystem paths and credentials while preserving step
+ * outcomes, provenance, actual settled asset amounts, and verifiable receipts.
+ */
+export function buildRunReport(rawRun, options = {}) {
+  if (!rawRun || typeof rawRun !== 'object') {
+    throw new Error('Cannot build report from empty run record')
+  }
+
+  const run = normalizeRunRecord(rawRun)
+  const defaultNetwork =
+    options.network || run.network || run.summary?.network || run.result?.network || DEFAULT_NETWORK
+  const exportedAt = options.exportedAt || new Date().toISOString()
+  const runId = String(run.id || run.runId || 'unknown')
+
+  const rawSteps =
+    Array.isArray(run.results) && run.results.length > 0
+      ? run.results
+      : Array.isArray(run.output) && run.output.length > 0
+        ? run.output
+        : Array.isArray(run.result?.results)
+          ? run.result.results
+          : Array.isArray(run.result?.output)
+            ? run.result.output
+            : []
+
+  const steps = rawSteps.map((step, index) => {
+    const rawOutput =
+      step.output ?? step.result ?? step.response ?? step.text ?? step.content ?? null
+    const output =
+      rawOutput !== null && rawOutput !== undefined ? redactSensitiveText(rawOutput) : null
+    const skipped = Boolean(step.skipped)
+    const hasError =
+      Boolean(step.error) ||
+      step.status === 'failed' ||
+      (typeof output === 'string' && output.startsWith('Error:'))
+    const outcome = skipped
+      ? 'skipped'
+      : hasError
+        ? 'failed'
+        : String(step.outcome || step.status || 'completed')
+
+    const settledAmount = step.settledAmount ?? step.settlement?.amount ?? null
+    const settledAsset = step.settledAsset ?? step.settlement?.asset ?? null
+    const settledIssuer = step.settledIssuer ?? step.settlement?.issuer ?? null
+    const settledNetwork =
+      step.settledNetwork ??
+      step.settlement?.network ??
+      (settledAmount && settledAsset ? defaultNetwork : null)
+    const txHash = step.txHash ?? step.settlement?.txHash ?? null
+    const synthetic = isSyntheticReceipt(step) || isSyntheticReceipt(step.settlement)
+    const settled = Boolean(
+      !skipped &&
+      (step.paymentSuccess || step.settlement?.success || (settledAmount && settledAsset))
+    )
+    const pending = Boolean(
+      step.paymentReconciliationRequired ||
+      step.paymentAttempt?.outcome === 'unknown' ||
+      step.paymentAttempt?.outcome === 'pending'
+    )
+
+    const quotedAmount =
+      step.quotedAmount !== undefined && step.quotedAmount !== null
+        ? String(step.quotedAmount)
+        : step.quote?.amount !== undefined && step.quote?.amount !== null
+          ? String(step.quote.amount)
+          : step.cost !== undefined && step.cost !== null
+            ? String(step.cost)
+            : null
+    const quotedAsset = String(step.quotedAsset || step.quote?.asset || step.currency || 'USDC')
+
+    const provenanceMode = detectStepProvenanceMode(step, output)
+
+    return {
+      stepId: String(step.stepId || `step-${index + 1}`),
+      index: index + 1,
+      agentId: step.agentId || step.agent || null,
+      agentName: step.agentName || step.agent || step.agentId || `Step ${index + 1}`,
+      outcome,
+      skipped,
+      skipReason: skipped ? redactSensitiveText(step.reason || 'budget_limit') : null,
+      input:
+        step.input !== undefined && step.input !== null ? redactSensitiveText(step.input) : null,
+      output,
+      error: step.error
+        ? redactSensitiveText(
+            typeof step.error === 'string' ? step.error : step.error.message || 'Step error'
+          )
+        : null,
+      provenance: {
+        mode: provenanceMode,
+        responseType: provenanceMode,
+        model: step.model || step.usage?.model || null,
+        usage: step.usage
+          ? {
+              available: Boolean(step.usage.available),
+              inputTokens: step.usage.inputTokens ?? null,
+              outputTokens: step.usage.outputTokens ?? null,
+              totalTokens: step.usage.totalTokens ?? null,
+              unavailableReason: step.usage.unavailableReason || null,
+            }
+          : null,
+      },
+      quote: {
+        amount: quotedAmount,
+        asset: quotedAsset,
+        issuer: step.quotedIssuer ?? step.quote?.issuer ?? null,
+        network: step.quotedNetwork ?? step.quote?.network ?? defaultNetwork,
+      },
+      settlement: {
+        settled,
+        status: synthetic ? 'synthetic' : pending ? 'pending' : settled ? 'confirmed' : 'unsettled',
+        amount:
+          settledAmount !== null && settledAmount !== undefined ? String(settledAmount) : null,
+        asset: settledAsset ? String(settledAsset) : null,
+        issuer: settledIssuer || null,
+        network: settledNetwork || null,
+        method: step.paidVia || step.paymentMethod || step.settlement?.method || 'none',
+        txHash: txHash || null,
+        explorerUrl: settled
+          ? resolveReceiptExplorerUrl(
+              txHash,
+              settledNetwork || defaultNetwork,
+              step.explorerUrl || step.settlement?.explorerUrl,
+              synthetic
+            )
+          : null,
+      },
+    }
+  })
+
+  // Collect receipts from txProofs, paymentAttempts, step settlements, and legacy events
+  const receipts = []
+  const seenKeys = new Set()
+
+  const addReceipt = (raw, fallbackStepId = null) => {
+    if (!raw || typeof raw !== 'object') return
+    const synthetic = isSyntheticReceipt(raw)
+    const outcome = String(raw.outcome || raw.status || '').toLowerCase()
+    const isPending =
+      outcome === 'unknown' || outcome === 'pending' || Boolean(raw.paymentReconciliationRequired)
+    const isFailed = outcome === 'failed'
+    const txHash = raw.txHash || raw.settlement?.txHash || null
+    const method =
+      raw.method || raw.paidVia || raw.paymentMethod || raw.settlement?.method || 'unknown'
+    const amount =
+      raw.amount ??
+      raw.settledAmount ??
+      raw.settlement?.amount ??
+      (isPending || isFailed ? raw.quotedAmount : null) ??
+      null
+    const asset =
+      raw.asset ||
+      raw.settledAsset ||
+      raw.settlement?.asset ||
+      raw.currency ||
+      raw.quotedAsset ||
+      null
+    const issuer = raw.issuer ?? raw.settledIssuer ?? raw.settlement?.issuer ?? null
+    const network = raw.network || raw.settledNetwork || raw.settlement?.network || defaultNetwork
+    const stepId = raw.stepId || fallbackStepId || null
+    const agentId = raw.agentId || raw.agent || null
+
+    const status = synthetic
+      ? 'synthetic'
+      : isPending
+        ? 'pending'
+        : isFailed
+          ? 'failed'
+          : 'confirmed'
+    const label =
+      status === 'synthetic'
+        ? 'synthetic (demo/stub receipt)'
+        : status === 'pending'
+          ? 'pending (awaiting reconciliation)'
+          : status === 'failed'
+            ? 'failed'
+            : 'confirmed'
+
+    const dedupKey = raw.id
+      ? `attempt:${raw.id}`
+      : txHash
+        ? `tx:${txHash}:${amount || ''}:${asset || ''}`
+        : `step:${stepId || agentId || receipts.length}:${status}:${amount || ''}:${asset || ''}`
+    if (seenKeys.has(dedupKey)) return
+    if (txHash && seenKeys.has(`tx:${txHash}`)) return
+    seenKeys.add(dedupKey)
+    if (txHash) seenKeys.add(`tx:${txHash}`)
+
+    const verifiable = status === 'confirmed' && Boolean(txHash && network)
+    const explorerUrl =
+      status === 'confirmed'
+        ? resolveReceiptExplorerUrl(txHash, network, raw.explorerUrl, false)
+        : null
+
+    receipts.push({
+      receiptId: raw.id || `rcpt_${receipts.length + 1}`,
+      stepId,
+      agentId,
+      status,
+      label,
+      synthetic,
+      verifiable,
+      method,
+      amount: amount !== null && amount !== undefined ? String(amount) : null,
+      asset: asset ? String(asset) : null,
+      issuer: issuer || null,
+      quotedAmount:
+        raw.quotedAmount !== undefined && raw.quotedAmount !== null
+          ? String(raw.quotedAmount)
+          : null,
+      quotedAsset: raw.quotedAsset ? String(raw.quotedAsset) : null,
+      network,
+      txHash: txHash || null,
+      explorerUrl,
+      settlementPolicy: raw.settlementPolicy || raw.settlement?.policy || null,
+      failureReason: raw.failureReason || null,
+    })
+  }
+
+  for (const proof of run.txProofs || []) {
+    addReceipt(proof)
+  }
+  for (const attempt of run.paymentAttempts || []) {
+    if (
+      attempt.outcome === 'confirmed' ||
+      attempt.outcome === 'unknown' ||
+      attempt.outcome === 'pending'
+    ) {
+      addReceipt(attempt, attempt.stepId)
+    }
+  }
+  for (const pending of run.pendingPaymentAttempts || []) {
+    addReceipt({ ...pending, outcome: pending.outcome || 'pending' }, pending.stepId)
+  }
+  for (const rawStep of rawSteps) {
+    if (
+      rawStep &&
+      (rawStep.paymentSuccess ||
+        rawStep.settlement?.success ||
+        rawStep.paymentReconciliationRequired ||
+        isSyntheticReceipt(rawStep))
+    ) {
+      addReceipt(
+        {
+          stepId: rawStep.stepId,
+          agentId: rawStep.agentId,
+          method: rawStep.paidVia || rawStep.paymentMethod || rawStep.settlement?.method,
+          txHash: rawStep.txHash || rawStep.settlement?.txHash,
+          explorerUrl: rawStep.explorerUrl || rawStep.settlement?.explorerUrl,
+          amount: rawStep.settledAmount ?? rawStep.settlement?.amount ?? rawStep.cost,
+          asset: rawStep.settledAsset ?? rawStep.settlement?.asset ?? rawStep.currency,
+          issuer: rawStep.settledIssuer ?? rawStep.settlement?.issuer ?? null,
+          network: rawStep.settledNetwork ?? rawStep.settlement?.network ?? defaultNetwork,
+          quotedAmount: rawStep.quotedAmount ?? rawStep.cost,
+          quotedAsset: rawStep.quotedAsset ?? rawStep.currency,
+          settlementPolicy: rawStep.settlement?.policy || null,
+          synthetic: isSyntheticReceipt(rawStep) || isSyntheticReceipt(rawStep.settlement),
+          paymentReconciliationRequired: rawStep.paymentReconciliationRequired,
+          outcome: rawStep.paymentAttempt?.outcome,
+        },
+        rawStep.stepId
+      )
+    }
+  }
+  // Legacy runs that only recorded payment audit events
+  if (receipts.length === 0 && Array.isArray(run.events)) {
+    for (const ev of run.events) {
+      if (ev && (ev.type === 'payment' || ev.type === 'x402_payment')) {
+        addReceipt({
+          agentId: ev.agentId || ev.agent || null,
+          method: ev.paidVia || ev.method || (ev.type === 'x402_payment' ? 'x402' : 'stellar'),
+          txHash: ev.txHash || null,
+          explorerUrl: ev.explorerUrl || null,
+          amount: ev.amount ?? ev.cost ?? null,
+          asset: ev.asset || ev.currency || 'USDC',
+          issuer: ev.issuer || null,
+          network: ev.network || defaultNetwork,
+          quotedAmount: ev.quotedAmount ?? ev.cost ?? null,
+          quotedAsset: ev.quotedAsset || 'USDC',
+        })
+      }
+    }
+  }
+
+  // Settled totals: use stored summary.settledTotals if available, otherwise compute from confirmed non-synthetic receipts
+  const storedSettledTotals =
+    run.settledTotals || run.summary?.settledTotals || run.result?.settledTotals || []
+  let settledTotals
+  if (Array.isArray(storedSettledTotals) && storedSettledTotals.length > 0) {
+    settledTotals = storedSettledTotals.map((t) => ({
+      asset: t.asset,
+      issuer: t.issuer || null,
+      network: t.network || defaultNetwork,
+      amount: String(t.amount),
+      count: Number(t.count ?? 1),
+      txCount: Number(t.txCount ?? t.count ?? 1),
+    }))
+  } else {
+    const confirmedSettlements = receipts
+      .filter((r) => r.status === 'confirmed' && r.amount && r.asset)
+      .map((r) => ({
+        success: true,
+        asset: r.asset,
+        issuer: r.issuer || null,
+        network: r.network || defaultNetwork,
+        amount: r.amount,
+        txHash: r.txHash || null,
+      }))
+    settledTotals = summarizeSettledTotals(confirmedSettlements).map((t) => ({
+      asset: t.asset,
+      issuer: t.issuer || null,
+      network: t.network || defaultNetwork,
+      amount: t.amount,
+      count: t.count,
+      txCount: t.txCount,
+    }))
+  }
+
+  const settledSummary =
+    (run.summary?.settledSummary && run.summary.settledSummary !== 'none'
+      ? run.summary.settledSummary
+      : null) || formatSettledTotals(settledTotals)
+
+  const quotedTotal = String(
+    run.quotedTotal ??
+      run.summary?.quotedTotal ??
+      run.totalSpent ??
+      run.summary?.totalSpent ??
+      run.result?.quotedTotal ??
+      run.result?.totalSpent ??
+      '0'
+  )
+
+  const budgetValue =
+    run.budget !== undefined && run.budget !== null ? run.budget : (run.summary?.budget ?? null)
+
+  const hasDemoSteps = steps.some(
+    (s) => s.provenance.mode === 'demo' || s.provenance.mode === 'synthetic'
+  )
+  const hasLiveSteps = steps.some((s) => s.provenance.mode === 'live')
+  const hasSyntheticReceipts = receipts.some((r) => r.status === 'synthetic')
+  const runMode =
+    run.mode === 'demo' || run.demoMode || run.synthetic
+      ? 'demo'
+      : hasDemoSteps && hasLiveSteps
+        ? 'mixed'
+        : hasDemoSteps || hasSyntheticReceipts
+          ? 'demo'
+          : 'live'
+
+  const errorRecord =
+    run.error || run.status === 'failed' || run.summary?.error
+      ? {
+          code: run.error?.code || 'EXECUTION_FAILED',
+          message: redactSensitiveText(
+            run.error?.message || run.summary?.error || 'Execution failed'
+          ),
+        }
+      : null
+
+  return {
+    schemaVersion: REPORT_SCHEMA_VERSION,
+    version: CURRENT_SCHEMA_VERSION,
+    exportedAt,
+    runId,
+    id: runId,
+    status: run.status || 'unknown',
+    task: redactSensitiveText(run.task || ''),
+    budget: budgetValue,
+    quotedTotal,
+    settledTotals,
+    settledSummary,
+    timestamps: {
+      createdAt: run.createdAt || null,
+      updatedAt: run.updatedAt || null,
+      completedAt: run.completedAt || null,
+      interruptedAt: run.interruptedAt || null,
+    },
+    createdAt: run.createdAt || null,
+    updatedAt: run.updatedAt || null,
+    completedAt: run.completedAt || null,
+    interruptedAt: run.interruptedAt || null,
+    interruptedReason: run.interruptedReason || null,
+    plan: run.plan ? redactSensitiveText(run.plan) : null,
+    error: errorRecord,
+    provenance: {
+      mode: runMode,
+      source: redactSensitiveText(run.source || 'api'),
+      network: defaultNetwork,
+      usage: run.usage?.summary || run.result?.usage?.summary || null,
+    },
+    summary: {
+      quotedTotal,
+      totalSpent: quotedTotal,
+      settledTotals,
+      settledSummary,
+      budget: budgetValue,
+      budgetExhausted: Boolean(
+        run.summary?.budgetExhausted ?? run.result?.budgetExhausted ?? false
+      ),
+      paymentProtocol: run.summary?.paymentProtocol || run.result?.paymentProtocol || 'none',
+      settlementConversionPolicy:
+        run.summary?.settlementConversionPolicy || SETTLEMENT_CONVERSION_POLICY,
+      stepCount: steps.length,
+      completedStepCount: steps.filter((s) => s.outcome === 'completed').length,
+      skippedStepCount: steps.filter((s) => s.outcome === 'skipped').length,
+      failedStepCount: steps.filter((s) => s.outcome === 'failed').length,
+      receiptCount: receipts.length,
+      confirmedReceiptCount: receipts.filter((r) => r.status === 'confirmed').length,
+      pendingReceiptCount: receipts.filter((r) => r.status === 'pending').length,
+      syntheticReceiptCount: receipts.filter((r) => r.status === 'synthetic').length,
+    },
+    steps,
+    receipts,
+  }
+}
+
+/**
+ * Renders a run report as human-readable Markdown suitable for sharing or
+ * reconciliation.
+ */
+export function formatRunReportMarkdown(report) {
+  const lines = [
+    `# StellarMind Run Report: ${report.runId}`,
+    '',
+    `- **Run ID:** \`${report.runId}\``,
+    `- **Schema Version:** \`${report.schemaVersion}\``,
+    `- **Status:** \`${report.status}\``,
+    `- **Task:** ${report.task || '—'}`,
+    `- **Budget:** ${report.budget ?? '—'} USDC`,
+    `- **Quoted Total:** ${report.quotedTotal} USDC`,
+    `- **Settled Totals:** ${report.settledSummary}`,
+    `- **Provenance Mode:** \`${report.provenance?.mode || 'live'}\``,
+    `- **Network:** \`${report.provenance?.network || DEFAULT_NETWORK}\``,
+    `- **Created At:** ${report.timestamps?.createdAt || '—'}`,
+    `- **Updated At:** ${report.timestamps?.updatedAt || '—'}`,
+    `- **Completed At:** ${report.timestamps?.completedAt || '—'}`,
+  ]
+
+  if (report.timestamps?.interruptedAt) {
+    lines.push(
+      `- **Interrupted At:** ${report.timestamps.interruptedAt} (${report.interruptedReason || 'unknown'})`
+    )
+  }
+
+  if (report.error) {
+    lines.push(
+      '',
+      '## Error',
+      '',
+      `- **Code:** \`${report.error.code}\``,
+      `- **Message:** ${report.error.message}`
+    )
+  }
+
+  if (report.plan) {
+    lines.push('', '## Execution Plan', '', report.plan)
+  }
+
+  lines.push('', '## Step Outcomes', '')
+  if (!Array.isArray(report.steps) || report.steps.length === 0) {
+    lines.push('_No step outcomes recorded for this run._')
+  } else {
+    for (const step of report.steps) {
+      const settledLabel = step.settlement?.settled
+        ? `${step.settlement.amount} ${step.settlement.asset} (${step.settlement.status})`
+        : step.settlement?.status || 'unsettled'
+      lines.push(
+        `### ${step.index}. ${step.agentName} (\`${step.stepId}\`) — [${step.outcome.toUpperCase()}]`,
+        `- **Agent ID:** \`${step.agentId || 'unknown'}\``,
+        `- **Outcome:** \`${step.outcome}\``,
+        `- **Provenance:** \`${step.provenance?.mode || 'live'}\`${step.provenance?.model ? ` (model: \`${step.provenance.model}\`)` : ''}`,
+        `- **Quoted:** ${step.quote?.amount ?? '0'} ${step.quote?.asset || 'USDC'}`,
+        `- **Settled:** ${settledLabel}`
+      )
+      if (step.skipped && step.skipReason) {
+        lines.push(`- **Skip Reason:** ${step.skipReason}`)
+      }
+      if (step.error) {
+        lines.push(`- **Error:** ${step.error}`)
+      }
+      if (step.output) {
+        lines.push('', '```text', String(step.output), '```')
+      }
+      lines.push('')
+    }
+  }
+
+  lines.push('## Payment Receipts', '')
+  if (!Array.isArray(report.receipts) || report.receipts.length === 0) {
+    lines.push('_No payment receipts recorded for this run._')
+  } else {
+    for (const receipt of report.receipts) {
+      const badge = `[${receipt.status.toUpperCase()}]`
+      const amountLabel =
+        receipt.amount && receipt.asset ? `${receipt.amount} ${receipt.asset}` : 'amount unrecorded'
+      lines.push(
+        `- **${badge}** \`${receipt.receiptId}\` — **${amountLabel}** via \`${receipt.method}\` (${receipt.label})`
+      )
+      lines.push(`  - **Network:** \`${receipt.network || 'unknown'}\``)
+      lines.push(`  - **Transaction Hash:** ${receipt.txHash ? `\`${receipt.txHash}\`` : 'none'}`)
+      if (receipt.explorerUrl) {
+        lines.push(`  - **Explorer Link:** ${receipt.explorerUrl}`)
+      }
+    }
+  }
+
+  return `${lines.join('\n').trim()}\n`
 }
