@@ -19,6 +19,38 @@ function formatSettlementLabel(item) {
   return 'unsettled'
 }
 
+function isStepFailed(step) {
+  if (!step || step.skipped || step.executionStatus === 'skipped') return false
+  if (step.executionStatus === 'failed' || step.executionError || step.error) return true
+  const text = step.output !== undefined ? step.output : step.result
+  return typeof text === 'string' && /^Error:/i.test(text.trim())
+}
+
+function deriveRunOutcome(r) {
+  if (!r || typeof r !== 'object') return 'failed'
+  if (r.outcome && ['completed', 'partial', 'failed'].includes(r.outcome)) {
+    return r.outcome
+  }
+  if (r.summary?.outcome && ['completed', 'partial', 'failed'].includes(r.summary.outcome)) {
+    return r.summary.outcome
+  }
+  const steps = Array.isArray(r.results) ? r.results : []
+  if (steps.length === 0) {
+    return r.status === 'failed' ? 'failed' : 'completed'
+  }
+  let succeeded = 0
+  let failed = 0
+  let skipped = 0
+  for (const step of steps) {
+    if (step.skipped || step.executionStatus === 'skipped') skipped += 1
+    else if (isStepFailed(step)) failed += 1
+    else succeeded += 1
+  }
+  if (succeeded === 0) return 'failed'
+  if (failed > 0 || skipped > 0) return 'partial'
+  return 'completed'
+}
+
 function setResultTag(text, tone = '') {
   const tag = document.getElementById('result-tag')
   tag.textContent = text
@@ -99,24 +131,44 @@ function showResult(r) {
 
   p.classList.add('visible')
   p.classList.remove('running')
-  setResultTag('Complete', 'green')
+  const outcome = deriveRunOutcome(r)
+  if (outcome === 'failed') {
+    setResultTag('Failed', 'red')
+    document.getElementById('result-status-line').textContent =
+      'Execution failed. No agent steps completed successfully.'
+  } else if (outcome === 'partial') {
+    setResultTag('Partial', 'amber')
+    document.getElementById('result-status-line').textContent =
+      'Partial completion. Some agent steps failed or were skipped.'
+  } else {
+    setResultTag('Complete', 'green')
+    document.getElementById('result-status-line').textContent =
+      'Execution complete. Final answer and per-agent outputs are shown below.'
+  }
   stopRunHeartbeat()
 
-  document.getElementById('result-status-line').textContent =
-    'Execution complete. Final answer and per-agent outputs are shown below.'
-
-  const successful = (r.results || []).filter((x) => !x.skipped)
+  const successful = (r.results || []).filter((x) => !x.skipped && !isStepFailed(x))
   const preferred =
     successful.find((x) => x.agentId === 'summary-bot') ||
     successful.find((x) => x.agentId === 'analyst-bot') ||
     successful[0]
-  const finalAnswer = normalizeFinalAnswer(preferred?.output || 'No final answer returned.')
+  const finalAnswer = normalizeFinalAnswer(
+    preferred?.output ||
+      (outcome === 'failed'
+        ? 'All agent steps failed; no final answer available.'
+        : 'No final answer returned.')
+  )
 
   let details = ''
   for (const x of r.results || []) {
-    details += x.skipped
-      ? `\n[SKIPPED] ${x.agentId}: ${x.reason}\n`
-      : `\n--- ${x.agentName} (quoted ${x.cost} ${x.currency}; settled ${formatSettlementLabel(x)}) ---\n${x.output}\n`
+    if (x.skipped || x.executionStatus === 'skipped') {
+      details += `\n[SKIPPED] ${x.agentId}: ${x.reason}\n`
+    } else if (isStepFailed(x)) {
+      const errText = x.executionError || x.error || x.output || 'Step execution failed'
+      details += `\n[FAILED] ${x.agentName || x.agentId} (quoted ${x.cost || '0'} ${x.currency || 'USDC'}; settled ${formatSettlementLabel(x)}) ---\n${errText}\n`
+    } else {
+      details += `\n--- ${x.agentName} (quoted ${x.cost} ${x.currency}; settled ${formatSettlementLabel(x)}) ---\n${x.output}\n`
+    }
   }
 
   out.textContent = `FINAL ANSWER\n${finalAnswer}\n\nAGENT DETAILS${details}`
@@ -187,7 +239,11 @@ function closeRunDetail() {
 }
 
 function renderRunDetail(run) {
-  const status = run.status || 'unknown'
+  const outcome = deriveRunOutcome(run)
+  const status =
+    run.status === 'completed' && (outcome === 'failed' || outcome === 'partial')
+      ? outcome
+      : run.status || 'unknown'
   const statusClass = `status-${status}`
   const created = run.createdAt ? new Date(run.createdAt).toLocaleString() : '—'
   const completed = run.completedAt ? new Date(run.completedAt).toLocaleString() : '—'

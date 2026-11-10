@@ -37,6 +37,9 @@ import {
   isBudgetExhausted,
   countUsed,
   countSkipped,
+  classifyStepExecution,
+  classifyStepPayment,
+  summarizeRunOutcomes,
 } from './budget.js'
 import {
   usageFromMessage,
@@ -404,6 +407,7 @@ async function callAgentViaX402(agent, input, broadcastFn, context = {}) {
     await new Promise((resolve) => setTimeout(resolve, context.agentDelayMs))
   }
   let result
+  let localExecutionError = null
   let capturedUsage = null
   let capturedResponseMeta = null
   try {
@@ -434,8 +438,14 @@ async function callAgentViaX402(agent, input, broadcastFn, context = {}) {
       },
     })
   } catch (err) {
-    result = `Error: ${err.message}`
+    localExecutionError = err?.message || 'Step execution failed'
+    result = `Error: ${localExecutionError}`
   }
+
+  const stepExecution = classifyStepExecution({
+    error: localExecutionError,
+    result,
+  })
 
   let paymentResult = { success: false, txHash: null }
   const directPayment =
@@ -446,8 +456,13 @@ async function callAgentViaX402(agent, input, broadcastFn, context = {}) {
         : null
   // Direct payment is the fallback settlement, so it only runs when the
   // x402 attempt is a documented terminal failure (or when there was no
-  // x402 attempt at all) — never while its outcome is unknown.
-  if (fallbackPermitted && directPayment) {
+  // x402 attempt at all) — never while its outcome is unknown, and never
+  // when local execution has already failed before any payment occurred.
+  if (
+    fallbackPermitted &&
+    directPayment &&
+    (stepExecution.executionStatus === 'succeeded' || context.payOnFailedExecution)
+  ) {
     try {
       // Pass the exact quoted decimal string. Re-formatting it with
       // parseFloat(...).toFixed(2) would silently round a precise amount.
@@ -526,8 +541,16 @@ async function callAgentViaX402(agent, input, broadcastFn, context = {}) {
       settlement,
     })
   }
+  const paymentStatus = classifyStepPayment({
+    paymentSuccess: settled,
+    paymentReconciliationRequired,
+    paymentAttempt,
+  })
   return {
     result,
+    executionStatus: stepExecution.executionStatus,
+    executionError: stepExecution.executionError,
+    paymentStatus,
     paymentMethod: settled ? (paymentResult.success ? 'stellar-xlm' : 'x402') : 'none',
     paymentSuccess: settled,
     paidVia: settled ? (paymentResult.success ? 'stellar-xlm-direct' : 'x402') : 'none',
@@ -794,7 +817,14 @@ Respond ONLY with valid JSON (no markdown, no code fences):
 
     const agent = getAgentById(subtask.agentId)
     if (!agent) {
-      results.push({ agentId: subtask.agentId, stepId: subtask.stepId, error: 'Agent not found' })
+      results.push({
+        agentId: subtask.agentId,
+        stepId: subtask.stepId,
+        error: 'Agent not found',
+        executionStatus: 'failed',
+        executionError: 'Agent not found',
+        paymentStatus: 'unpaid',
+      })
       continue
     }
 
@@ -805,7 +835,13 @@ Respond ONLY with valid JSON (no markdown, no code fences):
         ...buildBudgetLimitEvent(agent, exactBudget, totalSpent),
         timestamp: new Date().toISOString(),
       })
-      results.push(buildSkipResult(agent, exactBudget, totalSpent))
+      results.push({
+        ...buildSkipResult(agent, exactBudget, totalSpent),
+        stepId: subtask.stepId,
+        executionStatus: 'skipped',
+        executionError: null,
+        paymentStatus: 'unpaid',
+      })
       continue
     }
 
@@ -855,7 +891,29 @@ Respond ONLY with valid JSON (no markdown, no code fences):
       })
     }
 
-    if (agentResponse && agentResponse.result) {
+    const stepExec = classifyStepExecution({
+      executionStatus: agentResponse?.executionStatus,
+      executionError: agentResponse?.executionError,
+      error: agentResponse?.error,
+      result: agentResponse?.result,
+    })
+    const stepPaymentStatus = classifyStepPayment({
+      paymentStatus: agentResponse?.paymentStatus,
+      paymentSuccess: agentResponse?.paymentSuccess,
+      paymentReconciliationRequired: agentResponse?.paymentReconciliationRequired,
+      paymentAttempt: agentResponse?.paymentAttempt,
+    })
+
+    const allowFailedContext =
+      context.allowFailedContext === true ||
+      context.contextPolicy === 'include_failed' ||
+      subtask.allowFailedContext === true
+
+    if (
+      agentResponse &&
+      agentResponse.result &&
+      (stepExec.executionStatus === 'succeeded' || allowFailedContext)
+    ) {
       accumulatedContext =
         typeof agentResponse.result === 'string'
           ? agentResponse.result
@@ -923,6 +981,9 @@ Respond ONLY with valid JSON (no markdown, no code fences):
       // stays visible here as a pending charge, never as a settled one.
       paymentAttempt: agentResponse.paymentAttempt || null,
       paymentReconciliationRequired: !!agentResponse.paymentReconciliationRequired,
+      executionStatus: stepExec.executionStatus,
+      executionError: stepExec.executionError,
+      paymentStatus: stepPaymentStatus,
     }
 
     results.push(agentResult)
@@ -997,9 +1058,12 @@ Respond ONLY with valid JSON (no markdown, no code fences):
   // Provider token usage, aggregated separately from the settled marketplace
   // totals above (totalSpent / paymentProtocol / etc. are untouched by this).
   const usageSummary = summarizeUsageByPhase(usageEntries)
+  const outcomeSummary = summarizeRunOutcomes(results)
 
   broadcastFn?.({
     type: 'orchestrator_complete',
+    outcome: outcomeSummary.outcome,
+    stepOutcomes: outcomeSummary,
     // `totalSpent` is the quoted/reserved amount the budget guardrail tracked.
     // Settled totals are reported separately, per asset (#130).
     totalSpent: quotedTotal,
@@ -1011,6 +1075,8 @@ Respond ONLY with valid JSON (no markdown, no code fences):
     settlementConversionPolicy: SETTLEMENT_CONVERSION_POLICY,
     agentsUsed: countUsed(results),
     agentsSkipped: countSkipped(results),
+    agentsSucceeded: outcomeSummary.succeededCount,
+    agentsFailed: outcomeSummary.failedCount,
     elapsed: `${elapsed}ms`,
     budgetExhausted,
     paymentProtocol,
@@ -1028,6 +1094,8 @@ Respond ONLY with valid JSON (no markdown, no code fences):
   return {
     task,
     plan: plan.plan,
+    outcome: outcomeSummary.outcome,
+    stepOutcomes: outcomeSummary,
     budget: typeof budget === 'number' ? budget : exactBudget.toNumber(),
     budgetExact: exactBudget.toJSON(),
     // Quoted/reserved cost: the sum of the prices the budget guardrail admitted
@@ -1046,6 +1114,8 @@ Respond ONLY with valid JSON (no markdown, no code fences):
     budgetExhausted,
     agentsUsed: countUsed(results),
     agentsSkipped: countSkipped(results),
+    agentsSucceeded: outcomeSummary.succeededCount,
+    agentsFailed: outcomeSummary.failedCount,
     paymentProtocol,
     x402PaymentCount,
     xlmFallbackCount,

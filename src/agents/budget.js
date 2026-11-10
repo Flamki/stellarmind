@@ -272,3 +272,124 @@ export function countUsed(results) {
 export function countSkipped(results) {
   return results.filter((r) => r.skipped).length
 }
+
+export const STEP_EXECUTION_STATUSES = ['succeeded', 'failed', 'skipped']
+export const STEP_PAYMENT_STATUSES = ['settled', 'unpaid', 'pending_reconciliation', 'failed']
+export const RUN_OUTCOMES = ['completed', 'partial', 'failed']
+
+/**
+ * Determine whether a raw output string or step record represents a failed execution.
+ * @param {{ skipped?: boolean, executionStatus?: string, error?: any, executionError?: any, output?: any, result?: any }} step
+ * @returns {{ executionStatus: 'succeeded' | 'failed' | 'skipped', executionError: string | null }}
+ */
+export function classifyStepExecution(step = {}) {
+  if (step.skipped || step.executionStatus === 'skipped') {
+    return { executionStatus: 'skipped', executionError: null }
+  }
+
+  const explicitErr = step.executionError ?? step.error
+  if (explicitErr) {
+    const msg =
+      typeof explicitErr === 'string'
+        ? explicitErr
+        : explicitErr?.message || 'Step execution failed'
+    return { executionStatus: 'failed', executionError: msg }
+  }
+
+  const candidateText = step.output !== undefined ? step.output : step.result
+  if (typeof candidateText === 'string' && /^Error:/i.test(candidateText.trim())) {
+    const msg = candidateText.trim().replace(/^Error:\s*/i, '') || 'Step execution failed'
+    return { executionStatus: 'failed', executionError: msg }
+  }
+
+  if (
+    candidateText &&
+    typeof candidateText === 'object' &&
+    !Array.isArray(candidateText) &&
+    typeof candidateText.error === 'string' &&
+    candidateText.error.trim().length > 0
+  ) {
+    return { executionStatus: 'failed', executionError: candidateText.error.trim() }
+  }
+
+  if (step.executionStatus === 'failed') {
+    return { executionStatus: 'failed', executionError: 'Step execution failed' }
+  }
+
+  return { executionStatus: 'succeeded', executionError: null }
+}
+
+/**
+ * Classify a step's payment status independently of its execution status (Issue #134).
+ * A step whose payment already settled before/during an execution failure still
+ * reports `paymentStatus: 'settled'`.
+ *
+ * @param {Object} step
+ * @returns {'settled' | 'unpaid' | 'pending_reconciliation' | 'failed'}
+ */
+export function classifyStepPayment(step = {}) {
+  if (step.paymentStatus && STEP_PAYMENT_STATUSES.includes(step.paymentStatus)) {
+    return step.paymentStatus
+  }
+  if (step.skipped || step.executionStatus === 'skipped') {
+    return 'unpaid'
+  }
+  if (
+    step.paymentSuccess ||
+    step.settlement?.success ||
+    step.paymentAttempt?.outcome === 'confirmed'
+  ) {
+    return 'settled'
+  }
+  if (step.paymentReconciliationRequired || step.paymentAttempt?.outcome === 'unknown') {
+    return 'pending_reconciliation'
+  }
+  if (step.paymentAttempt?.outcome === 'failed') {
+    return 'failed'
+  }
+  return 'unpaid'
+}
+
+/**
+ * Derive a structured run outcome ('completed' | 'partial' | 'failed') and step
+ * status counts from the step results array (Issue #134).
+ *
+ * @param {Array<Object>} [results=[]]
+ * @returns {{
+ *   outcome: 'completed' | 'partial' | 'failed',
+ *   succeededCount: number,
+ *   failedCount: number,
+ *   skippedCount: number,
+ *   totalSteps: number
+ * }}
+ */
+export function summarizeRunOutcomes(results = []) {
+  const list = Array.isArray(results) ? results : []
+  let succeededCount = 0
+  let failedCount = 0
+  let skippedCount = 0
+
+  for (const step of list) {
+    const { executionStatus } = classifyStepExecution(step)
+    if (executionStatus === 'succeeded') succeededCount += 1
+    else if (executionStatus === 'skipped') skippedCount += 1
+    else failedCount += 1
+  }
+
+  let outcome
+  if (list.length === 0 || succeededCount === 0) {
+    outcome = 'failed'
+  } else if (failedCount === 0 && skippedCount === 0) {
+    outcome = 'completed'
+  } else {
+    outcome = 'partial'
+  }
+
+  return {
+    outcome,
+    succeededCount,
+    failedCount,
+    skippedCount,
+    totalSteps: list.length,
+  }
+}

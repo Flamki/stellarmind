@@ -2,6 +2,7 @@ import fs from 'node:fs/promises'
 import path from 'node:path'
 import crypto from 'node:crypto'
 import { summarizeUsageByPhase } from '../agents/usage.js'
+import { summarizeRunOutcomes } from '../agents/budget.js'
 import {
   reconcilePaymentAttempt,
   selectPendingAttempts,
@@ -87,6 +88,7 @@ function normalizeRunRecord(run) {
 
   const normalized = {
     ...run,
+    outcome: run.outcome ?? run.summary?.outcome ?? (run.status === 'failed' ? 'failed' : null),
     plan: run.plan ?? run.result?.plan ?? null,
     results: Array.isArray(run.results) ? run.results : (outputFromRun ?? []),
     output: outputFromRun ?? null,
@@ -272,10 +274,19 @@ export class InMemoryRunHistoryStore {
         ? result.results
         : null
 
+    const outcomeSummary = result.stepOutcomes || summarizeRunOutcomes(result.results || [])
+    const runOutcome = result.outcome || outcomeSummary.outcome
+
     run.status = 'completed'
+    run.outcome = runOutcome
     run.completedAt = new Date().toISOString()
     run.updatedAt = run.completedAt
     run.summary = {
+      outcome: runOutcome,
+      stepOutcomes: outcomeSummary,
+      agentsSucceeded: outcomeSummary.succeededCount,
+      agentsFailed: outcomeSummary.failedCount,
+      agentsSkipped: outcomeSummary.skippedCount,
       // `totalSpent` stays the quoted/reserved amount the budget guardrail
       // tracked. The per-asset settled totals below are the money that moved.
       totalSpent: result.totalSpent,
@@ -299,7 +310,7 @@ export class InMemoryRunHistoryStore {
     run.results = Array.isArray(result.results) ? result.results : completedOutput || []
     run.output = completedOutput || run.results || null
     run.result = result
-    run.outputAvailable = true
+    run.outputAvailable = runOutcome !== 'failed'
     run.txProofs = txProofs
     // Attempts produced by this run. `unknown` ones stay pending so a later
     // reconciliation pass can resolve them without a second settlement
@@ -325,6 +336,7 @@ export class InMemoryRunHistoryStore {
     const run = this.runs.find((entry) => entry.id === runId)
     if (!run) return
     run.status = 'failed'
+    run.outcome = 'failed'
     run.completedAt = new Date().toISOString()
     run.updatedAt = run.completedAt
     run.summary = {
