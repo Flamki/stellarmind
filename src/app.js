@@ -402,9 +402,25 @@ export function createApp(dependencies = {}) {
 
   // System Status
   app.get('/api/status', (req, res) => {
-    const premiumEndpoints = pricingConfig
-      .getAllPricingInfo()
-      .map((info) => `${info.endpoint} (${info.price})`)
+    const rawPricing =
+      pricingConfig && typeof pricingConfig.getAllPricingInfo === 'function'
+        ? pricingConfig.getAllPricingInfo()
+        : []
+    const settlementAssetCode = config.networkProfile?.usdc?.code || 'USDC'
+    const pricing = Array.isArray(rawPricing)
+      ? rawPricing.map((info) => {
+          const [parsedMethod = 'GET', ...pathParts] = String(info.endpoint || '')
+            .trim()
+            .split(/\s+/)
+          return {
+            ...info,
+            method: String(info.method || parsedMethod || 'GET').toUpperCase(),
+            path: info.path || pathParts.join(' ') || info.endpoint,
+            asset: info.asset || settlementAssetCode,
+          }
+        })
+      : []
+    const premiumEndpoints = pricing.map((info) => `${info.endpoint} (${info.price})`)
 
     res.json({
       name: 'StellarMind',
@@ -416,10 +432,12 @@ export function createApp(dependencies = {}) {
       agents: AGENTS.length,
       x402: {
         enabled: !!config.serverAddress,
+        ready: !config.serverAddress || (x402MiddlewareReady && !!config.facilitatorUrl),
+        settlementAsset: settlementAssetCode,
         middleware: '@x402/express (paymentMiddlewareFromConfig)',
         client: '@x402/fetch (wrapFetchWithPayment + ExactStellarScheme)',
         premiumEndpoints,
-        pricing: pricingConfig.getAllPricingInfo(),
+        pricing,
         flow: '402 → wrapFetchWithPayment signs USDC tx → retry with X-PAYMENT → facilitator settles on-chain → 200',
       },
       wallets: {
