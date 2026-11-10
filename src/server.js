@@ -1,12 +1,19 @@
-import cors from 'cors'
 import { fileURLToPath } from 'node:url'
 import path from 'node:path'
 import { config } from './config.js'
 import { pricingConfig } from './pricing.config.js'
 import { validateAll, formatValidationErrors } from './pricing.validator.js'
 import { logger } from './logger.js'
-import { createRunHistoryStore } from './storage/run-history.js'
-import { createApp } from './app.js'
+import {
+  createRunHistoryStore,
+  EVENT_ENVELOPE_VERSION,
+  DEFAULT_REPLAY_WINDOW_SIZE,
+  formatEventId,
+  parseEventId,
+  buildResyncInstruction,
+  createEventEnvelope,
+} from './storage/run-history.js'
+import { createApp, formatSSEFrame } from './app.js'
 
 // x402 imports
 import { paymentMiddlewareFromConfig } from '@x402/express'
@@ -55,7 +62,7 @@ if (config.serverAddress) {
 }
 
 // ─── Create Application with Dependencies ───────────────────
-const { app, close, admissionQueue } = createApp({
+const { app, close, admissionQueue, broadcast, resolveStreamReplay } = createApp({
   config,
   pricingConfig,
   runHistoryStore,
@@ -87,4 +94,17 @@ if (isMainModule) {
   })
 }
 
-export { app, admissionQueue }
+export {
+  app,
+  close,
+  admissionQueue,
+  broadcast,
+  resolveStreamReplay,
+  formatSSEFrame,
+  EVENT_ENVELOPE_VERSION,
+  DEFAULT_REPLAY_WINDOW_SIZE,
+  formatEventId,
+  parseEventId,
+  buildResyncInstruction,
+  createEventEnvelope,
+}

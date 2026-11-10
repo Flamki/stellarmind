@@ -22,8 +22,26 @@ import { logger } from './logger.js'
 import { adminAuth } from './middleware/auth.js'
 import { registerPremiumRoutes } from './routes/premium-routes.js'
 import { registerOrchestrationRoutes } from './routes/orchestration-routes.js'
+import {
+  EVENT_ENVELOPE_VERSION,
+  DEFAULT_REPLAY_WINDOW_SIZE,
+  formatEventId,
+  parseEventId,
+  buildResyncInstruction,
+  createEventEnvelope,
+} from './storage/run-history.js'
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
+
+export function formatSSEFrame(event) {
+  const lines = []
+  const eventId = event?.eventId || event?.id || null
+  if (eventId) {
+    lines.push(`id: ${eventId}`)
+  }
+  lines.push(`data: ${JSON.stringify(event)}`)
+  return `${lines.join('\n')}\n\n`
+}
 
 /**
  * Create and configure the Express application with injected dependencies.
@@ -60,18 +78,201 @@ export function createApp(dependencies = {}) {
   app.use(requestId)
   app.use(requestLogger)
 
-  // SSE Event Stream clients (state per app instance)
+  // SSE Event Stream clients and bounded replay state (per app instance)
   const sseClients = []
+  const replayWindowSize = Math.max(
+    1,
+    Number(
+      dependencies.replayWindowSize ||
+        config?.sseReplayWindowSize ||
+        runHistoryStore?.replayWindowSize ||
+        DEFAULT_REPLAY_WINDOW_SIZE
+    )
+  )
+  const streamBuckets = new Map()
+
+  function getOrCreateStreamBucket(scope) {
+    if (!streamBuckets.has(scope)) {
+      streamBuckets.set(scope, {
+        scope,
+        events: [],
+        eventSeq: 0,
+        droppedEventCount: 0,
+        replayWindowStartSeq: 1,
+      })
+    }
+    return streamBuckets.get(scope)
+  }
+
+  function recordInStreamBucket(scope, envelope) {
+    const bucket = getOrCreateStreamBucket(scope)
+    if (envelope.eventId) {
+      const existing = bucket.events.find((entry) => entry.eventId === envelope.eventId)
+      if (existing) return existing
+    }
+    bucket.events.push(envelope)
+    if (Number.isInteger(envelope.seq) && envelope.seq > bucket.eventSeq) {
+      bucket.eventSeq = envelope.seq
+    }
+    while (bucket.events.length > replayWindowSize) {
+      bucket.events.shift()
+      bucket.droppedEventCount += 1
+    }
+    bucket.replayWindowStartSeq =
+      bucket.events.length > 0 ? bucket.events[0].seq : bucket.eventSeq + 1
+    return envelope
+  }
+
+  function normalizeBroadcastEvent(event = {}) {
+    const runId = event.runId || null
+    const scope = runId || 'stream'
+
+    if (runId && typeof runHistoryStore?.prepareEvent === 'function') {
+      const prepared = runHistoryStore.prepareEvent(runId, event)
+      if (prepared) {
+        const merged = { ...event, ...prepared }
+        recordInStreamBucket(scope, merged)
+        return merged
+      }
+    }
+
+    const bucket = getOrCreateStreamBucket(scope)
+    if (event.eventId) {
+      const existing = bucket.events.find((entry) => entry.eventId === event.eventId)
+      if (existing) return existing
+    }
+
+    const seq =
+      Number.isInteger(event.seq) && event.seq > bucket.eventSeq ? event.seq : bucket.eventSeq + 1
+    const eventId = event.eventId || event.id || formatEventId(runId, seq)
+    const envelope = {
+      ...event,
+      ...createEventEnvelope(event, {
+        runId,
+        stepId: event.stepId ?? null,
+        seq,
+        eventId,
+      }),
+    }
+    return recordInStreamBucket(scope, envelope)
+  }
+
+  function resolveStreamReplay(lastEventId) {
+    const parsed = parseEventId(lastEventId)
+    if (!parsed) {
+      const resync = buildResyncInstruction(lastEventId, null, {
+        reason: 'invalid_or_expired_cursor',
+      })
+      return {
+        status: 'expired',
+        reason: 'invalid_or_expired_cursor',
+        lastEventId,
+        runId: null,
+        events: [],
+        resyncRequired: true,
+        resync,
+      }
+    }
+
+    if (parsed.runId && typeof runHistoryStore?.resolveReplayCursor === 'function') {
+      const fromStore = runHistoryStore.resolveReplayCursor(lastEventId)
+      if (
+        fromStore &&
+        (fromStore.status === 'ok' || fromStore.reason !== 'run_not_found_or_evicted')
+      ) {
+        return fromStore
+      }
+    }
+
+    const bucket = streamBuckets.get(parsed.scope)
+    if (!bucket) {
+      const resync = buildResyncInstruction(lastEventId, parsed.runId, {
+        reason: 'run_not_found_or_evicted',
+      })
+      return {
+        status: 'expired',
+        reason: 'run_not_found_or_evicted',
+        lastEventId,
+        runId: parsed.runId,
+        events: [],
+        resyncRequired: true,
+        resync,
+      }
+    }
+
+    const earliestSeq = bucket.replayWindowStartSeq
+    const latestSeq = bucket.eventSeq
+    const earliestAvailableEventId = bucket.events[0]?.eventId || null
+    const latestEventId = latestSeq > 0 ? formatEventId(parsed.runId, latestSeq) : null
+
+    if (parsed.seq < earliestSeq || parsed.seq > latestSeq) {
+      const reason = parsed.seq < earliestSeq ? 'replay_cursor_expired' : 'cursor_ahead_of_history'
+      const resync = buildResyncInstruction(lastEventId, parsed.runId, {
+        reason,
+        earliestAvailableEventId,
+        latestEventId,
+      })
+      return {
+        status: 'expired',
+        reason,
+        lastEventId,
+        runId: parsed.runId,
+        events: [],
+        resyncRequired: true,
+        earliestAvailableEventId,
+        latestEventId,
+        resync,
+      }
+    }
+
+    const missed = bucket.events
+      .filter((entry) => entry.seq > parsed.seq)
+      .sort((a, b) => a.seq - b.seq)
+      .map((entry) => ({
+        ...entry,
+        replayed: true,
+      }))
+
+    return {
+      status: 'ok',
+      reason: null,
+      lastEventId,
+      runId: parsed.runId,
+      events: missed,
+      resyncRequired: false,
+      earliestAvailableEventId,
+      latestEventId,
+      resync: null,
+    }
+  }
 
   function broadcastEvent(event) {
-    const data = JSON.stringify(event)
+    const envelope = normalizeBroadcastEvent(event)
+    const frame = formatSSEFrame(envelope)
     sseClients.forEach((res) => {
-      res.write(`data: ${data}\n\n`)
+      if (envelope.eventId && res._sseDeliveredIds?.has(envelope.eventId)) {
+        return
+      }
+      if (envelope.eventId && res._sseDeliveredIds) {
+        res._sseDeliveredIds.add(envelope.eventId)
+        if (res._sseDeliveredIds.size > replayWindowSize * 4) {
+          const oldest = res._sseDeliveredIds.values().next().value
+          res._sseDeliveredIds.delete(oldest)
+        }
+      }
+      res.write(frame)
     })
+    return envelope
   }
 
   // Use injected broadcast or local implementation
-  const actualBroadcast = broadcast || broadcastEvent
+  const actualBroadcast = broadcast
+    ? (event) => {
+        const envelope = broadcastEvent(event)
+        broadcast(envelope)
+        return envelope
+      }
+    : broadcastEvent
 
   // Track x402 middleware readiness for readiness checks
   let x402MiddlewareReady = !!paymentMiddleware
@@ -135,10 +336,33 @@ export function createApp(dependencies = {}) {
     res.setHeader('X-Accel-Buffering', 'no')
     res.flushHeaders()
 
+    const headerLastEventId = req.get('last-event-id')
+    const queryLastEventId = typeof req.query?.lastEventId === 'string' ? req.query.lastEventId : ''
+    const lastEventId = String(headerLastEventId || queryLastEventId || '').trim()
+
     res.write(
-      `data: ${JSON.stringify({ type: 'connected', timestamp: new Date().toISOString() })}\n\n`
+      formatSSEFrame({
+        envelopeVersion: EVENT_ENVELOPE_VERSION,
+        type: 'connected',
+        lastEventId: lastEventId || null,
+        timestamp: new Date().toISOString(),
+      })
     )
 
+    const deliveredEventIds = new Set()
+    if (lastEventId) {
+      const replay = resolveStreamReplay(lastEventId)
+      if (replay.resyncRequired && replay.resync) {
+        res.write(formatSSEFrame(replay.resync))
+      } else {
+        for (const missedEvent of replay.events) {
+          if (missedEvent.eventId) deliveredEventIds.add(missedEvent.eventId)
+          res.write(formatSSEFrame(missedEvent))
+        }
+      }
+    }
+
+    res._sseDeliveredIds = deliveredEventIds
     sseClients.push(res)
     req.on('close', () => {
       const idx = sseClients.indexOf(res)
@@ -485,5 +709,11 @@ export function createApp(dependencies = {}) {
     sseClients.length = 0
   }
 
-  return { app, close, admissionQueue }
+  return {
+    app,
+    close,
+    admissionQueue,
+    broadcast: actualBroadcast,
+    resolveStreamReplay,
+  }
 }

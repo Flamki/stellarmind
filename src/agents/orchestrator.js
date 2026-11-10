@@ -785,7 +785,12 @@ Respond ONLY with valid JSON (no markdown, no code fences):
     timestamp: new Date().toISOString(),
   })
 
-  for (const subtask of plan.subtasks || []) {
+  const subtasks = plan.subtasks || []
+  for (let stepIdx = 0; stepIdx < subtasks.length; stepIdx += 1) {
+    const subtask = subtasks[stepIdx]
+    const stepId = subtask.stepId || `step-${stepIdx}`
+    const stepBroadcast = broadcastFn ? (ev) => broadcastFn({ stepId, ...ev }) : undefined
+
     if (context.signal?.aborted) {
       const abortErr = new Error('Orchestration aborted')
       abortErr.code = 'REQUEST_ABORTED'
@@ -801,7 +806,7 @@ Respond ONLY with valid JSON (no markdown, no code fences):
     const cost = agentCost(agent)
 
     if (exceedsBudget(totalSpent, cost, exactBudget)) {
-      broadcastFn?.({
+      stepBroadcast?.({
         ...buildBudgetLimitEvent(agent, exactBudget, totalSpent),
         timestamp: new Date().toISOString(),
       })
@@ -819,7 +824,7 @@ Respond ONLY with valid JSON (no markdown, no code fences):
         activeInput = `Action: "${subtask.input}"\n\nContext:\n${accumulatedContext.substring(0, 3000)}`
     }
 
-    broadcastFn?.({
+    stepBroadcast?.({
       type: 'agent_call',
       agent: agent.name,
       agentId: agent.id,
@@ -834,14 +839,14 @@ Respond ONLY with valid JSON (no markdown, no code fences):
       timestamp: new Date().toISOString(),
     })
 
-    const agentResponse = await callAgentViaX402(agent, activeInput, broadcastFn, context)
+    const agentResponse = await callAgentViaX402(agent, activeInput, stepBroadcast, context)
 
     if (agentResponse?.paymentAttempt) {
       paymentAttempts = upsertPaymentAttempt(paymentAttempts, agentResponse.paymentAttempt)
     }
 
     if (agentResponse?.paymentReconciliationRequired) {
-      broadcastFn?.({
+      stepBroadcast?.({
         type: 'payment_reconciliation_required',
         agent: agent.name,
         agentId: agent.id,
@@ -877,7 +882,7 @@ Respond ONLY with valid JSON (no markdown, no code fences):
     // Surface truncation/empty-content explicitly rather than letting a
     // cut-off or blank agent output pass silently as a normal result.
     if (agentResponse.responseMeta?.truncated || agentResponse.responseMeta?.empty) {
-      broadcastFn?.({
+      stepBroadcast?.({
         type: 'agent_response_incomplete',
         agent: agent.name,
         agentId: agent.id,
@@ -928,7 +933,7 @@ Respond ONLY with valid JSON (no markdown, no code fences):
     results.push(agentResult)
     payments.push(agentResponse)
 
-    broadcastFn?.({
+    stepBroadcast?.({
       type: 'agent_response',
       agent: agent.name,
       agentId: agent.id,
@@ -959,7 +964,7 @@ Respond ONLY with valid JSON (no markdown, no code fences):
         paymentMethod: agentResponse.paidVia,
         txHash: agentResponse.txHash || null,
       })
-      broadcastFn?.({
+      stepBroadcast?.({
         type: 'payment',
         from: 'Orchestrator',
         to: agent.name,

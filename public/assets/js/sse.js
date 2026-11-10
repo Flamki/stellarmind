@@ -1,31 +1,172 @@
 /**
  * SSE Module
- * Handles Server-Sent Events connection and feed updates
+ * Handles Server-Sent Events connection, ordered Last-Event-ID resume,
+ * client-side deduplication, and expired-cursor resync via run detail.
  */
 
 let evCnt = 0
+let lastSeenEventId = null
+let currentEventSource = null
+let lastResyncedRun = null
+const seenEventIds = new Set()
+const MAX_SEEN_EVENT_IDS = 1000
 
-function connectSSE() {
-  const es = new EventSource('/api/events')
-  es.onmessage = (e) => {
-    try {
-      const ev = JSON.parse(e.data)
-      if (ev.type !== 'connected') addFeed(ev)
-    } catch {}
+function rememberEventId(eventId) {
+  if (!eventId || typeof eventId !== 'string') return false
+  const normalized = eventId.trim()
+  if (!normalized) return false
+  if (seenEventIds.has(normalized)) return false
+  seenEventIds.add(normalized)
+  while (seenEventIds.size > MAX_SEEN_EVENT_IDS) {
+    const oldest = seenEventIds.values().next().value
+    seenEventIds.delete(oldest)
   }
-  es.onerror = () => setTimeout(connectSSE, 3000)
+  lastSeenEventId = normalized
+  return true
 }
 
-function addFeed(ev) {
+function hasSeenEventId(eventId) {
+  if (!eventId || typeof eventId !== 'string') return false
+  return seenEventIds.has(eventId.trim())
+}
+
+function getLastEventId() {
+  return lastSeenEventId
+}
+
+function getLastResyncedRun() {
+  return lastResyncedRun
+}
+
+function resetSSEState() {
+  evCnt = 0
+  lastSeenEventId = null
+  lastResyncedRun = null
+  seenEventIds.clear()
+  if (currentEventSource && typeof currentEventSource.close === 'function') {
+    try {
+      currentEventSource.close()
+    } catch {}
+  }
+  currentEventSource = null
+}
+
+function buildSSEUrl(basePath = '/api/events', overrideLastEventId = undefined) {
+  const cursor = overrideLastEventId !== undefined ? overrideLastEventId : lastSeenEventId
+  if (!cursor) return basePath
+  const sep = basePath.includes('?') ? '&' : '?'
+  return `${basePath}${sep}lastEventId=${encodeURIComponent(cursor)}`
+}
+
+async function handleResyncRequired(ev) {
+  if (ev?.latestEventId) {
+    lastSeenEventId = ev.latestEventId
+  }
+
+  const targetUrl =
+    ev?.runDetailUrl || ev?.resyncUrl || (ev?.runId ? `/api/runs/${ev.runId}` : null)
+
+  addFeed({
+    ...ev,
+    type: 'resync_required',
+    eventId: null,
+    id: null,
+  })
+
+  if (!targetUrl || typeof fetch !== 'function') return null
+
+  try {
+    const res = await fetch(targetUrl)
+    if (!res.ok) return null
+    const detail = await res.json()
+    lastResyncedRun = detail
+
+    if (Array.isArray(detail?.events)) {
+      for (const persistedEvent of detail.events) {
+        addFeed(persistedEvent)
+      }
+    }
+
+    if (detail?.status === 'completed' && typeof showResult === 'function' && detail.result) {
+      showResult(detail.result)
+    }
+
+    return detail
+  } catch {
+    return null
+  }
+}
+
+function handleSSEMessage(e) {
+  const ev = typeof e?.data === 'string' ? JSON.parse(e.data) : e
+  if (!ev || typeof ev !== 'object') return { status: 'ignored', event: null }
+
+  const eventId = e?.lastEventId || ev.eventId || ev.id || null
+
+  if (ev.type === 'connected') {
+    return { status: 'connected', event: ev }
+  }
+
+  if (ev.type === 'resync_required') {
+    const resyncPromise = handleResyncRequired(ev)
+    return { status: 'resync_required', event: ev, resyncPromise }
+  }
+
+  if (eventId && hasSeenEventId(eventId)) {
+    return { status: 'duplicate', eventId, event: ev }
+  }
+
+  const added = addFeed(ev, eventId)
+  return {
+    status: added ? 'delivered' : 'duplicate',
+    eventId,
+    event: ev,
+  }
+}
+
+function connectSSE(overrideLastEventId) {
+  if (currentEventSource && typeof currentEventSource.close === 'function') {
+    try {
+      currentEventSource.close()
+    } catch {}
+  }
+  const url = buildSSEUrl('/api/events', overrideLastEventId)
+  const es = new EventSource(url)
+  currentEventSource = es
+  es.onmessage = (e) => {
+    try {
+      handleSSEMessage(e)
+    } catch {}
+  }
+  es.onerror = () => {
+    try {
+      es.close?.()
+    } catch {}
+    setTimeout(() => connectSSE(), 3000)
+  }
+  return es
+}
+
+function addFeed(ev, explicitEventId = null) {
+  if (!ev || typeof ev !== 'object') return false
+  const eventId = explicitEventId || ev.eventId || ev.id || null
+  if (eventId) {
+    if (!rememberEventId(eventId)) {
+      return false
+    }
+  }
+
   const f = document.getElementById('feed')
   const em = document.getElementById('feed-empty')
   if (em) em.style.display = 'none'
 
   evCnt++
-  document.getElementById('ev-cnt').textContent = `${evCnt} Events`
+  const evCntEl = document.getElementById('ev-cnt')
+  if (evCntEl) evCntEl.textContent = `${evCnt} Events`
 
   const el = document.createElement('div')
   el.className = 'fi'
+  if (eventId) el.dataset = { ...(el.dataset || {}), eventId }
 
   let ic = '📡',
     cl = 'agt',
@@ -89,6 +230,12 @@ function addFeed(ev) {
       lb = `Done - quoted ${ev.quotedTotal || ev.totalSpent} USDC`
       sb = `Settled: ${ev.settledSummary || 'none'} | ${ev.agentsUsed} agents | ${ev.elapsed}`
       break
+    case 'resync_required':
+      ic = '🔁'
+      cl = 'pln'
+      lb = 'Stream Resync Required'
+      sb = `Cursor expired -> ${ev.runDetailUrl || ev.resyncUrl || '/api/runs'}`
+      break
     case 'error':
       ic = '⚠️'
       cl = 'bgt'
@@ -114,7 +261,8 @@ function addFeed(ev) {
     : ''
 
   el.innerHTML = `<div class="fi-icon ${cl}">${ic}</div><div class="fi-info"><div class="fi-l">${lb}</div><div class="fi-s">${sb}</div></div>${lk}`
-  f.prepend(el)
+  if (f) f.prepend(el)
 
   trackLiveEvent(ev)
+  return true
 }

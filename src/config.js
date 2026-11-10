@@ -93,6 +93,7 @@ export const config = {
     ? path.resolve(process.env.RUN_HISTORY_FILE)
     : path.join(repoRoot, 'data', 'run-history.json'),
   runHistoryMaxRuns: Math.max(10, toNumberOr(process.env.RUN_HISTORY_MAX_RUNS, 200)),
+  sseReplayWindowSize: Math.max(1, toNumberOr(process.env.SSE_REPLAY_WINDOW_SIZE, 100)),
 
   // Per-transaction operation lookups in getTransactions
   horizonOpsMaxConcurrency: Math.max(1, toNumberOr(process.env.HORIZON_OPS_MAX_CONCURRENCY, 4)),

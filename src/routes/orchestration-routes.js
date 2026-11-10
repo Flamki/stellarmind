@@ -118,7 +118,12 @@ export function registerOrchestrationRoutes(app, deps = {}) {
       }
 
       const runBroadcast = (event) => {
-        const eventWithRun = { ...event, runId: run.id }
+        const rawWithRun = { ...event, runId: run.id, stepId: event.stepId ?? null }
+        const prepared =
+          typeof runHistoryStore.prepareEvent === 'function'
+            ? runHistoryStore.prepareEvent(run.id, rawWithRun)
+            : null
+        const eventWithRun = prepared ? { ...rawWithRun, ...prepared } : rawWithRun
         broadcast(eventWithRun)
         runHistoryStore.appendEvent(run.id, eventWithRun).catch((persistErr) => {
           logger.warn('run_history_append_failed', { runId: run.id, error: persistErr.message })
@@ -126,13 +131,13 @@ export function registerOrchestrationRoutes(app, deps = {}) {
         // Payment attempts are persisted as soon as they are observed, so an
         // attempt whose outcome is still unknown survives a crash mid-run
         // and can be reconciled instead of being settled twice (#131).
-        if (eventWithRun.paymentAttempt) {
+        if (rawWithRun.paymentAttempt) {
           runHistoryStore
-            .recordPaymentAttempt(run.id, eventWithRun.paymentAttempt)
+            .recordPaymentAttempt(run.id, rawWithRun.paymentAttempt)
             .catch((persistErr) => {
               logger.warn('payment_attempt_persist_failed', {
                 runId: run.id,
-                attemptId: eventWithRun.paymentAttempt.id,
+                attemptId: rawWithRun.paymentAttempt.id,
                 error: persistErr.message,
               })
             })
@@ -377,7 +382,12 @@ export function registerOrchestrationRoutes(app, deps = {}) {
       })
 
       const runBroadcast = (event) => {
-        const eventWithRun = { ...event, runId: run.id }
+        const rawWithRun = { ...event, runId: run.id, stepId: event.stepId ?? null }
+        const prepared =
+          typeof runHistoryStore.prepareEvent === 'function'
+            ? runHistoryStore.prepareEvent(run.id, rawWithRun)
+            : null
+        const eventWithRun = prepared ? { ...rawWithRun, ...prepared } : rawWithRun
         broadcast(eventWithRun)
         runHistoryStore.appendEvent(run.id, eventWithRun).catch((persistErr) => {
           logger.warn('run_history_append_failed', { runId: run.id, error: persistErr.message })

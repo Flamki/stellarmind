@@ -13,6 +13,10 @@ import {
 const CURRENT_SCHEMA_VERSION = 1
 const LEGACY_VERSION = 0 // Unversioned files
 
+// SSE Event envelope & bounded replay window constants (issue #162)
+export const EVENT_ENVELOPE_VERSION = 1
+export const DEFAULT_REPLAY_WINDOW_SIZE = 100
+
 // Machine-readable recovery reason (issue #139). A run left `status:
 // 'running'` in persisted history when the store is (re)initialized never
 // had its in-process orchestration work survive the restart — there is no
@@ -30,8 +34,141 @@ function normalizeLimit(limit, fallback = 20, max = 200) {
   return Math.min(parsed, max)
 }
 
-function toAuditEvent(event) {
+export function formatEventId(runId, seq) {
+  const prefix = runId || 'stream'
+  return `${prefix}:${seq}`
+}
+
+export function parseEventId(rawEventId) {
+  if (typeof rawEventId !== 'string') return null
+  const trimmed = rawEventId.trim()
+  if (!trimmed) return null
+  const colonIdx = trimmed.lastIndexOf(':')
+  if (colonIdx <= 0 || colonIdx === trimmed.length - 1) return null
+  const scope = trimmed.slice(0, colonIdx).trim()
+  const seqStr = trimmed.slice(colonIdx + 1).trim()
+  if (!scope || !/^\d+$/.test(seqStr)) return null
+  const seq = Number.parseInt(seqStr, 10)
+  if (!Number.isInteger(seq) || seq < 1) return null
   return {
+    raw: trimmed,
+    scope,
+    runId: scope === 'stream' ? null : scope,
+    seq,
+  }
+}
+
+export function buildResyncInstruction(lastEventId, runId = null, meta = {}) {
+  const runDetailUrl = runId ? `/api/runs/${runId}` : '/api/runs'
+  return {
+    envelopeVersion: EVENT_ENVELOPE_VERSION,
+    type: 'resync_required',
+    reason: meta.reason || 'replay_cursor_expired',
+    lastEventId: lastEventId || null,
+    runId: runId || null,
+    stepId: null,
+    action: 'fetch_run_detail',
+    method: 'GET',
+    runDetailUrl,
+    resyncUrl: runDetailUrl,
+    earliestAvailableEventId: meta.earliestAvailableEventId || null,
+    latestEventId: meta.latestEventId || null,
+    message: runId
+      ? `Replay cursor '${lastEventId}' has expired outside the replay window. Fetch ${runDetailUrl} to resynchronize run state.`
+      : `Replay cursor '${lastEventId}' has expired outside the replay window. Fetch ${runDetailUrl} to resynchronize state.`,
+    timestamp: meta.timestamp || new Date().toISOString(),
+  }
+}
+
+// Delivery-reproduction fields preserved alongside audit fields so reconnecting
+// SSE clients receive the exact payload needed to render feed items and update
+// live progress (issue #162).
+const DELIVERY_EXTRA_FIELDS = [
+  'task',
+  'budget',
+  'plan',
+  'subtaskCount',
+  'input',
+  'currency',
+  'quoted',
+  'paymentFlow',
+  'flow',
+  'protocol',
+  'verification',
+  'from',
+  'to',
+  'method',
+  'settlementPolicy',
+  'settledAmount',
+  'settledAsset',
+  'settledIssuer',
+  'settledNetwork',
+  'resultPreview',
+  'remaining',
+  'agentsUsed',
+  'agentsSkipped',
+  'elapsed',
+  'budgetExhausted',
+  'paymentProtocol',
+  'x402PaymentCount',
+  'xlmFallbackCount',
+  'unpaidCount',
+  'x402Configured',
+  'x402InitError',
+  'x402WalletReady',
+  'x402WalletHint',
+  'settledTotals',
+  'settledSummary',
+  'settlementConversionPolicy',
+  'totalSpentExact',
+  'quotedTotalExact',
+  'usageSummary',
+  'paymentAttemptSummary',
+  'pendingPaymentCount',
+  'message',
+  'phase',
+  'attempt',
+  'maxRetries',
+  'delayMs',
+  'error',
+  'truncated',
+  'empty',
+  'stopReason',
+  'position',
+  'queueLength',
+  'activeCount',
+  'waitDurationMs',
+  'attemptId',
+  'paymentOutcome',
+  'failureReason',
+  'fallback',
+  'planId',
+  'totalQuote',
+  'stepCount',
+  'expiresAt',
+]
+
+export function createEventEnvelope(event = {}, options = {}) {
+  const runId = options.runId !== undefined ? options.runId : (event.runId ?? null)
+  const stepId = options.stepId !== undefined ? options.stepId : (event.stepId ?? null)
+  const seq = Number.isInteger(options.seq)
+    ? options.seq
+    : Number.isInteger(event.seq)
+      ? event.seq
+      : null
+  const eventId =
+    options.eventId ||
+    event.eventId ||
+    event.id ||
+    (seq !== null ? formatEventId(runId, seq) : null)
+
+  const envelope = {
+    envelopeVersion: EVENT_ENVELOPE_VERSION,
+    eventId,
+    id: eventId,
+    seq,
+    runId,
+    stepId,
     type: event.type || 'unknown',
     timestamp: event.timestamp || new Date().toISOString(),
     agentId: event.agentId || null,
@@ -54,6 +191,18 @@ function toAuditEvent(event) {
     quotedTotal: event.quotedTotal || null,
     reason: event.reason || null,
   }
+
+  for (const field of DELIVERY_EXTRA_FIELDS) {
+    if (event[field] !== undefined) {
+      envelope[field] = event[field]
+    }
+  }
+
+  return envelope
+}
+
+function toAuditEvent(event, options = {}) {
+  return createEventEnvelope(event, options)
 }
 
 function hasPersistedRunOutput(run) {
@@ -85,16 +234,46 @@ function normalizeRunRecord(run) {
           ? run.results
           : null
 
+  const runId = run.id || run.runId || null
+  const rawEvents = Array.isArray(run.events) ? run.events : []
+  const normalizedEvents = rawEvents.map((ev, idx) => {
+    const seq = Number.isInteger(ev?.seq) ? ev.seq : idx + 1
+    const eventId = ev?.eventId || ev?.id || (runId ? formatEventId(runId, seq) : null)
+    return createEventEnvelope(ev, {
+      runId: ev?.runId ?? runId,
+      stepId: ev?.stepId ?? null,
+      seq,
+      eventId,
+    })
+  })
+
+  const maxEventSeq = normalizedEvents.reduce((m, e) => Math.max(m, e.seq || 0), 0)
+  const eventSeq = Number.isInteger(run.eventSeq)
+    ? Math.max(run.eventSeq, maxEventSeq)
+    : maxEventSeq
+  const droppedEventCount = Number.isInteger(run.droppedEventCount) ? run.droppedEventCount : 0
+  const replayWindowStartSeq = Number.isInteger(run.replayWindowStartSeq)
+    ? run.replayWindowStartSeq
+    : normalizedEvents.length > 0
+      ? normalizedEvents[0].seq
+      : droppedEventCount + 1
+
   const normalized = {
     ...run,
     plan: run.plan ?? run.result?.plan ?? null,
-    results: Array.isArray(run.results) ? run.results : (outputFromRun ?? []),
+    results: Array.isArray(run.results)
+      ? run.results
+      : (outputFromRun ?? (run.results === null ? null : [])),
     output: outputFromRun ?? null,
     error: run.error ?? null,
     summary: run.summary ?? null,
     usage: run.usage ?? null,
     txProofs: Array.isArray(run.txProofs) ? run.txProofs : [],
-    events: Array.isArray(run.events) ? run.events : [],
+    events: normalizedEvents,
+    eventSeq,
+    droppedEventCount,
+    replayWindowStartSeq,
+    replayWindowSize: run.replayWindowSize || DEFAULT_REPLAY_WINDOW_SIZE,
   }
 
   normalized.outputAvailable = Boolean(
@@ -117,8 +296,13 @@ function normalizeRunRecord(run) {
 }
 
 export class InMemoryRunHistoryStore {
-  constructor(maxRuns = 200) {
+  constructor(maxRuns = 200, options = {}) {
     this.maxRuns = maxRuns
+    this.replayWindowSize = normalizeLimit(
+      options.replayWindowSize ?? DEFAULT_REPLAY_WINDOW_SIZE,
+      DEFAULT_REPLAY_WINDOW_SIZE,
+      10000
+    )
     this.runs = []
     this.idempotencyMap = new Map()
   }
@@ -143,6 +327,10 @@ export class InMemoryRunHistoryStore {
       outputAvailable: false,
       error: null,
       events: [],
+      eventSeq: 0,
+      droppedEventCount: 0,
+      replayWindowStartSeq: 1,
+      replayWindowSize: this.replayWindowSize,
       txProofs: [],
       // Payment attempts for this run (#131). Each entry is one logical
       // charge; an `unknown` attempt stays here until reconciliation
@@ -181,11 +369,146 @@ export class InMemoryRunHistoryStore {
     return this.idempotencyMap.get(key) || null
   }
 
-  async appendEvent(runId, event) {
+  /**
+   * Synchronously assigns a stable ordered sequence and eventId within `runId`,
+   * appends the versioned envelope to `run.events`, and enforces the bounded
+   * replay window. Idempotent when called again with an already-assigned
+   * `eventId` for the same run.
+   */
+  prepareEvent(runId, event) {
     const run = this.runs.find((entry) => entry.id === runId)
-    if (!run) return
-    run.events.push(toAuditEvent(event))
+    if (!run || !event) return null
+    if (!Array.isArray(run.events)) run.events = []
+
+    const existingEventId = event.eventId || event.id || null
+    if (existingEventId) {
+      const existing = run.events.find((entry) => entry.eventId === existingEventId)
+      if (existing) return existing
+    }
+
+    const maxExistingSeq = run.events.reduce((m, entry) => Math.max(m, entry.seq || 0), 0)
+    const currentSeq = Math.max(run.eventSeq || 0, maxExistingSeq)
+    const seq = Number.isInteger(event.seq) && event.seq > currentSeq ? event.seq : currentSeq + 1
+    const eventId = formatEventId(run.id, seq)
+
+    const envelope = toAuditEvent(event, {
+      runId: run.id,
+      stepId: event.stepId ?? null,
+      seq,
+      eventId,
+    })
+
+    run.events.push(envelope)
+    run.eventSeq = seq
+
+    const maxWindow = run.replayWindowSize || this.replayWindowSize
+    while (run.events.length > maxWindow) {
+      run.events.shift()
+      run.droppedEventCount = (run.droppedEventCount || 0) + 1
+    }
+    run.replayWindowStartSeq = run.events.length > 0 ? run.events[0].seq : seq + 1
     run.updatedAt = new Date().toISOString()
+
+    return envelope
+  }
+
+  async appendEvent(runId, event) {
+    return this.prepareEvent(runId, event)
+  }
+
+  /**
+   * Resolves a reconnection cursor (`Last-Event-ID` or `lastEventId`).
+   *
+   * - If the cursor references a retained event in the run's replay window,
+   *   returns `{ status: 'ok', events, ... }` with all subsequent events in
+   *   strictly ascending `seq` order.
+   * - If the cursor has aged out of the bounded replay window, references an
+   *   evicted/unknown run, or is malformed, returns `{ status: 'expired',
+   *   resyncRequired: true, resync }` pointing to the run detail endpoint.
+   */
+  resolveReplayCursor(lastEventId) {
+    const parsed = parseEventId(lastEventId)
+    if (!parsed || !parsed.runId) {
+      const resync = buildResyncInstruction(lastEventId, parsed?.runId || null, {
+        reason: 'invalid_or_expired_cursor',
+      })
+      return {
+        status: 'expired',
+        reason: 'invalid_or_expired_cursor',
+        lastEventId,
+        runId: parsed?.runId || null,
+        events: [],
+        resyncRequired: true,
+        resync,
+      }
+    }
+
+    const rawRun = this.runs.find((entry) => entry.id === parsed.runId)
+    if (!rawRun) {
+      const resync = buildResyncInstruction(lastEventId, parsed.runId, {
+        reason: 'run_not_found_or_evicted',
+      })
+      return {
+        status: 'expired',
+        reason: 'run_not_found_or_evicted',
+        lastEventId,
+        runId: parsed.runId,
+        events: [],
+        resyncRequired: true,
+        resync,
+      }
+    }
+
+    const run = normalizeRunRecord(rawRun)
+    const events = run.events || []
+    const earliestSeq = run.replayWindowStartSeq || (events[0]?.seq ?? 1)
+    const latestSeq = run.eventSeq || (events[events.length - 1]?.seq ?? 0)
+    const earliestAvailableEventId = events[0]?.eventId || null
+    const latestEventId = latestSeq > 0 ? formatEventId(run.id, latestSeq) : null
+
+    if (parsed.seq < earliestSeq || parsed.seq > latestSeq) {
+      const reason = parsed.seq < earliestSeq ? 'replay_cursor_expired' : 'cursor_ahead_of_history'
+      const resync = buildResyncInstruction(lastEventId, run.id, {
+        reason,
+        earliestAvailableEventId,
+        latestEventId,
+      })
+      return {
+        status: 'expired',
+        reason,
+        lastEventId,
+        runId: run.id,
+        events: [],
+        resyncRequired: true,
+        earliestAvailableEventId,
+        latestEventId,
+        resync,
+      }
+    }
+
+    const missed = events
+      .filter((entry) => entry.seq > parsed.seq)
+      .sort((a, b) => a.seq - b.seq)
+      .map((entry) => ({
+        ...entry,
+        replayed: true,
+      }))
+
+    return {
+      status: 'ok',
+      reason: null,
+      lastEventId,
+      runId: run.id,
+      events: missed,
+      resyncRequired: false,
+      earliestAvailableEventId,
+      latestEventId,
+      resync: null,
+    }
+  }
+
+  async getReplayAfter(lastEventId) {
+    return this.resolveReplayCursor(lastEventId)
   }
 
   /**
@@ -368,14 +691,12 @@ export class InMemoryRunHistoryStore {
       run.interruptedAt = now
       run.interruptedReason = INTERRUPTED_REASON_SERVER_RESTART
       run.updatedAt = now
-      run.events.push(
-        toAuditEvent({
-          type: 'run_interrupted',
-          reason: INTERRUPTED_REASON_SERVER_RESTART,
-          status: 'interrupted',
-          timestamp: now,
-        })
-      )
+      this.prepareEvent(run.id, {
+        type: 'run_interrupted',
+        reason: INTERRUPTED_REASON_SERVER_RESTART,
+        status: 'interrupted',
+        timestamp: now,
+      })
       recoveredIds.push(run.id)
     }
 
@@ -394,8 +715,8 @@ export class InMemoryRunHistoryStore {
 }
 
 export class FileRunHistoryStore extends InMemoryRunHistoryStore {
-  constructor(filePath, maxRuns = 200) {
-    super(maxRuns)
+  constructor(filePath, maxRuns = 200, options = {}) {
+    super(maxRuns, options)
     this.filePath = filePath
     this._writeQueue = Promise.resolve()
   }
@@ -598,8 +919,9 @@ export class FileRunHistoryStore extends InMemoryRunHistoryStore {
   }
 
   async appendEvent(runId, event) {
-    await super.appendEvent(runId, event)
+    const envelope = await super.appendEvent(runId, event)
     await this.persist()
+    return envelope
   }
 
   async recordPaymentAttempt(runId, attempt) {
@@ -635,10 +957,11 @@ export class FileRunHistoryStore extends InMemoryRunHistoryStore {
 
 export async function createRunHistoryStore(config) {
   const storage = (config.runHistoryStorage || 'file').toLowerCase()
+  const options = { replayWindowSize: config.sseReplayWindowSize }
   const store =
     storage === 'memory'
-      ? new InMemoryRunHistoryStore(config.runHistoryMaxRuns)
-      : new FileRunHistoryStore(config.runHistoryFile, config.runHistoryMaxRuns)
+      ? new InMemoryRunHistoryStore(config.runHistoryMaxRuns, options)
+      : new FileRunHistoryStore(config.runHistoryFile, config.runHistoryMaxRuns, options)
 
   await store.init()
 
