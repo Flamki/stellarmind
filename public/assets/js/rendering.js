@@ -19,6 +19,127 @@ function formatSettlementLabel(item) {
   return 'unsettled'
 }
 
+/**
+ * Convert an integer stroops value to an exact XLM decimal string (1 XLM = 10,000,000 stroops)
+ * without rounding small values to zero (#161).
+ */
+function stroopsToXlmDisplay(stroops) {
+  if (stroops === null || stroops === undefined || stroops === '') return null
+  const s = String(stroops).trim()
+  if (!/^\d+$/.test(s)) return null
+  const units = BigInt(s)
+  const scale = 10_000_000n
+  const intPart = units / scale
+  const fracPart = units % scale
+  if (fracPart === 0n) return intPart.toString()
+  const fracStr = fracPart.toString().padStart(7, '0').replace(/0+$/, '')
+  return `${intPart}.${fracStr}`
+}
+
+/**
+ * Format an XLM decimal string or number while preserving up to 7 fractional
+ * decimal places so small XLM fees never round to `0.00`.
+ */
+function formatXlmAmount(value, options = {}) {
+  const minDecimals = options.minDecimals ?? 0
+  const maxDecimals = options.maxDecimals ?? 7
+  const includeAsset = options.includeAsset !== false
+  const asset = options.asset || 'XLM'
+
+  if (value === null || value === undefined || value === '') return '—'
+
+  let raw = String(value).trim()
+  if (typeof value === 'number') {
+    if (!Number.isFinite(value)) return '—'
+    raw = value.toFixed(maxDecimals)
+  } else if (/e/i.test(raw)) {
+    const parsed = Number(raw)
+    if (!Number.isFinite(parsed)) return `${raw}${includeAsset ? ` ${asset}` : ''}`
+    raw = parsed.toFixed(maxDecimals)
+  }
+
+  const match = raw.match(/^([+-]?)(\d+)(?:\.(\d+))?$/)
+  if (!match) {
+    return includeAsset ? `${raw} ${asset}` : raw
+  }
+
+  const sign = match[1] === '-' ? '-' : ''
+  const intPart = match[2]
+  const fracRaw = (match[3] || '').slice(0, maxDecimals)
+  const trimmedFrac = fracRaw.replace(/0+$/, '')
+  const finalFrac =
+    trimmedFrac.length >= minDecimals ? trimmedFrac : trimmedFrac.padEnd(minDecimals, '0')
+
+  const formatted = finalFrac.length > 0 ? `${sign}${intPart}.${finalFrac}` : `${sign}${intPart}`
+  return includeAsset ? `${formatted} ${asset}` : formatted
+}
+
+/**
+ * Format a step or payment receipt's Stellar network fee, explicitly marking
+ * unknown or pending fees (#161).
+ */
+function formatNetworkFeeLabel(item) {
+  if (!item || typeof item !== 'object') return 'unknown'
+  const fee =
+    item.networkFee ||
+    item.receipt?.networkFee ||
+    item.settlement?.networkFee ||
+    item.paymentAttempt?.networkFee ||
+    item
+
+  const status =
+    fee?.status ||
+    item.feeStatus ||
+    (item.paymentReconciliationRequired || item.outcome === 'pending' || item.outcome === 'unknown'
+      ? 'pending'
+      : null)
+
+  if (status === 'not_applicable') return 'none'
+  if (status === 'pending') return 'pending'
+  if (status === 'unknown') return 'unknown'
+
+  const stroops =
+    fee?.stroops ?? item.feeChargedStroops ?? item.feeCharged ?? item.fee_charged ?? null
+  if (stroops !== null && stroops !== undefined && /^\d+$/.test(String(stroops).trim())) {
+    const stroopsStr = String(stroops).trim()
+    const xlm = fee?.amount || item.feeChargedXlm || stroopsToXlmDisplay(stroopsStr)
+    return `${formatXlmAmount(xlm, { minDecimals: 0, maxDecimals: 7, includeAsset: true })} (${stroopsStr} stroops)`
+  }
+
+  const xlmAmount = fee?.amount ?? item.feeChargedXlm ?? item.feeXlm ?? null
+  if (xlmAmount !== null && xlmAmount !== undefined && String(xlmAmount).trim() !== '') {
+    return formatXlmAmount(xlmAmount, { minDecimals: 0, maxDecimals: 7, includeAsset: true })
+  }
+
+  const settled =
+    Boolean(item?.settlement?.success) ||
+    Boolean(item?.settledAsset && item?.settledAmount) ||
+    item?.outcome === 'confirmed'
+  return settled ? 'unknown' : 'none'
+}
+
+/**
+ * Format the run-level network fee summary separately from service charges (#161).
+ */
+function formatNetworkFeeSummary(runOrSummary) {
+  if (!runOrSummary) return 'none'
+  if (typeof runOrSummary === 'string') return runOrSummary
+  if (typeof runOrSummary.networkFeeSummary === 'string') return runOrSummary.networkFeeSummary
+  if (typeof runOrSummary.summary?.networkFeeSummary === 'string') {
+    return runOrSummary.summary.networkFeeSummary
+  }
+  const nf = runOrSummary.networkFees || runOrSummary.summary?.networkFees || runOrSummary
+  if (nf && typeof nf.summary === 'string') return nf.summary
+  if (nf && nf.status === 'confirmed' && nf.amount) {
+    return nf.stroops
+      ? `${formatXlmAmount(nf.amount, { minDecimals: 0, maxDecimals: 7, includeAsset: true })} (${nf.stroops} stroops)`
+      : formatXlmAmount(nf.amount, { minDecimals: 0, maxDecimals: 7, includeAsset: true })
+  }
+  if (nf && nf.status === 'pending') return 'pending'
+  if (nf && nf.status === 'unknown') return 'unknown'
+  return 'none'
+}
+
 function setResultTag(text, tone = '') {
   const tag = document.getElementById('result-tag')
   tag.textContent = text
@@ -116,7 +237,7 @@ function showResult(r) {
   for (const x of r.results || []) {
     details += x.skipped
       ? `\n[SKIPPED] ${x.agentId}: ${x.reason}\n`
-      : `\n--- ${x.agentName} (quoted ${x.cost} ${x.currency}; settled ${formatSettlementLabel(x)}) ---\n${x.output}\n`
+      : `\n--- ${x.agentName} (quoted ${x.cost} ${x.currency}; settled ${formatSettlementLabel(x)}; network fee ${formatNetworkFeeLabel(x)}) ---\n${x.output}\n`
   }
 
   out.textContent = `FINAL ANSWER\n${finalAnswer}\n\nAGENT DETAILS${details}`
@@ -132,6 +253,7 @@ function showResult(r) {
     <div class="chip">Agents: <span class="v">${r.agentsUsed || 0}</span></div>
     <div class="chip">Quoted: <span class="v">${r.quotedTotal || r.totalSpent || '0'} USDC</span></div>
     <div class="chip">Settled: <span class="v">${formatAssetTotals(r.settledTotals)}</span></div>
+    <div class="chip">Network Fee: <span class="v">${formatNetworkFeeSummary(r)}</span></div>
     <div class="chip">TXs: <span class="v">${r.txCount || 0}</span></div>
     <div class="chip">Protocol: <span class="v">${r.paymentProtocol || 'stellar'}</span></div>
     <div class="chip">Time: <span class="v">${r.elapsed || '-'}</span></div>
@@ -219,6 +341,8 @@ function renderRunDetail(run) {
   document.getElementById('detail-budget').textContent = budget
   const settledEl = document.getElementById('detail-settled')
   if (settledEl) settledEl.textContent = settled
+  const networkFeeEl = document.getElementById('detail-network-fee')
+  if (networkFeeEl) networkFeeEl.textContent = formatNetworkFeeSummary(run)
 
   const interruptedSection = document.getElementById('detail-interrupted-section')
   if (interrupted) {
@@ -242,19 +366,40 @@ function renderRunDetail(run) {
   // Render payment info
   const paymentSection = document.getElementById('detail-payment-section')
   const payments = []
+  const seenTxHashes = new Set()
   if (run.txProofs && Array.isArray(run.txProofs) && run.txProofs.length > 0) {
-    payments.push(...run.txProofs)
+    for (const proof of run.txProofs) {
+      payments.push(proof)
+      if (proof?.txHash) seenTxHashes.add(proof.txHash)
+    }
   }
   if (run.paymentAttempts && Array.isArray(run.paymentAttempts)) {
     for (const pa of run.paymentAttempts) {
       // Attempts are confirmed/unknown/failed, not `settled`.
-      if (pa?.outcome === 'confirmed' && pa.txHash) {
+      if (pa?.outcome === 'confirmed' && pa.txHash && !seenTxHashes.has(pa.txHash)) {
         payments.push({
           method: pa.method,
           txHash: pa.txHash,
           explorerUrl: pa.explorerUrl,
           amount: pa.settledAmount ?? pa.amount,
           asset: pa.settledAsset ?? pa.currency,
+          quotedAmount: pa.quotedAmount ?? pa.amount,
+          quotedAsset: pa.quotedAsset ?? pa.currency,
+          networkFee: pa.networkFee || null,
+          outcome: 'confirmed',
+        })
+        seenTxHashes.add(pa.txHash)
+      } else if (pa?.outcome === 'pending' || pa?.outcome === 'unknown') {
+        payments.push({
+          method: pa.method,
+          txHash: pa.txHash || null,
+          explorerUrl: pa.explorerUrl || null,
+          amount: null,
+          asset: null,
+          quotedAmount: pa.quotedAmount ?? pa.amount,
+          quotedAsset: pa.quotedAsset ?? pa.currency,
+          networkFee: pa.networkFee || { status: 'pending', asset: 'XLM' },
+          outcome: pa.outcome,
         })
       }
     }
@@ -265,14 +410,27 @@ function renderRunDetail(run) {
       .map((p) => {
         const hash = p.txHash || '—'
         const url = p.explorerUrl || `https://stellar.expert/explorer/testnet/tx/${hash}`
+        const quoted =
+          p.quotedAmount !== undefined && p.quotedAmount !== null
+            ? `quoted ${p.quotedAmount} ${p.quotedAsset || 'USDC'}`.trim()
+            : null
         const settled =
-          p.amount !== undefined && p.amount !== null
-            ? `${p.amount} ${p.asset || ''}`.trim()
-            : 'amount not recorded'
+          p.outcome === 'pending' || p.outcome === 'unknown'
+            ? 'settlement pending'
+            : p.amount !== undefined && p.amount !== null
+              ? `${p.amount} ${p.asset || ''}`.trim()
+              : 'amount not recorded'
+        const feeLabel = formatNetworkFeeLabel(p)
+        const txLink =
+          p.txHash && p.txHash !== '—'
+            ? `<a href="${escapeHtml(url)}" target="_blank" rel="noopener">${escapeHtml(hash.slice(0, 12))}...${escapeHtml(hash.slice(-8))}</a>`
+            : `<span style="color:var(--amber);">pending reconciliation</span>`
         return `<div class="payment-item">
+          ${quoted ? `<span>${escapeHtml(quoted)}</span>` : ''}
           <span>${escapeHtml(settled)}</span>
+          <span>network fee: ${escapeHtml(feeLabel)}</span>
           <span>${escapeHtml(p.method || 'unknown')}</span>
-          <a href="${escapeHtml(url)}" target="_blank" rel="noopener">${escapeHtml(hash.slice(0, 12))}...${escapeHtml(hash.slice(-8))}</a>
+          ${txLink}
         </div>`
       })
       .join('')

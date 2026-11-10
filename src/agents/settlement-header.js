@@ -1,4 +1,5 @@
 import { decodePaymentResponseHeader } from '@x402/fetch'
+import { normalizeNetworkFee } from './settlement.js'
 
 const SETTLEMENT_HEADER_CANDIDATES = [
   'PAYMENT-RESPONSE',
@@ -73,4 +74,18 @@ export function extractTxHash(settle) {
     settle.txId ||
     null
   )
+}
+
+export function extractNetworkFee(settle) {
+  if (!settle || typeof settle !== 'object') {
+    return normalizeNetworkFee(null, {
+      status: 'unknown',
+      source: 'x402-facilitator',
+      reason: 'x402 facilitator did not report Stellar ledger fee_charged',
+    })
+  }
+  return normalizeNetworkFee(settle, {
+    source: 'x402-settlement-header',
+    reason: 'x402 facilitator did not report Stellar ledger fee_charged',
+  })
 }

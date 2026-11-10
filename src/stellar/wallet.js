@@ -1,6 +1,22 @@
 import { Keypair, Horizon, TransactionBuilder, Operation, Asset } from '@stellar/stellar-sdk'
 import { config } from '../config.js'
 import { explorerTxUrl, getFriendbotUrl } from './network.js'
+import {
+  resolveStellarFeePolicy,
+  resolveDirectPaymentFee,
+  normalizeNetworkFee,
+  stroopsToXlmString,
+  xlmToStroopsString,
+  XLM_ASSET,
+} from '../agents/settlement.js'
+
+export {
+  resolveStellarFeePolicy,
+  resolveDirectPaymentFee,
+  normalizeNetworkFee,
+  stroopsToXlmString,
+  xlmToStroopsString,
+}
 
 // One validated profile drives every network fact in this module: Horizon
 // origin, transaction passphrase, explorer links, and the friend-only funding
@@ -187,15 +203,57 @@ export function getKeypair(secretKey) {
 }
 
 /**
+ * Normalize the charged Stellar network fee on a Horizon transaction record (#161).
+ */
+export function normalizeTransactionFee(tx, feePolicy = config.stellarFeePolicy) {
+  if (!tx || typeof tx !== 'object') {
+    return normalizeNetworkFee(null, {
+      status: 'unknown',
+      source: 'horizon-transaction',
+      feePolicy,
+    })
+  }
+  const isPending =
+    tx.pending === true ||
+    tx.status === 'PENDING' ||
+    (tx.successful === null && (tx.fee_charged === undefined || tx.fee_charged === null))
+  return normalizeNetworkFee(tx, {
+    status: isPending ? 'pending' : undefined,
+    source: 'horizon-transaction',
+    maxFeeStroops: tx.max_fee ?? tx.maxFee ?? null,
+    feePolicy,
+  })
+}
+
+/**
  * Send XLM payment between two wallets (for demo agent-to-agent payments)
  */
-export async function sendPayment(senderSecret, recipientPublic, amount, memo = '') {
+export async function sendPayment(senderSecret, recipientPublic, amount, memo = '', options = {}) {
+  const activePolicy = options.feePolicy
+    ? resolveStellarFeePolicy(options.feePolicy)
+    : config.stellarFeePolicy
+
+  let resolvedFee
   try {
+    resolvedFee = resolveDirectPaymentFee(options, activePolicy)
+  } catch (feeErr) {
+    console.error('Payment rejected by fee policy:', feeErr.message)
+    return {
+      success: false,
+      error: feeErr.message,
+      errorCode: feeErr.code || 'INVALID_FEE_POLICY',
+      details: feeErr.details || null,
+      feePolicy: activePolicy,
+    }
+  }
+
+  try {
+    const horizonServer = options.horizonServer || server
     const senderKeypair = Keypair.fromSecret(senderSecret)
-    const senderAccount = await server.loadAccount(senderKeypair.publicKey())
+    const senderAccount = await horizonServer.loadAccount(senderKeypair.publicKey())
 
     const txBuilder = new TransactionBuilder(senderAccount, {
-      fee: '100',
+      fee: resolvedFee.feeStroops,
       networkPassphrase: profile.passphrase,
     })
 
@@ -215,16 +273,38 @@ export async function sendPayment(senderSecret, recipientPublic, amount, memo = 
     const tx = txBuilder.build()
     tx.sign(senderKeypair)
 
-    const result = await server.submitTransaction(tx)
+    const result = await horizonServer.submitTransaction(tx)
+    const isPending = result?.pending === true || result?.status === 'PENDING'
+    const networkFee = normalizeNetworkFee(result, {
+      status: isPending ? 'pending' : undefined,
+      source: 'horizon-ledger',
+      maxFeeStroops: result?.max_fee ?? result?.maxFee ?? resolvedFee.feeStroops,
+      feePolicy: activePolicy,
+    })
+
     return {
-      success: true,
-      txHash: result.hash,
-      ledger: result.ledger,
-      explorerUrl: explorerTxUrl(profile, result.hash),
+      success: !isPending && result?.successful !== false,
+      pending: isPending,
+      txHash: result?.hash || null,
+      ledger: result?.ledger ?? null,
+      explorerUrl: result?.hash ? explorerTxUrl(profile, result.hash) : null,
+      feeCharged: networkFee.stroops,
+      feeChargedStroops: networkFee.stroops,
+      feeChargedXlm: networkFee.amount,
+      maxFeeStroops: networkFee.maxFeeStroops,
+      maxFeeXlm: networkFee.maxFeeXlm,
+      feeAsset: XLM_ASSET,
+      feeStatus: networkFee.status,
+      networkFee,
+      feePolicy: activePolicy,
     }
   } catch (err) {
     console.error('Payment failed:', err.message)
-    return { success: false, error: err.message }
+    return {
+      success: false,
+      error: err.message,
+      feePolicy: activePolicy,
+    }
   }
 }
 
@@ -251,9 +331,16 @@ export async function fundWithFriendbot(publicKey) {
  * - error: error details (only present when success is false)
  * - errorType: categorized error type for client handling
  */
-export async function getTransactions(publicKey, limit = 10, cursor = null, order = 'desc') {
+export async function getTransactions(
+  publicKey,
+  limit = 10,
+  cursor = null,
+  order = 'desc',
+  options = {}
+) {
   try {
-    let query = server.transactions().forAccount(publicKey).order(order).limit(limit)
+    const horizonServer = options.horizonServer || server
+    let query = horizonServer.transactions().forAccount(publicKey).order(order).limit(limit)
 
     if (cursor) {
       query = query.cursor(cursor)
@@ -265,11 +352,13 @@ export async function getTransactions(publicKey, limit = 10, cursor = null, orde
       txs.records,
       config.horizonOpsMaxConcurrency,
       async (tx) => {
-        const { operations, error } = await fetchTransactionOperations(tx.hash)
+        const { operations, error } = await fetchTransactionOperations(tx.hash, horizonServer)
 
         if (error) {
           console.warn(`Failed to fetch operations for tx ${tx.hash}:`, error)
         }
+
+        const networkFee = normalizeTransactionFee(tx)
 
         return {
           hash: tx.hash,
@@ -279,7 +368,15 @@ export async function getTransactions(publicKey, limit = 10, cursor = null, orde
           created_at: tx.created_at,
           memo: tx.memo || null,
           memo_type: tx.memo_type || null,
-          feeCharged: tx.fee_charged,
+          feeCharged: tx.fee_charged ?? tx.feeCharged ?? networkFee.stroops,
+          feeChargedStroops: networkFee.stroops,
+          feeChargedXlm: networkFee.amount,
+          maxFee: tx.max_fee ?? tx.maxFee ?? networkFee.maxFeeStroops,
+          maxFeeStroops: networkFee.maxFeeStroops,
+          maxFeeXlm: networkFee.maxFeeXlm,
+          feeAsset: XLM_ASSET,
+          feeStatus: networkFee.status,
+          networkFee,
           operationCount: tx.operation_count,
           operation_count: tx.operation_count,
           successful: tx.successful,

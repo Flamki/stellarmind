@@ -14,7 +14,7 @@ import { logger } from '../logger.js'
 
 import { x402Client, x402HTTPClient, wrapFetchWithPayment } from '@x402/fetch'
 import { ExactStellarScheme, createEd25519Signer } from '@x402/stellar'
-import { parseSettlementHeader, extractTxHash } from './settlement-header.js'
+import { parseSettlementHeader, extractTxHash, extractNetworkFee } from './settlement-header.js'
 import {
   canAttemptFallback,
   confirmPaymentAttempt,
@@ -45,9 +45,12 @@ import {
   summarizeUsageByPhase,
 } from './usage.js'
 import {
+  buildPaymentReceipt,
   buildQuote,
   buildSettlement,
   formatSettledTotals,
+  normalizeNetworkFee,
+  summarizeNetworkFees,
   summarizeSettledTotals,
   SETTLEMENT_CONVERSION_POLICY,
   XLM_FALLBACK_POLICY,
@@ -229,6 +232,7 @@ async function callAgentViaX402(agent, input, broadcastFn, context = {}) {
           })
         } else {
           const verification = txHash ? 'verified' : 'unverified'
+          const x402Fee = extractNetworkFee(settle)
           // x402 settles the quoted USDC price in USDC.
           settlement = buildSettlement(quote, {
             method: 'x402',
@@ -238,12 +242,14 @@ async function callAgentViaX402(agent, input, broadcastFn, context = {}) {
             amount: quote.amount,
             txHash,
             explorerUrl: buildExplorerUrl(txHash),
+            networkFee: x402Fee,
           })
           paymentAttempt = confirmPaymentAttempt(paymentAttempt, {
             txHash,
             explorerUrl: buildExplorerUrl(txHash),
             proof: txHash ? { source: 'x402-settlement-header', txHash } : null,
             settlement,
+            networkFee: x402Fee,
           })
           broadcastFn?.({
             type: 'x402_payment',
@@ -258,12 +264,30 @@ async function callAgentViaX402(agent, input, broadcastFn, context = {}) {
             network: settlement.network,
             quotedAmount: quote.amount,
             quotedAsset: quote.asset,
+            networkFee: settlement.networkFee,
             verification,
             txHash: txHash || null,
             explorerUrl: buildExplorerUrl(txHash),
             timestamp: new Date().toISOString(),
           })
         }
+
+        const stepNetworkFee = settlement
+          ? settlement.networkFee
+          : normalizeNetworkFee(null, {
+              status: 'not_applicable',
+              source: 'x402-settlement-failed',
+              reason: 'x402 settlement failed; no ledger fee charged',
+            })
+        const receipt = buildPaymentReceipt({
+          quote,
+          settlement,
+          networkFee: stepNetworkFee,
+          paymentAttempt,
+          stepId: context.stepId || agent.id,
+          agentId: agent.id,
+          agentName: agent.name,
+        })
 
         return {
           result: data.result || JSON.stringify(data),
@@ -289,6 +313,8 @@ async function callAgentViaX402(agent, input, broadcastFn, context = {}) {
           paymentReconciliationRequired: false,
           quote,
           settlement,
+          networkFee: stepNetworkFee,
+          receipt,
           quotedAmount: quote.amount,
           quotedAsset: quote.asset,
           quotedIssuer: quote.issuer,
@@ -473,6 +499,11 @@ async function callAgentViaX402(agent, input, broadcastFn, context = {}) {
   // looking failed in run history. It settles in native XLM, so the recorded
   // settlement names XLM — not the registry's USDC quote (#130).
   if (paymentResult.success) {
+    const directFee = normalizeNetworkFee(paymentResult, {
+      source: 'horizon-ledger',
+      feePolicy: paymentResult.feePolicy || config.stellarFeePolicy,
+      reason: 'Ledger response did not include fee_charged',
+    })
     settlement = buildSettlement(quote, {
       method: 'stellar-xlm-direct',
       asset: XLM_FALLBACK_POLICY.asset,
@@ -482,6 +513,7 @@ async function callAgentViaX402(agent, input, broadcastFn, context = {}) {
       txHash,
       explorerUrl: paymentResult.explorerUrl || buildExplorerUrl(txHash),
       policy: XLM_FALLBACK_POLICY.id,
+      networkFee: directFee,
     })
     paymentAttempt = confirmPaymentAttempt(paymentAttempt, {
       txHash,
@@ -490,7 +522,10 @@ async function callAgentViaX402(agent, input, broadcastFn, context = {}) {
         ? { source: 'stellar-xlm-fallback', settledAfter: paymentAttempt.failureReason }
         : null,
       settlement,
+      networkFee: directFee,
     })
+  } else if (paymentResult.pending === true || paymentResult.feeStatus === 'pending') {
+    paymentAttempt = markPaymentAttemptUnknown(paymentAttempt, 'stellar_tx_pending')
   }
 
   const paymentReconciliationRequired = paymentAttempt.outcome === 'unknown'
@@ -516,6 +551,7 @@ async function callAgentViaX402(agent, input, broadcastFn, context = {}) {
       amount: quote.amount,
       txHash: paymentAttempt.txHash,
       explorerUrl: paymentAttempt.explorerUrl || buildExplorerUrl(paymentAttempt.txHash),
+      networkFee: paymentAttempt.networkFee,
     })
     // Reconciliation confirmed the attempt before this settlement record
     // existed. Attach it to the same attempt so the persisted record names the
@@ -524,8 +560,37 @@ async function callAgentViaX402(agent, input, broadcastFn, context = {}) {
       txHash: paymentAttempt.txHash,
       explorerUrl: paymentAttempt.explorerUrl,
       settlement,
+      networkFee: settlement.networkFee,
     })
   }
+
+  const stepNetworkFee =
+    settled && settlement?.networkFee
+      ? settlement.networkFee
+      : paymentReconciliationRequired || paymentResult.pending === true
+        ? normalizeNetworkFee(paymentResult, {
+            status: 'pending',
+            source: paymentResult.pending ? 'horizon-ledger' : 'payment-pending',
+            feePolicy: paymentResult.feePolicy || config.stellarFeePolicy,
+            reason:
+              'Payment outcome is pending confirmation; Stellar network fee is not yet finalized',
+          })
+        : normalizeNetworkFee(null, {
+            status: 'not_applicable',
+            source: 'none',
+            reason: 'No on-chain transaction submitted',
+          })
+
+  const receipt = buildPaymentReceipt({
+    quote,
+    settlement: settled ? settlement : null,
+    networkFee: stepNetworkFee,
+    paymentAttempt,
+    stepId: context.stepId || agent.id,
+    agentId: agent.id,
+    agentName: agent.name,
+  })
+
   return {
     result,
     paymentMethod: settled ? (paymentResult.success ? 'stellar-xlm' : 'x402') : 'none',
@@ -537,9 +602,11 @@ async function callAgentViaX402(agent, input, broadcastFn, context = {}) {
     responseMeta: capturedResponseMeta,
     paymentAttempt,
     paymentReconciliationRequired,
-    // Quote vs settlement, kept explicitly separate (#130).
+    // Quote vs settlement vs network fee, kept explicitly separate (#130, #161).
     quote,
     settlement: settled ? settlement : null,
+    networkFee: stepNetworkFee,
+    receipt,
     quotedAmount: quote.amount,
     quotedAsset: quote.asset,
     quotedIssuer: quote.issuer,
@@ -911,6 +978,8 @@ Respond ONLY with valid JSON (no markdown, no code fences):
       settledIssuer: agentResponse.settledIssuer ?? null,
       settledNetwork: agentResponse.settledNetwork ?? null,
       settledAmountExact: agentResponse.settledAmountExact || null,
+      networkFee: agentResponse.networkFee || null,
+      receipt: agentResponse.receipt || null,
       paidVia: agentResponse.paidVia,
       paymentSuccess: agentResponse.paymentSuccess,
       txHash: agentResponse.txHash || null,
@@ -943,6 +1012,8 @@ Respond ONLY with valid JSON (no markdown, no code fences):
       settledAsset: agentResponse.settledAsset ?? null,
       settledIssuer: agentResponse.settledIssuer ?? null,
       settledNetwork: agentResponse.settledNetwork ?? null,
+      networkFee: agentResponse.networkFee || null,
+      receipt: agentResponse.receipt || null,
       paidVia: agentResponse.paidVia,
       txHash: agentResponse.txHash || null,
       explorerUrl: agentResponse.explorerUrl || null,
@@ -971,6 +1042,8 @@ Respond ONLY with valid JSON (no markdown, no code fences):
         network: agentResponse.settledNetwork,
         quotedAmount: agentResponse.quotedAmount,
         quotedAsset: agentResponse.quotedAsset,
+        networkFee: agentResponse.networkFee || null,
+        receipt: agentResponse.receipt || null,
         method: agentResponse.paidVia,
         settlementPolicy: agentResponse.settlement?.policy || null,
         txHash: agentResponse.txHash,
@@ -989,6 +1062,10 @@ Respond ONLY with valid JSON (no markdown, no code fences):
   // USDC total: there is no conversion policy in this repository (#130).
   const settledTotals = summarizeSettledTotals(payments.map((payment) => payment.settlement))
   const settledSummary = formatSettledTotals(settledTotals)
+  // Network fees are denominated in XLM/stroops and tracked separately from
+  // both quoted service charges and settled agent transfers (#161).
+  const networkFees = summarizeNetworkFees(payments.map((payment) => payment.networkFee))
+  const networkFeeSummary = networkFees.summary
   const quotedTotal = formatAmount(totalSpent)
   const paymentAttemptSummary = summarizePaymentAttempts(paymentAttempts)
   const pendingPaymentCount = paymentAttempts.filter(
@@ -1008,6 +1085,9 @@ Respond ONLY with valid JSON (no markdown, no code fences):
     quotedTotalExact: totalSpent.toJSON(),
     settledTotals,
     settledSummary,
+    networkFees,
+    networkFeeSummary,
+    feePolicy: config.stellarFeePolicy,
     settlementConversionPolicy: SETTLEMENT_CONVERSION_POLICY,
     agentsUsed: countUsed(results),
     agentsSkipped: countSkipped(results),
@@ -1042,6 +1122,10 @@ Respond ONLY with valid JSON (no markdown, no code fences):
     settledTotals,
     settledSummary,
     settledPaymentCount: successfulPayments.length,
+    // Stellar network fees in XLM/stroops, kept separate from service charges (#161).
+    networkFees,
+    networkFeeSummary,
+    feePolicy: config.stellarFeePolicy,
     settlementConversionPolicy: SETTLEMENT_CONVERSION_POLICY,
     budgetExhausted,
     agentsUsed: countUsed(results),

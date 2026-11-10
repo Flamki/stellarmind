@@ -1809,6 +1809,30 @@
                       <span id="detail-spent">0</span> / <span id="detail-budget">—</span>
                     </div>
                   </div>
+                  <div
+                    class="detail-card"
+                    style="
+                      background: var(--bg-card-alt);
+                      padding: 12px;
+                      border-radius: var(--radius-sm);
+                      border: 1px solid var(--border);
+                    "
+                  >
+                    <div style="font-size: 11px; color: var(--text-muted)">Settled Transfer</div>
+                    <div style="font-size: 13px; margin-top: 4px" id="detail-settled">none</div>
+                  </div>
+                  <div
+                    class="detail-card"
+                    style="
+                      background: var(--bg-card-alt);
+                      padding: 12px;
+                      border-radius: var(--radius-sm);
+                      border: 1px solid var(--border);
+                    "
+                  >
+                    <div style="font-size: 11px; color: var(--text-muted)">Stellar Network Fee</div>
+                    <div style="font-size: 13px; margin-top: 4px" id="detail-network-fee">none</div>
+                  </div>
                 </div>
                 <div
                   id="detail-interrupted-section"
@@ -2222,14 +2246,18 @@
               const op = ops[0] || {}
               let amt = '—'
               if (op.amount) {
-                const num = Number.parseFloat(op.amount)
-                amt = Number.isFinite(num)
-                  ? `${num.toFixed(2)} ${op.asset_code || 'XLM'}`
-                  : `${op.amount} ${op.asset_code || 'XLM'}`
+                const assetCode = op.asset_code || 'XLM'
+                amt = formatXlmAmount(op.amount, {
+                  minDecimals: 2,
+                  maxDecimals: 7,
+                  includeAsset: true,
+                  asset: assetCode,
+                })
               } else if (op.type === 'invoke_host_function') {
                 amt = 'contract call'
               }
 
+              const feeDisplay = formatNetworkFeeLabel(tx)
               const hash = tx.hash || tx.id || ''
               const url = `https://stellar.expert/explorer/testnet/tx/${hash}`
               const timeRaw = tx.created_at || tx.createdAt || null
@@ -2239,7 +2267,7 @@
               return `<tr>
             <td><a href="${url}" target="_blank" class="tx-hash">${hash.slice(0, 10)}...${hash.slice(-6)}</a></td>
             <td>${opType}</td>
-            <td><span class="tx-amount">${amt}</span></td>
+            <td><span class="tx-amount">${amt}</span><div class="tx-fee" style="font-size:10px;color:var(--text-muted);">Network fee: ${feeDisplay}</div></td>
             <td><span class="tx-memo">${memoValue}</span></td>
             <td><span class="tx-time">${time}</span></td>
           </tr>`
@@ -2485,6 +2513,117 @@
         return 'unsettled'
       }
 
+      function stroopsToXlmDisplay(stroops) {
+        if (stroops === null || stroops === undefined || stroops === '') return null
+        const s = String(stroops).trim()
+        if (!/^\d+$/.test(s)) return null
+        const units = BigInt(s)
+        const scale = 10_000_000n
+        const intPart = units / scale
+        const fracPart = units % scale
+        if (fracPart === 0n) return intPart.toString()
+        const fracStr = fracPart.toString().padStart(7, '0').replace(/0+$/, '')
+        return `${intPart}.${fracStr}`
+      }
+
+      function formatXlmAmount(value, options = {}) {
+        const minDecimals = options.minDecimals ?? 0
+        const maxDecimals = options.maxDecimals ?? 7
+        const includeAsset = options.includeAsset !== false
+        const asset = options.asset || 'XLM'
+
+        if (value === null || value === undefined || value === '') return '—'
+
+        let raw = String(value).trim()
+        if (typeof value === 'number') {
+          if (!Number.isFinite(value)) return '—'
+          raw = value.toFixed(maxDecimals)
+        } else if (/e/i.test(raw)) {
+          const parsed = Number(raw)
+          if (!Number.isFinite(parsed)) return `${raw}${includeAsset ? ` ${asset}` : ''}`
+          raw = parsed.toFixed(maxDecimals)
+        }
+
+        const match = raw.match(/^([+-]?)(\d+)(?:\.(\d+))?$/)
+        if (!match) {
+          return includeAsset ? `${raw} ${asset}` : raw
+        }
+
+        const sign = match[1] === '-' ? '-' : ''
+        const intPart = match[2]
+        const fracRaw = (match[3] || '').slice(0, maxDecimals)
+        const trimmedFrac = fracRaw.replace(/0+$/, '')
+        const finalFrac =
+          trimmedFrac.length >= minDecimals ? trimmedFrac : trimmedFrac.padEnd(minDecimals, '0')
+
+        const formatted =
+          finalFrac.length > 0 ? `${sign}${intPart}.${finalFrac}` : `${sign}${intPart}`
+        return includeAsset ? `${formatted} ${asset}` : formatted
+      }
+
+      function formatNetworkFeeLabel(item) {
+        if (!item || typeof item !== 'object') return 'unknown'
+        const fee =
+          item.networkFee ||
+          item.receipt?.networkFee ||
+          item.settlement?.networkFee ||
+          item.paymentAttempt?.networkFee ||
+          item
+
+        const status =
+          fee?.status ||
+          item.feeStatus ||
+          (item.paymentReconciliationRequired ||
+          item.outcome === 'pending' ||
+          item.outcome === 'unknown' ||
+          item.pending
+            ? 'pending'
+            : null)
+
+        if (status === 'not_applicable') return 'none'
+        if (status === 'pending') return 'pending'
+        if (status === 'unknown') return 'unknown'
+
+        const stroops =
+          fee?.stroops ?? item.feeChargedStroops ?? item.feeCharged ?? item.fee_charged ?? null
+        if (stroops !== null && stroops !== undefined && /^\d+$/.test(String(stroops).trim())) {
+          const stroopsStr = String(stroops).trim()
+          const xlm = fee?.amount || item.feeChargedXlm || stroopsToXlmDisplay(stroopsStr)
+          return `${formatXlmAmount(xlm, { minDecimals: 0, maxDecimals: 7, includeAsset: true })} (${stroopsStr} stroops)`
+        }
+
+        const xlmAmount = fee?.amount ?? item.feeChargedXlm ?? item.feeXlm ?? null
+        if (xlmAmount !== null && xlmAmount !== undefined && String(xlmAmount).trim() !== '') {
+          return formatXlmAmount(xlmAmount, { minDecimals: 0, maxDecimals: 7, includeAsset: true })
+        }
+
+        const settled =
+          Boolean(item?.settlement?.success) ||
+          Boolean(item?.settledAsset && item?.settledAmount) ||
+          item?.outcome === 'confirmed'
+        return settled ? 'unknown' : 'none'
+      }
+
+      function formatNetworkFeeSummary(runOrSummary) {
+        if (!runOrSummary) return 'none'
+        if (typeof runOrSummary === 'string') return runOrSummary
+        if (typeof runOrSummary.networkFeeSummary === 'string')
+          return runOrSummary.networkFeeSummary
+        if (typeof runOrSummary.summary?.networkFeeSummary === 'string') {
+          return runOrSummary.summary.networkFeeSummary
+        }
+        const nf = runOrSummary.networkFees || runOrSummary.summary?.networkFees || runOrSummary
+        if (nf && typeof nf.summary === 'string') return nf.summary
+        if (nf && nf.status === 'confirmed' && nf.amount) {
+          return nf.stroops
+            ? `${formatXlmAmount(nf.amount, { minDecimals: 0, maxDecimals: 7, includeAsset: true })} (${nf.stroops} stroops)`
+            : formatXlmAmount(nf.amount, { minDecimals: 0, maxDecimals: 7, includeAsset: true })
+        }
+        if (nf && nf.status === 'pending') return 'pending'
+        if (nf && nf.status === 'unknown') return 'unknown'
+        return 'none'
+      }
+
       function showResult(r) {
         const p = document.getElementById('result-panel')
         const out = document.getElementById('result-out')
@@ -2507,7 +2646,7 @@
         for (const x of r.results || []) {
           details += x.skipped
             ? `\n[SKIPPED] ${x.agentId}: ${x.reason}\n`
-            : `\n--- ${x.agentName} (quoted ${x.cost} ${x.currency}; settled ${formatSettlementLabel(x)}) ---\n${x.output}\n`
+            : `\n--- ${x.agentName} (quoted ${x.cost} ${x.currency}; settled ${formatSettlementLabel(x)}; network fee ${formatNetworkFeeLabel(x)}) ---\n${x.output}\n`
         }
 
         out.textContent = `FINAL ANSWER\n${finalAnswer}\n\nAGENT DETAILS${details}`
@@ -2521,6 +2660,7 @@
         <div class="chip">Agents: <span class="v">${r.agentsUsed || 0}</span></div>
         <div class="chip">Quoted: <span class="v">${r.quotedTotal || r.totalSpent || '0'} USDC</span></div>
         <div class="chip">Settled: <span class="v">${formatAssetTotals(r.settledTotals)}</span></div>
+        <div class="chip">Network Fee: <span class="v">${formatNetworkFeeSummary(r)}</span></div>
         <div class="chip">TXs: <span class="v">${r.txCount || 0}</span></div>
         <div class="chip">Protocol: <span class="v">${r.paymentProtocol || 'stellar'}</span></div>
         <div class="chip">Time: <span class="v">${r.elapsed || '-'}</span></div>

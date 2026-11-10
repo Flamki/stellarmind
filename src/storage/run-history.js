@@ -46,6 +46,8 @@ function toAuditEvent(event) {
     network: event.network || event.settledNetwork || null,
     quotedAmount: event.quotedAmount ?? null,
     quotedAsset: event.quotedAsset || event.currency || null,
+    networkFee: event.networkFee || null,
+    receipt: event.receipt || null,
     paidVia: event.paidVia || null,
     txHash: event.txHash || null,
     explorerUrl: event.explorerUrl || null,
@@ -264,6 +266,8 @@ export class InMemoryRunHistoryStore {
         quotedAmount: payment.quotedAmount ?? null,
         quotedAsset: payment.quotedAsset ?? null,
         settlementPolicy: payment.settlement?.policy ?? null,
+        networkFee: payment.networkFee ?? payment.settlement?.networkFee ?? null,
+        receipt: payment.receipt ?? null,
       }))
 
     const completedOutput = Array.isArray(result.output)
@@ -282,6 +286,9 @@ export class InMemoryRunHistoryStore {
       quotedTotal: result.quotedTotal ?? result.totalSpent,
       settledTotals: result.settledTotals || [],
       settledSummary: result.settledSummary || 'none',
+      networkFees: result.networkFees || null,
+      networkFeeSummary: result.networkFeeSummary || result.networkFees?.summary || 'none',
+      feePolicy: result.feePolicy || null,
       settlementConversionPolicy: result.settlementConversionPolicy || {
         applied: false,
         reason: 'No cross-asset conversion is configured.',

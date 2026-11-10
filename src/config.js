@@ -2,6 +2,11 @@ import dotenv from 'dotenv'
 import { fileURLToPath } from 'node:url'
 import path from 'node:path'
 import { resolveNetworkProfile } from './stellar/network.js'
+import {
+  resolveStellarFeePolicy,
+  DEFAULT_BASE_FEE_STROOPS,
+  DEFAULT_MAX_FEE_STROOPS,
+} from './agents/settlement.js'
 
 dotenv.config({
   path: fileURLToPath(new URL('../.env', import.meta.url)),
@@ -28,6 +33,11 @@ const networkProfile = resolveNetworkProfile({
   horizonUrl: process.env.STELLAR_HORIZON_URL,
   rpcUrl: process.env.STELLAR_RPC_URL,
   explorerUrl: process.env.STELLAR_EXPLORER_URL,
+})
+
+const stellarFeePolicy = resolveStellarFeePolicy({
+  baseFeeStroops: process.env.STELLAR_BASE_FEE_STROOPS ?? DEFAULT_BASE_FEE_STROOPS,
+  maxFeeStroops: process.env.STELLAR_MAX_FEE_STROOPS ?? DEFAULT_MAX_FEE_STROOPS,
 })
 
 export const config = {
@@ -97,4 +107,9 @@ export const config = {
   // Per-transaction operation lookups in getTransactions
   horizonOpsMaxConcurrency: Math.max(1, toNumberOr(process.env.HORIZON_OPS_MAX_CONCURRENCY, 4)),
   horizonOpsCacheSize: Math.max(0, toNumberOr(process.env.HORIZON_OPS_CACHE_SIZE, 500)),
+
+  // Bounded Stellar network fee policy for direct transfers (in stroops; 1 XLM = 10,000,000 stroops)
+  stellarFeePolicy,
+  stellarBaseFeeStroops: stellarFeePolicy.baseFeeStroops,
+  stellarMaxFeeStroops: stellarFeePolicy.maxFeeStroops,
 }

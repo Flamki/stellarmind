@@ -22,6 +22,8 @@
 /** Every attempt is in exactly one of these states. */
 export const ATTEMPT_OUTCOMES = ['pending', 'confirmed', 'failed', 'unknown']
 
+import { normalizeNetworkFee } from './settlement.js'
+
 /**
  * Documented terminal-failure policy — the only reasons that permit a new
  * settlement attempt (see `canAttemptFallback`).
@@ -101,6 +103,11 @@ export function createPaymentAttempt({
     settledNetwork: null,
     settledAmountExact: null,
     settlementPolicy: null,
+    networkFee: normalizeNetworkFee(null, {
+      status: 'pending',
+      source: 'payment-attempt',
+      reason: 'Payment attempt created; awaiting settlement confirmation',
+    }),
     method,
     outcome: 'pending',
     /** Why the attempt is not confirmed. Null while pending/confirmed. */
@@ -138,15 +145,25 @@ function withOutcome(attempt, outcome, patch = {}) {
  */
 export function confirmPaymentAttempt(
   attempt,
-  { txHash = null, explorerUrl = null, proof = null, settlement = null } = {}
+  { txHash = null, explorerUrl = null, proof = null, settlement = null, networkFee = null } = {}
 ) {
   const settled = settlement && settlement.success === true ? settlement : null
+  const resolvedFee = networkFee
+    ? normalizeNetworkFee(networkFee)
+    : settled?.networkFee
+      ? normalizeNetworkFee(settled.networkFee)
+      : normalizeNetworkFee(null, {
+          status: 'unknown',
+          source: 'payment-attempt',
+          reason: 'Confirmed settlement did not report Stellar ledger fee_charged',
+        })
   return withOutcome(attempt, 'confirmed', {
     failureReason: null,
     terminal: false,
     txHash: txHash || attempt.txHash || null,
     explorerUrl: explorerUrl || attempt.explorerUrl || null,
     proof: proof || attempt.proof || null,
+    networkFee: resolvedFee,
     ...(settled
       ? {
           settledAmount: settled.amount ?? null,
@@ -167,7 +184,15 @@ export function confirmPaymentAttempt(
 export function failPaymentAttempt(attempt, reason) {
   if (!reason) throw new TypeError('a failure reason is required')
   const terminal = isTerminalFailure(reason)
-  return withOutcome(attempt, 'failed', { failureReason: reason, terminal })
+  return withOutcome(attempt, 'failed', {
+    failureReason: reason,
+    terminal,
+    networkFee: normalizeNetworkFee(null, {
+      status: 'not_applicable',
+      source: 'payment-attempt-failed',
+      reason: `Payment attempt failed (${reason}); no ledger fee charged`,
+    }),
+  })
 }
 
 /**
@@ -176,7 +201,15 @@ export function failPaymentAttempt(attempt, reason) {
  * settlement on its own.
  */
 export function markPaymentAttemptUnknown(attempt, reason = 'transport_error') {
-  return withOutcome(attempt, 'unknown', { failureReason: reason, terminal: false })
+  return withOutcome(attempt, 'unknown', {
+    failureReason: reason,
+    terminal: false,
+    networkFee: normalizeNetworkFee(null, {
+      status: 'pending',
+      source: 'payment-attempt-unknown',
+      reason: `Payment outcome is unresolved (${reason}); network fee is pending reconciliation`,
+    }),
+  })
 }
 
 /**
