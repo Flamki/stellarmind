@@ -34,6 +34,8 @@ function toAuditEvent(event) {
   return {
     type: event.type || 'unknown',
     timestamp: event.timestamp || new Date().toISOString(),
+    runId: event.runId || null,
+    stepId: event.stepId || null,
     agentId: event.agentId || null,
     agent: event.agent || null,
     cost: event.cost || null,
@@ -50,6 +52,7 @@ function toAuditEvent(event) {
     txHash: event.txHash || null,
     explorerUrl: event.explorerUrl || null,
     status: event.status || null,
+    outcome: event.outcome || null,
     totalSpent: event.totalSpent || null,
     quotedTotal: event.quotedTotal || null,
     reason: event.reason || null,

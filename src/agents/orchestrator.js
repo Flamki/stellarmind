@@ -171,6 +171,8 @@ async function parseResponseBody(response) {
 async function callAgentViaX402(agent, input, broadcastFn, context = {}) {
   const baseUrl = config.internalBaseUrl
   const endpointFn = PREMIUM_ENDPOINT_MAP[agent.id]
+  const runId = context.runId || null
+  const stepId = context.stepId || null
   // The quote is the marketplace price for this call. It is reported
   // separately from the settlement, which may be in another asset (#130).
   const quote = buildQuote(agent, config.networkProfile)
@@ -247,6 +249,8 @@ async function callAgentViaX402(agent, input, broadcastFn, context = {}) {
           })
           broadcastFn?.({
             type: 'x402_payment',
+            runId,
+            stepId,
             agent: agent.name,
             agentId: agent.id,
             flow: '402 -> sign -> settle -> 200',
@@ -355,6 +359,8 @@ async function callAgentViaX402(agent, input, broadcastFn, context = {}) {
     if (fallbackPermitted) {
       broadcastFn?.({
         type: 'x402_retry',
+        runId,
+        stepId,
         agent: agent.name,
         agentId: agent.id,
         attemptId: paymentAttempt.id,
@@ -378,6 +384,8 @@ async function callAgentViaX402(agent, input, broadcastFn, context = {}) {
       // would charge one logical call twice.
       broadcastFn?.({
         type: 'x402_settlement_unresolved',
+        runId,
+        stepId,
         agent: agent.name,
         agentId: agent.id,
         attemptId: paymentAttempt.id,
@@ -404,6 +412,7 @@ async function callAgentViaX402(agent, input, broadcastFn, context = {}) {
     await new Promise((resolve) => setTimeout(resolve, context.agentDelayMs))
   }
   let result
+  let serviceError = null
   let capturedUsage = null
   let capturedResponseMeta = null
   try {
@@ -411,6 +420,8 @@ async function callAgentViaX402(agent, input, broadcastFn, context = {}) {
       onRetryAttempt: (retry) => {
         broadcastFn?.({
           type: 'anthropic_retry',
+          runId,
+          stepId,
           agent: agent.name,
           agentId: agent.id,
           attempt: retry.attempt,
@@ -434,7 +445,8 @@ async function callAgentViaX402(agent, input, broadcastFn, context = {}) {
       },
     })
   } catch (err) {
-    result = `Error: ${err.message}`
+    serviceError = err?.message || 'Agent execution failed'
+    result = `Error: ${serviceError}`
   }
 
   let paymentResult = { success: false, txHash: null }
@@ -528,6 +540,8 @@ async function callAgentViaX402(agent, input, broadcastFn, context = {}) {
   }
   return {
     result,
+    failed: Boolean(serviceError),
+    error: serviceError || undefined,
     paymentMethod: settled ? (paymentResult.success ? 'stellar-xlm' : 'x402') : 'none',
     paymentSuccess: settled,
     paidVia: settled ? (paymentResult.success ? 'stellar-xlm-direct' : 'x402') : 'none',
@@ -617,6 +631,7 @@ export async function orchestrate(task, budget, broadcastFn, context = {}) {
     throw abortErr
   }
 
+  const runId = context.runId || null
   const startTime = Date.now()
   const results = []
   const payments = []
@@ -633,6 +648,7 @@ export async function orchestrate(task, budget, broadcastFn, context = {}) {
 
   broadcastFn?.({
     type: 'orchestrator_start',
+    runId,
     task,
     budget,
     x402Configured: !!x402Fetch,
@@ -688,6 +704,7 @@ Respond ONLY with valid JSON (no markdown, no code fences):
           onRetryAttempt: (retry) => {
             broadcastFn?.({
               type: 'anthropic_retry',
+              runId,
               phase: 'planning',
               attempt: retry.attempt,
               maxRetries: retry.maxRetries,
@@ -776,16 +793,33 @@ Respond ONLY with valid JSON (no markdown, no code fences):
     }
   }
 
+  if (Array.isArray(plan?.subtasks)) {
+    plan.subtasks.forEach((s, i) => {
+      if (s && typeof s === 'object' && !s.stepId) {
+        s.stepId = `step-${i}`
+      }
+    })
+  }
+
   usageEntries.push(planningUsageEntry)
 
   broadcastFn?.({
     type: 'orchestrator_plan',
+    runId,
     plan: plan.plan,
     subtaskCount: plan.subtasks?.length || 0,
+    steps: (plan.subtasks || []).map((s, i) => ({
+      stepId: s.stepId || `step-${i}`,
+      agentId: s.agentId,
+    })),
     timestamp: new Date().toISOString(),
   })
 
-  for (const subtask of plan.subtasks || []) {
+  for (let stepIndex = 0; stepIndex < (plan.subtasks || []).length; stepIndex++) {
+    const subtask = plan.subtasks[stepIndex]
+    const stepId = subtask.stepId || `step-${stepIndex}`
+    subtask.stepId = stepId
+
     if (context.signal?.aborted) {
       const abortErr = new Error('Orchestration aborted')
       abortErr.code = 'REQUEST_ABORTED'
@@ -794,7 +828,24 @@ Respond ONLY with valid JSON (no markdown, no code fences):
 
     const agent = getAgentById(subtask.agentId)
     if (!agent) {
-      results.push({ agentId: subtask.agentId, stepId: subtask.stepId, error: 'Agent not found' })
+      broadcastFn?.({
+        type: 'agent_failed',
+        runId,
+        stepId,
+        agent: subtask.agentId,
+        agentId: subtask.agentId,
+        error: 'Agent not found',
+        status: 'failed',
+        outcome: 'failed',
+        timestamp: new Date().toISOString(),
+      })
+      results.push({
+        agentId: subtask.agentId,
+        stepId,
+        status: 'failed',
+        outcome: 'failed',
+        error: 'Agent not found',
+      })
       continue
     }
 
@@ -803,9 +854,19 @@ Respond ONLY with valid JSON (no markdown, no code fences):
     if (exceedsBudget(totalSpent, cost, exactBudget)) {
       broadcastFn?.({
         ...buildBudgetLimitEvent(agent, exactBudget, totalSpent),
+        runId,
+        stepId,
+        agentId: agent.id,
+        status: 'skipped',
+        outcome: 'skipped',
         timestamp: new Date().toISOString(),
       })
-      results.push(buildSkipResult(agent, exactBudget, totalSpent))
+      results.push({
+        ...buildSkipResult(agent, exactBudget, totalSpent),
+        stepId,
+        status: 'skipped',
+        outcome: 'skipped',
+      })
       continue
     }
 
@@ -821,6 +882,8 @@ Respond ONLY with valid JSON (no markdown, no code fences):
 
     broadcastFn?.({
       type: 'agent_call',
+      runId,
+      stepId,
       agent: agent.name,
       agentId: agent.id,
       input: activeInput.substring(0, 100) + (activeInput.length > 100 ? '...' : ''),
@@ -834,7 +897,11 @@ Respond ONLY with valid JSON (no markdown, no code fences):
       timestamp: new Date().toISOString(),
     })
 
-    const agentResponse = await callAgentViaX402(agent, activeInput, broadcastFn, context)
+    const agentResponse = await callAgentViaX402(agent, activeInput, broadcastFn, {
+      ...context,
+      runId,
+      stepId,
+    })
 
     if (agentResponse?.paymentAttempt) {
       paymentAttempts = upsertPaymentAttempt(paymentAttempts, agentResponse.paymentAttempt)
@@ -843,6 +910,8 @@ Respond ONLY with valid JSON (no markdown, no code fences):
     if (agentResponse?.paymentReconciliationRequired) {
       broadcastFn?.({
         type: 'payment_reconciliation_required',
+        runId,
+        stepId,
         agent: agent.name,
         agentId: agent.id,
         attemptId: agentResponse.paymentAttempt.id,
@@ -879,6 +948,8 @@ Respond ONLY with valid JSON (no markdown, no code fences):
     if (agentResponse.responseMeta?.truncated || agentResponse.responseMeta?.empty) {
       broadcastFn?.({
         type: 'agent_response_incomplete',
+        runId,
+        stepId,
         agent: agent.name,
         agentId: agent.id,
         truncated: !!agentResponse.responseMeta.truncated,
@@ -888,9 +959,20 @@ Respond ONLY with valid JSON (no markdown, no code fences):
       })
     }
 
+    const stepFailed = Boolean(
+      agentResponse.failed ||
+      agentResponse.error ||
+      (typeof agentResponse.result === 'string' && agentResponse.result.startsWith('Error:'))
+    )
+    const stepOutcome = stepFailed ? 'failed' : 'completed'
+
     const agentResult = {
       agentId: agent.id,
-      stepId: subtask.stepId,
+      stepId,
+      status: stepOutcome,
+      outcome: stepOutcome,
+      failed: stepFailed,
+      ...(stepFailed ? { error: agentResponse.error || agentResponse.result } : {}),
       agentName: agent.name,
       model: agent.model,
       input: subtask.input,
@@ -930,8 +1012,14 @@ Respond ONLY with valid JSON (no markdown, no code fences):
 
     broadcastFn?.({
       type: 'agent_response',
+      runId,
+      stepId,
       agent: agent.name,
       agentId: agent.id,
+      status: stepOutcome,
+      outcome: stepOutcome,
+      failed: stepFailed,
+      error: stepFailed ? agentResponse.error || agentResponse.result : null,
       resultPreview:
         typeof agentResponse.result === 'string' ? agentResponse.result.substring(0, 150) : '',
       cost: agent.price,
@@ -961,6 +1049,8 @@ Respond ONLY with valid JSON (no markdown, no code fences):
       })
       broadcastFn?.({
         type: 'payment',
+        runId,
+        stepId,
         from: 'Orchestrator',
         to: agent.name,
         // The settled amount and asset, never the quote standing in for them.
@@ -994,12 +1084,16 @@ Respond ONLY with valid JSON (no markdown, no code fences):
   const pendingPaymentCount = paymentAttempts.filter(
     (attempt) => attempt.outcome === 'unknown' || attempt.outcome === 'pending'
   ).length
+  const agentsFailed = results.filter(
+    (r) => !r.skipped && (r.failed || r.status === 'failed' || r.outcome === 'failed' || r.error)
+  ).length
   // Provider token usage, aggregated separately from the settled marketplace
   // totals above (totalSpent / paymentProtocol / etc. are untouched by this).
   const usageSummary = summarizeUsageByPhase(usageEntries)
 
   broadcastFn?.({
     type: 'orchestrator_complete',
+    runId,
     // `totalSpent` is the quoted/reserved amount the budget guardrail tracked.
     // Settled totals are reported separately, per asset (#130).
     totalSpent: quotedTotal,
@@ -1011,6 +1105,7 @@ Respond ONLY with valid JSON (no markdown, no code fences):
     settlementConversionPolicy: SETTLEMENT_CONVERSION_POLICY,
     agentsUsed: countUsed(results),
     agentsSkipped: countSkipped(results),
+    agentsFailed,
     elapsed: `${elapsed}ms`,
     budgetExhausted,
     paymentProtocol,
@@ -1026,6 +1121,7 @@ Respond ONLY with valid JSON (no markdown, no code fences):
   })
 
   return {
+    runId,
     task,
     plan: plan.plan,
     budget: typeof budget === 'number' ? budget : exactBudget.toNumber(),
@@ -1046,6 +1142,7 @@ Respond ONLY with valid JSON (no markdown, no code fences):
     budgetExhausted,
     agentsUsed: countUsed(results),
     agentsSkipped: countSkipped(results),
+    agentsFailed,
     paymentProtocol,
     x402PaymentCount,
     xlmFallbackCount,
@@ -1212,7 +1309,10 @@ Respond ONLY with valid JSON (no markdown, no code fences):
   const steps = []
   const pricesAtPreview = {}
 
-  for (const subtask of plan.subtasks || []) {
+  for (let i = 0; i < (plan.subtasks || []).length; i++) {
+    const subtask = plan.subtasks[i]
+    const stepId = subtask.stepId || `step-${i}`
+    subtask.stepId = stepId
     const agent = getAgentById(subtask.agentId)
     if (!agent) {
       const err = new Error(`Agent not found: ${subtask.agentId}`)
@@ -1224,6 +1324,7 @@ Respond ONLY with valid JSON (no markdown, no code fences):
     pricesAtPreview[agent.id] = agent.price
 
     steps.push({
+      stepId,
       agentId: agent.id,
       agentName: agent.name,
       model: agent.model,
