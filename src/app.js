@@ -15,7 +15,13 @@ import {
 } from './agents/services.js'
 import { orchestrate } from './agents/orchestrator.js'
 import { OrchestrationAdmissionQueue } from './agents/orchestration-queue.js'
-import { getBalance, getTransactions } from './stellar/wallet.js'
+import {
+  getBalance,
+  getTransactions,
+  getTransactionDetail,
+  fetchTransactionOperations,
+  fetchAllTransactionOperations,
+} from './stellar/wallet.js'
 import { requestId, requestLogger, errorHandler } from './middleware/errorHandler.js'
 import { apikeyLimiter } from './middleware/rateLimiter.js'
 import { logger } from './logger.js'
@@ -49,6 +55,7 @@ export function createApp(dependencies = {}) {
     paymentMiddleware,
     admissionQueue = new OrchestrationAdmissionQueue(config.orchestrationQueue),
     premiumServices = {},
+    horizonServer = null,
   } = dependencies
 
   const app = express()
@@ -362,14 +369,25 @@ export function createApp(dependencies = {}) {
         return next(err)
       }
 
-      const result = await getTransactions(address, limit, cursor, order)
+      const result = await getTransactions(
+        address,
+        limit,
+        cursor,
+        order,
+        horizonServer ? { horizonServer } : {}
+      )
 
       if (result.success) {
+        const incompleteCount = result.transactions.filter(
+          (tx) => tx.operationsComplete === false
+        ).length
         res.json({
           success: true,
           transactions: result.transactions,
           address,
           count: result.transactions.length,
+          operationsComplete: incompleteCount === 0,
+          incompleteTransactionsCount: incompleteCount,
           correlationId: req.requestId,
         })
       } else {
@@ -384,6 +402,180 @@ export function createApp(dependencies = {}) {
           retryable: result.errorType !== 'ACCOUNT_NOT_FOUND',
         })
       }
+    } catch (err) {
+      next(err)
+    }
+  })
+
+  app.get('/api/wallet/transactions/:hash/operations', async (req, res, next) => {
+    try {
+      const hash = String(req.params.hash || '').trim()
+      if (!hash) {
+        const err = new Error('Transaction hash is required')
+        err.status = 400
+        err.code = 'INVALID_TX_HASH'
+        return next(err)
+      }
+
+      const address =
+        typeof req.query.address === 'string' && req.query.address.trim()
+          ? req.query.address.trim()
+          : config.orchestratorAddress || config.serverAddress || null
+
+      let limit = 10
+      if (req.query.limit !== undefined) {
+        const parsedLimit = Number.parseInt(req.query.limit, 10)
+        if (
+          Number.isNaN(parsedLimit) ||
+          parsedLimit <= 0 ||
+          String(parsedLimit) !== String(req.query.limit)
+        ) {
+          const err = new Error('Invalid query parameter "limit". Must be a positive integer.')
+          err.status = 400
+          err.code = 'INVALID_LIMIT'
+          return next(err)
+        }
+        limit = Math.max(1, Math.min(200, parsedLimit))
+      }
+
+      const orderParam = req.query.order || req.query.direction || 'asc'
+      const order = String(orderParam).toLowerCase() === 'desc' ? 'desc' : 'asc'
+      const cursor =
+        typeof req.query.cursor === 'string' && req.query.cursor.trim()
+          ? req.query.cursor.trim()
+          : null
+      const fetchAll =
+        req.query.all === 'true' || req.query.all === '1' || req.query.complete === 'true'
+      const expectedCount =
+        req.query.expectedCount !== undefined && Number.isInteger(Number(req.query.expectedCount))
+          ? Number.parseInt(req.query.expectedCount, 10)
+          : null
+
+      if (fetchAll) {
+        const allRes = await fetchAllTransactionOperations(hash, {
+          horizonServer: horizonServer || undefined,
+          pageSize: limit,
+          cursor,
+          order,
+          accountAddress: address,
+          expectedCount,
+        })
+        if (!allRes.success) {
+          return res.status(503).json({
+            success: false,
+            hash,
+            error: allRes.error,
+            correlationId: req.requestId,
+          })
+        }
+        return res.json({
+          success: true,
+          hash,
+          operations: allRes.operations,
+          count: allRes.operations.length,
+          totalOperationCount: allRes.totalCount,
+          complete: allRes.complete,
+          truncated: allRes.truncated,
+          hasMore: allRes.hasMore,
+          nextCursor: allRes.nextCursor,
+          pagesFetched: allRes.pagesFetched,
+          duplicateCount: allRes.duplicateCount,
+          pagination: {
+            complete: allRes.complete,
+            truncated: allRes.truncated,
+            hasMore: allRes.hasMore,
+            loadedCount: allRes.operations.length,
+            totalCount: allRes.totalCount,
+            nextCursor: allRes.nextCursor,
+            duplicateCount: allRes.duplicateCount,
+          },
+          correlationId: req.requestId,
+        })
+      }
+
+      const pageRes = await fetchTransactionOperations(hash, horizonServer || undefined, {
+        limit,
+        cursor,
+        order,
+        accountAddress: address,
+        expectedCount,
+      })
+
+      if (pageRes.error) {
+        return res.status(503).json({
+          success: false,
+          hash,
+          error: pageRes.error,
+          correlationId: req.requestId,
+        })
+      }
+
+      return res.json({
+        success: true,
+        hash,
+        operations: pageRes.operations,
+        count: pageRes.operations.length,
+        totalOperationCount: pageRes.totalCount,
+        complete: pageRes.complete,
+        truncated: pageRes.truncated,
+        hasMore: pageRes.hasMore,
+        nextCursor: pageRes.nextCursor,
+        continuationUrl: pageRes.continuationUrl,
+        pagination: {
+          complete: pageRes.complete,
+          truncated: pageRes.truncated,
+          hasMore: pageRes.hasMore,
+          loadedCount: pageRes.loadedCount,
+          totalCount: pageRes.totalCount,
+          nextCursor: pageRes.nextCursor,
+          continuationUrl: pageRes.continuationUrl,
+        },
+        correlationId: req.requestId,
+      })
+    } catch (err) {
+      next(err)
+    }
+  })
+
+  app.get('/api/wallet/transactions/:hash', async (req, res, next) => {
+    try {
+      const hash = String(req.params.hash || '').trim()
+      const address =
+        typeof req.query.address === 'string' && req.query.address.trim()
+          ? req.query.address.trim()
+          : config.orchestratorAddress || config.serverAddress || null
+      const fetchAll = req.query.all !== 'false' && !req.query.cursor
+      const limit =
+        req.query.limit !== undefined
+          ? Math.max(1, Math.min(200, Number.parseInt(req.query.limit, 10) || 10))
+          : 10
+      const cursor =
+        typeof req.query.cursor === 'string' && req.query.cursor.trim()
+          ? req.query.cursor.trim()
+          : null
+
+      const detail = await getTransactionDetail(hash, {
+        horizonServer: horizonServer || undefined,
+        accountAddress: address,
+        fetchAll,
+        limit,
+        cursor,
+      })
+
+      if (!detail.success) {
+        return res.status(503).json({
+          success: false,
+          hash,
+          error: detail.error,
+          correlationId: req.requestId,
+        })
+      }
+
+      return res.json({
+        ...detail,
+        transaction: detail,
+        correlationId: req.requestId,
+      })
     } catch (err) {
       next(err)
     }

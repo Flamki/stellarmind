@@ -70,13 +70,203 @@ async function loadStatusPage() {
   } catch {}
 }
 
+const txListCache = new Map()
+const txDetailState = new Map()
+let txWalletAddress = null
+
+function resolveTxOperationDirection(op, accountAddress = txWalletAddress) {
+  if (!op || typeof op !== 'object') return 'unknown'
+  if (typeof op.direction === 'string' && op.direction !== 'unknown') {
+    return op.direction
+  }
+  const normalizedAccount =
+    typeof accountAddress === 'string' && accountAddress.trim() ? accountAddress.trim() : null
+  const from = op.from || op.funder || op.source_account || null
+  const to = op.to || op.into || op.account || null
+
+  if (!normalizedAccount) {
+    if (from && to) return from === to ? 'self' : 'transfer'
+    return 'non_transfer'
+  }
+  const isFrom = from === normalizedAccount
+  const isTo = to === normalizedAccount
+  if (isFrom && isTo) return 'self'
+  if (isTo) return 'incoming'
+  if (isFrom) return 'outgoing'
+  return 'non_transfer'
+}
+
+function deduplicateTxOperations(operations = []) {
+  const seen = new Set()
+  const result = []
+  for (const op of operations) {
+    if (!op || typeof op !== 'object') continue
+    const key =
+      op.id !== undefined && op.id !== null
+        ? `id:${String(op.id)}`
+        : op.paging_token !== undefined && op.paging_token !== null
+          ? `cursor:${String(op.paging_token)}`
+          : null
+    if (key) {
+      if (seen.has(key)) continue
+      seen.add(key)
+    }
+    result.push(op)
+  }
+  return result
+}
+
+function summarizeTxRow(tx, walletAddress = txWalletAddress) {
+  const rawOps = Array.isArray(tx?.operations) ? tx.operations : []
+  const ops = deduplicateTxOperations(rawOps)
+  const loadedOperationCount = Number.isFinite(Number(tx?.loadedOperationCount))
+    ? Number(tx.loadedOperationCount)
+    : ops.length
+  const totalOperationCount = Number.isFinite(Number(tx?.operation_count))
+    ? Number(tx.operation_count)
+    : Number.isFinite(Number(tx?.operationSummary?.operationCount))
+      ? Number(tx.operationSummary.operationCount)
+      : loadedOperationCount
+
+  const operationsComplete =
+    typeof tx?.operationsComplete === 'boolean'
+      ? tx.operationsComplete
+      : tx?.operationsError
+        ? false
+        : loadedOperationCount >= totalOperationCount
+
+  const operationsTruncated =
+    typeof tx?.operationsTruncated === 'boolean'
+      ? tx.operationsTruncated
+      : !tx?.operationsError && loadedOperationCount < totalOperationCount
+
+  const hasMoreOperations = Boolean(
+    tx?.hasMoreOperations || operationsTruncated || tx?.nextOperationsCursor
+  )
+  const successful = tx?.successful !== false
+  const statusLabel = successful ? 'Succeeded' : 'Failed'
+
+  const assets = []
+  const types = []
+  const directions = new Set()
+
+  if (Array.isArray(tx?.operationSummary?.assets)) {
+    for (const a of tx.operationSummary.assets) {
+      if (a && !assets.includes(a)) assets.push(a)
+    }
+  }
+  if (Array.isArray(tx?.operationSummary?.types)) {
+    for (const t of tx.operationSummary.types) {
+      if (t && !types.includes(t)) types.push(t)
+    }
+  }
+
+  for (const op of ops) {
+    const assetCode =
+      op.asset_code || (op.asset_type === 'native' ? 'XLM' : null) || op.asset || null
+    if (assetCode && !assets.includes(assetCode)) {
+      assets.push(assetCode)
+    }
+    if (op.type && !types.includes(op.type)) {
+      types.push(op.type)
+    }
+    const dir = resolveTxOperationDirection(op, walletAddress)
+    if (dir && dir !== 'unknown') {
+      directions.add(dir)
+    }
+  }
+
+  let direction = tx?.operationSummary?.direction || 'none'
+  if (directions.size === 1) {
+    direction = Array.from(directions)[0]
+  } else if (directions.size > 1) {
+    direction = 'mixed'
+  } else if (totalOperationCount === 0) {
+    direction = 'none'
+  }
+
+  let typeLabel = '—'
+  let amountLabel = '—'
+  let countBadge = `${totalOperationCount} op${totalOperationCount === 1 ? '' : 's'}`
+
+  if (totalOperationCount === 0 && ops.length === 0) {
+    typeLabel = 'no operations (0 ops)'
+    amountLabel = 'No operations (0 ops)'
+    countBadge = '0 ops'
+  } else if (totalOperationCount === 1 && ops.length === 1 && operationsComplete) {
+    const op = ops[0]
+    const rawType = op.type ? op.type.replaceAll('_', ' ') : 'operation'
+    typeLabel =
+      direction && direction !== 'none' && direction !== 'unknown'
+        ? `${rawType} (${direction})`
+        : rawType
+
+    if (op.amount !== undefined && op.amount !== null) {
+      const num = Number.parseFloat(op.amount)
+      const assetCode = op.asset_code || (op.asset_type === 'native' ? 'XLM' : 'XLM')
+      amountLabel = Number.isFinite(num)
+        ? `${num.toFixed(2)} ${assetCode}`
+        : `${op.amount} ${assetCode}`
+    } else if (op.type === 'invoke_host_function') {
+      amountLabel = 'contract call'
+    } else {
+      amountLabel = rawType
+    }
+    countBadge = '1 op'
+  } else {
+    const readableTypes = types.map((t) => t.replaceAll('_', ' '))
+    const baseTypeSummary =
+      readableTypes.length === 1
+        ? `${readableTypes[0]} (${totalOperationCount} ops)`
+        : readableTypes.length > 1
+          ? `multi-op (${totalOperationCount} ops: ${readableTypes.slice(0, 2).join(', ')}${readableTypes.length > 2 ? ', …' : ''})`
+          : `multi-op (${totalOperationCount} ops)`
+
+    typeLabel = operationsComplete
+      ? baseTypeSummary
+      : `${baseTypeSummary} · incomplete (${loadedOperationCount}/${totalOperationCount} loaded)`
+
+    const assetLabel = assets.length > 0 ? assets.join(', ') : 'non-transfer'
+    amountLabel = operationsComplete
+      ? `Multi-op (${totalOperationCount} ops · ${assetLabel})`
+      : `Multi-op (${loadedOperationCount} of ${totalOperationCount} ops loaded · ${assetLabel})`
+
+    countBadge = operationsComplete
+      ? `${totalOperationCount} ops`
+      : `${loadedOperationCount}/${totalOperationCount} ops (incomplete)`
+  }
+
+  return {
+    hash: tx?.hash || tx?.id || '',
+    successful,
+    statusLabel,
+    totalOperationCount,
+    loadedOperationCount,
+    operationsComplete,
+    operationsTruncated,
+    hasMoreOperations,
+    direction,
+    assets,
+    assetLabel: assets.length > 0 ? assets.join(', ') : '—',
+    typeLabel,
+    amountLabel,
+    countBadge,
+    nextCursor:
+      tx?.nextOperationsCursor ||
+      tx?.operationsPagination?.nextCursor ||
+      (ops.length > 0 ? ops[ops.length - 1].paging_token || ops[ops.length - 1].id || null : null),
+    continuationUrl:
+      tx?.operationsContinuationUrl || tx?.operationsPagination?.continuationUrl || null,
+  }
+}
+
 async function loadTxPage() {
   try {
     const response = await fetch('/api/wallet/transactions')
     const data = await response.json()
 
     // Handle error state
-    if (!data.success) {
+    if (data && !Array.isArray(data) && data.success === false) {
       const errorHtml = `
         <tr>
           <td colspan="5" style="text-align:center;padding:32px;">
@@ -108,7 +298,11 @@ async function loadTxPage() {
       return
     }
 
-    const txs = data.transactions || []
+    const txs = Array.isArray(data) ? data : data.transactions || []
+    if (data && typeof data.address === 'string') {
+      txWalletAddress = data.address
+    }
+
     document.getElementById('tx-cnt').textContent = txs.length
     document.getElementById('tx-total').textContent =
       `${txs.length} Transaction${txs.length !== 1 ? 's' : ''}`
@@ -119,34 +313,43 @@ async function loadTxPage() {
       return
     }
 
+    txListCache.clear()
+    for (const tx of txs) {
+      const hash = tx.hash || tx.id || ''
+      if (hash) txListCache.set(hash, tx)
+    }
+
     document.getElementById('tx-body').innerHTML = txs
       .map((tx) => {
-        const ops = tx.operations || []
-        const op = ops[0] || {}
-        let amt = '—'
-
-        if (op.amount) {
-          const num = Number.parseFloat(op.amount)
-          amt = Number.isFinite(num)
-            ? `${num.toFixed(2)} ${op.asset_code || 'XLM'}`
-            : `${op.amount} ${op.asset_code || 'XLM'}`
-        } else if (op.type === 'invoke_host_function') {
-          amt = 'contract call'
-        }
-
-        const hash = tx.hash || tx.id || ''
+        const summary = summarizeTxRow(tx, txWalletAddress)
+        const hash = summary.hash
+        const shortHash =
+          hash.length > 16 ? `${hash.slice(0, 10)}...${hash.slice(-6)}` : hash || '—'
         const url = `https://stellar.expert/explorer/testnet/tx/${hash}`
         const timeRaw = tx.created_at || tx.createdAt || null
         const time = timeRaw ? new Date(timeRaw).toLocaleString() : '—'
         const memoValue = tx.memo_type === 'none' ? 'none' : tx.memo || '—'
-        const opType = op.type ? op.type.replaceAll('_', ' ') : '—'
+        const statusClass = summary.successful ? 'tag green' : 'tag red'
+        const completenessClass = summary.operationsComplete ? 'tag' : 'tag amber'
+        const directionBadge =
+          summary.direction && summary.direction !== 'none'
+            ? `<span class="tag tx-direction" data-direction="${escapeHtml(summary.direction)}" style="margin-left:6px;">${escapeHtml(summary.direction)}</span>`
+            : ''
+        const detailAction =
+          summary.totalOperationCount > 1 || !summary.operationsComplete
+            ? `<button type="button" class="btn-tx-detail" onclick="openTxDetail('${escapeHtml(hash)}')" style="margin-left:8px;padding:2px 8px;font-size:10px;background:var(--bg-card-alt);color:var(--accent-light);border:1px solid var(--border);border-radius:4px;cursor:pointer;">${summary.operationsComplete ? `Inspect ${summary.totalOperationCount} ops` : `Load all ${summary.totalOperationCount} ops`}</button>`
+            : `<button type="button" class="btn-tx-detail" onclick="openTxDetail('${escapeHtml(hash)}')" style="margin-left:8px;padding:2px 6px;font-size:10px;background:transparent;color:var(--text-muted);border:1px solid var(--border);border-radius:4px;cursor:pointer;">Details</button>`
 
-        return `<tr>
-          <td><a href="${url}" target="_blank" class="tx-hash">${hash.slice(0, 10)}...${hash.slice(-6)}</a></td>
-          <td>${opType}</td>
-          <td><span class="tx-amount">${amt}</span></td>
-          <td><span class="tx-memo">${memoValue}</span></td>
-          <td><span class="tx-time">${time}</span></td>
+        return `<tr data-tx-hash="${escapeHtml(hash)}" data-ops-complete="${summary.operationsComplete}" data-op-count="${summary.totalOperationCount}" data-tx-successful="${summary.successful}">
+          <td>
+            <a href="${url}" target="_blank" class="tx-hash">${escapeHtml(shortHash)}</a>
+            <span class="${statusClass} tx-status-badge" data-tx-status="${summary.successful ? 'succeeded' : 'failed'}" style="margin-left:6px;">${escapeHtml(summary.statusLabel)}</span>
+            <span class="${completenessClass} tx-op-count-badge" style="margin-left:4px;">${escapeHtml(summary.countBadge)}</span>
+          </td>
+          <td><span class="tx-type">${escapeHtml(summary.typeLabel)}</span>${directionBadge}</td>
+          <td><span class="tx-amount">${escapeHtml(summary.amountLabel)}</span>${detailAction}</td>
+          <td><span class="tx-memo">${escapeHtml(memoValue)}</span></td>
+          <td><span class="tx-time">${escapeHtml(time)}</span></td>
         </tr>`
       })
       .join('')
@@ -165,6 +368,230 @@ async function loadTxPage() {
       </tr>
     `
   }
+}
+
+function renderTxDetailModal(hash) {
+  const state = txDetailState.get(hash)
+  if (!state) return null
+
+  const summary = summarizeTxRow(state, txWalletAddress)
+  const modal = document.getElementById('tx-detail-modal')
+  const metaEl = document.getElementById('tx-detail-meta')
+  const opsEl = document.getElementById('tx-detail-ops')
+  const actionsEl = document.getElementById('tx-detail-actions')
+
+  const opsRowsHtml =
+    state.operations.length === 0
+      ? '<div class="tx-detail-empty" style="padding:16px;color:var(--text-muted);">No operations in this transaction (0 ops).</div>'
+      : state.operations
+          .map((op, idx) => {
+            const opType = (op.type || 'operation').replaceAll('_', ' ')
+            const asset = op.asset_code || (op.asset_type === 'native' ? 'XLM' : '—')
+            const amount =
+              op.amount !== undefined && op.amount !== null ? `${op.amount} ${asset}` : '—'
+            const direction = resolveTxOperationDirection(op, txWalletAddress)
+            const opId = op.id || op.paging_token || `op-${idx + 1}`
+            return `<div class="tx-detail-op-row" data-op-id="${escapeHtml(String(opId))}" style="display:flex;justify-content:space-between;gap:12px;padding:8px 10px;border-bottom:1px solid var(--border);font-size:12px;">
+              <span><strong>#${idx + 1}</strong> <code>${escapeHtml(String(opId))}</code> · ${escapeHtml(opType)}</span>
+              <span>Direction: <strong>${escapeHtml(direction)}</strong></span>
+              <span>Asset: <strong>${escapeHtml(asset)}</strong></span>
+              <span>Amount: <strong>${escapeHtml(amount)}</strong></span>
+            </div>`
+          })
+          .join('')
+
+  const metaHtml = `
+    <div class="tx-detail-summary" data-ops-complete="${summary.operationsComplete}" data-tx-successful="${summary.successful}">
+      <div><strong>Hash:</strong> <code>${escapeHtml(hash)}</code></div>
+      <div><strong>Status:</strong> <span class="tx-detail-status">${escapeHtml(summary.statusLabel)}</span></div>
+      <div><strong>Operations:</strong> ${summary.loadedOperationCount} of ${summary.totalOperationCount} loaded (${summary.operationsComplete ? 'Complete' : 'Incomplete - more pages available'})</div>
+      <div><strong>Direction:</strong> ${escapeHtml(summary.direction)} | <strong>Assets:</strong> ${escapeHtml(summary.assetLabel)}</div>
+    </div>
+  `
+
+  const actionsHtml = summary.operationsComplete
+    ? '<span class="tag green">All operations loaded</span>'
+    : `
+      <button type="button" id="btn-tx-load-more-ops" onclick="loadMoreTxOperations('${escapeHtml(hash)}')" style="padding:6px 12px;font-size:12px;cursor:pointer;">Load Next Page</button>
+      <button type="button" id="btn-tx-load-all-ops" onclick="loadAllTxOperations('${escapeHtml(hash)}')" style="padding:6px 12px;font-size:12px;cursor:pointer;margin-left:8px;">Load All Remaining Operations</button>
+    `
+
+  if (modal) modal.style.display = 'flex'
+  if (metaEl) metaEl.innerHTML = metaHtml
+  if (opsEl) opsEl.innerHTML = opsRowsHtml
+  if (actionsEl) actionsEl.innerHTML = actionsHtml
+
+  return {
+    hash,
+    summary,
+    operations: state.operations,
+    metaHtml,
+    opsRowsHtml,
+    actionsHtml,
+  }
+}
+
+async function openTxDetail(hash, options = {}) {
+  if (!hash) return null
+
+  const cachedTx = txListCache.get(hash)
+  if (cachedTx && !options.forceRefresh) {
+    const ops = deduplicateTxOperations(cachedTx.operations || [])
+    const totalCount = Number.isFinite(Number(cachedTx.operation_count))
+      ? Number(cachedTx.operation_count)
+      : ops.length
+    const complete =
+      typeof cachedTx.operationsComplete === 'boolean'
+        ? cachedTx.operationsComplete
+        : ops.length >= totalCount
+
+    txDetailState.set(hash, {
+      ...cachedTx,
+      hash,
+      operations: ops,
+      operation_count: totalCount,
+      loadedOperationCount: ops.length,
+      operationsComplete: complete,
+      operationsTruncated: !complete,
+      hasMoreOperations: Boolean(cachedTx.hasMoreOperations || !complete),
+      nextOperationsCursor:
+        cachedTx.nextOperationsCursor ||
+        (ops.length > 0
+          ? ops[ops.length - 1].paging_token || ops[ops.length - 1].id || null
+          : null),
+    })
+  } else if (!txDetailState.has(hash) || options.forceRefresh) {
+    const query = new URLSearchParams()
+    if (options.fetchAll) query.set('all', 'true')
+    if (options.limit) query.set('limit', String(options.limit))
+    if (txWalletAddress) query.set('address', txWalletAddress)
+    const suffix = query.toString() ? `?${query.toString()}` : ''
+    const res = await fetch(`/api/wallet/transactions/${encodeURIComponent(hash)}${suffix}`)
+    const data = await res.json()
+    if (data && data.transaction) {
+      const tx = data.transaction
+      const ops = deduplicateTxOperations(tx.operations || [])
+      txDetailState.set(hash, {
+        ...tx,
+        hash,
+        operations: ops,
+        loadedOperationCount: ops.length,
+      })
+      txListCache.set(hash, txDetailState.get(hash))
+    }
+  }
+
+  if (options.fetchAll && txDetailState.get(hash) && !txDetailState.get(hash).operationsComplete) {
+    await loadAllTxOperations(hash)
+  }
+
+  return renderTxDetailModal(hash)
+}
+
+async function loadMoreTxOperations(hash, limit = 10) {
+  let state = txDetailState.get(hash)
+  if (!state) {
+    await openTxDetail(hash)
+    state = txDetailState.get(hash)
+  }
+  if (!state || state.operationsComplete) {
+    return renderTxDetailModal(hash)
+  }
+
+  const params = new URLSearchParams()
+  params.set('limit', String(limit))
+  if (state.nextOperationsCursor) {
+    params.set('cursor', String(state.nextOperationsCursor))
+  }
+  if (Number.isFinite(Number(state.operation_count))) {
+    params.set('expectedCount', String(state.operation_count))
+  }
+  if (txWalletAddress) {
+    params.set('address', txWalletAddress)
+  }
+
+  const res = await fetch(
+    `/api/wallet/transactions/${encodeURIComponent(hash)}/operations?${params.toString()}`
+  )
+  const data = await res.json()
+  if (data && Array.isArray(data.operations)) {
+    const mergedOps = deduplicateTxOperations([...(state.operations || []), ...data.operations])
+    const totalCount = Number.isFinite(Number(state.operation_count))
+      ? Number(state.operation_count)
+      : Number.isFinite(Number(data.totalCount))
+        ? Number(data.totalCount)
+        : mergedOps.length
+    const hasMore = Boolean(data.hasMore && mergedOps.length < totalCount)
+    const complete = !hasMore && mergedOps.length >= totalCount
+
+    const updated = {
+      ...state,
+      operations: mergedOps,
+      operation_count: totalCount,
+      loadedOperationCount: mergedOps.length,
+      operationsComplete: complete,
+      operationsTruncated: !complete,
+      hasMoreOperations: hasMore,
+      nextOperationsCursor: hasMore ? data.nextCursor || null : null,
+      operationsContinuationUrl: hasMore ? data.continuationUrl || null : null,
+    }
+    txDetailState.set(hash, updated)
+    txListCache.set(hash, updated)
+  }
+
+  return renderTxDetailModal(hash)
+}
+
+async function loadAllTxOperations(hash) {
+  let state = txDetailState.get(hash)
+  if (!state) {
+    await openTxDetail(hash)
+    state = txDetailState.get(hash)
+  }
+  if (!state) return null
+
+  const params = new URLSearchParams({ all: 'true' })
+  if (Number.isFinite(Number(state.operation_count))) {
+    params.set('expectedCount', String(state.operation_count))
+  }
+  if (txWalletAddress) {
+    params.set('address', txWalletAddress)
+  }
+
+  const res = await fetch(
+    `/api/wallet/transactions/${encodeURIComponent(hash)}/operations?${params.toString()}`
+  )
+  const data = await res.json()
+  if (data && Array.isArray(data.operations)) {
+    const mergedOps = deduplicateTxOperations([...(state.operations || []), ...data.operations])
+    const totalCount = Number.isFinite(Number(state.operation_count))
+      ? Number(state.operation_count)
+      : Number.isFinite(Number(data.totalCount))
+        ? Number(data.totalCount)
+        : mergedOps.length
+    const complete = Boolean(data.complete ?? mergedOps.length >= totalCount)
+
+    const updated = {
+      ...state,
+      operations: mergedOps,
+      operation_count: totalCount,
+      loadedOperationCount: mergedOps.length,
+      operationsComplete: complete,
+      operationsTruncated: !complete,
+      hasMoreOperations: Boolean(data.hasMore && !complete),
+      nextOperationsCursor: data.nextCursor || null,
+      operationsContinuationUrl: data.continuationUrl || null,
+    }
+    txDetailState.set(hash, updated)
+    txListCache.set(hash, updated)
+  }
+
+  return renderTxDetailModal(hash)
+}
+
+function closeTxDetail() {
+  const modal = document.getElementById('tx-detail-modal')
+  if (modal) modal.style.display = 'none'
 }
 
 /**
@@ -290,7 +717,20 @@ async function loadHistoryPage() {
 }
 
 function escapeHtml(text) {
-  const div = document.createElement('div')
-  div.textContent = text
-  return div.innerHTML
+  const str = String(text ?? '')
+  if (typeof document !== 'undefined' && typeof document.createElement === 'function') {
+    const div = document.createElement('div')
+    if (div && 'textContent' in div && 'innerHTML' in div) {
+      div.textContent = str
+      if (typeof div.innerHTML === 'string' && div.innerHTML.length > 0) {
+        return div.innerHTML
+      }
+    }
+  }
+  return str
+    .replaceAll('&', '&amp;')
+    .replaceAll('<', '&lt;')
+    .replaceAll('>', '&gt;')
+    .replaceAll('"', '&quot;')
+    .replaceAll("'", '&#39;')
 }
