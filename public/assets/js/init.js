@@ -7,6 +7,11 @@ function initApp() {
   // Initialize budget slider
   initBudgetSlider()
 
+  // Initialize deep-link routing and history listeners
+  if (typeof initNavigation === 'function') {
+    initNavigation()
+  }
+
   // Load initial data
   loadAgents()
   loadWallets()
@@ -16,12 +21,15 @@ function initApp() {
   setInterval(loadWallets, 15000)
 
   // Set up task input Enter key handler
-  document.getElementById('task-input').addEventListener('keydown', (e) => {
-    if (e.key === 'Enter' && !e.shiftKey) {
-      e.preventDefault()
-      runOrchestration()
-    }
-  })
+  const taskInput = document.getElementById('task-input')
+  if (taskInput) {
+    taskInput.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter' && !e.shiftKey) {
+        e.preventDefault()
+        runOrchestration()
+      }
+    })
+  }
 }
 
 // Start app when DOM is ready

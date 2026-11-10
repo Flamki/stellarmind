@@ -2055,16 +2055,252 @@
         renderLiveChips(activeRun)
       }
 
-      // ─── Page Nav ───
-      function showPage(id) {
-        document.querySelectorAll('.page').forEach((p) => p.classList.remove('active'))
-        document.getElementById(`page-${id}`).classList.add('active')
-        document.querySelectorAll('.sb-item').forEach((i) => i.classList.remove('active'))
-        document.querySelector(`.sb-item[data-page="${id}"]`).classList.add('active')
-        document.getElementById('topbar-title').textContent = pageTitles[id] || id
-        if (id === 'agents') loadAgentPage()
-        if (id === 'status') loadStatusPage()
-        if (id === 'transactions') loadTxPage()
+      // ─── Page Nav & Deep-Link Routing ───
+      const DEFAULT_PAGE = 'orchestrator'
+      const BASE_DOCUMENT_TITLE = 'StellarMind — AI Agent Marketplace'
+      let activeRunDetailId = null
+      let suppressHashChange = false
+
+      function normalizePageId(id) {
+        if (typeof id !== 'string') return { page: DEFAULT_PAGE, isKnown: false, rawPage: id }
+        const cleaned = id.trim().toLowerCase().replace(/^#\/?/, '').replace(/^\/+/, '')
+        if (!cleaned) return { page: DEFAULT_PAGE, isKnown: true, rawPage: '' }
+        if (Object.prototype.hasOwnProperty.call(pageTitles, cleaned)) {
+          return { page: cleaned, isKnown: true, rawPage: cleaned }
+        }
+        return { page: DEFAULT_PAGE, isKnown: false, rawPage: cleaned }
+      }
+
+      function safeDecode(value) {
+        if (typeof value !== 'string') return ''
+        try {
+          return decodeURIComponent(value)
+        } catch {
+          return value
+        }
+      }
+
+      function parseDashboardRoute(locationInput = window.location) {
+        const hash = typeof locationInput?.hash === 'string' ? locationInput.hash : ''
+        const search = typeof locationInput?.search === 'string' ? locationInput.search : ''
+        const pathname = typeof locationInput?.pathname === 'string' ? locationInput.pathname : '/'
+
+        const rawHash = hash.replace(/^#/, '').trim()
+        if (rawHash) {
+          if (rawHash.includes('=') && !rawHash.startsWith('/')) {
+            const [hashPath, hashQuery] = rawHash.split('?')
+            const params = new URLSearchParams(hashQuery !== undefined ? hashQuery : hashPath)
+            const pageParam = params.get('page') || (hashQuery !== undefined ? hashPath : '')
+            const runParam = params.get('run') || params.get('runId') || null
+            const norm = normalizePageId(safeDecode(pageParam))
+            return {
+              page: norm.page,
+              runId:
+                norm.isKnown && norm.page === 'history' && runParam
+                  ? String(runParam).trim()
+                  : null,
+              isKnown: norm.isKnown,
+              rawPage: norm.rawPage,
+            }
+          }
+          const [pathPart, queryPart = ''] = rawHash.replace(/^\/+/, '').split('?')
+          const segments = pathPart
+            .split('/')
+            .map((s) => safeDecode(s).trim())
+            .filter(Boolean)
+          const norm = normalizePageId(segments[0] || '')
+          const queryParams = queryPart ? new URLSearchParams(queryPart) : null
+          const runFromPath = segments.length > 1 ? segments.slice(1).join('/') : null
+          const runFromQuery = queryParams
+            ? queryParams.get('run') || queryParams.get('runId')
+            : null
+          const rawRunId = runFromPath || runFromQuery || null
+          if (!norm.isKnown || (norm.page !== 'history' && segments.length > 1)) {
+            return { page: DEFAULT_PAGE, runId: null, isKnown: false, rawPage: pathPart }
+          }
+          return {
+            page: norm.page,
+            runId: norm.page === 'history' && rawRunId ? String(rawRunId).trim() : null,
+            isKnown: true,
+            rawPage: norm.rawPage,
+          }
+        }
+
+        const rawSearch = search.replace(/^\?/, '').trim()
+        if (rawSearch) {
+          const params = new URLSearchParams(rawSearch)
+          if (params.has('page') || params.has('run') || params.has('runId')) {
+            const pageCandidate = params.get('page') || (params.has('run') ? 'history' : '')
+            const runCandidate = params.get('run') || params.get('runId') || null
+            const norm = normalizePageId(safeDecode(pageCandidate))
+            return {
+              page: norm.page,
+              runId:
+                norm.isKnown && norm.page === 'history' && runCandidate
+                  ? String(runCandidate).trim()
+                  : null,
+              isKnown: norm.isKnown,
+              rawPage: norm.rawPage,
+            }
+          }
+        }
+
+        const cleanPath = pathname.replace(/^\/+|\/+$/g, '')
+        if (cleanPath && cleanPath !== 'index.html') {
+          const segments = cleanPath
+            .split('/')
+            .map((s) => safeDecode(s).trim())
+            .filter(Boolean)
+          const norm = normalizePageId(segments[0] || '')
+          const runFromPath = segments.length > 1 ? segments.slice(1).join('/') : null
+          if (!norm.isKnown || (norm.page !== 'history' && segments.length > 1)) {
+            return { page: DEFAULT_PAGE, runId: null, isKnown: false, rawPage: cleanPath }
+          }
+          return {
+            page: norm.page,
+            runId: norm.page === 'history' && runFromPath ? runFromPath : null,
+            isKnown: true,
+            rawPage: norm.rawPage,
+          }
+        }
+
+        return { page: DEFAULT_PAGE, runId: null, isKnown: true, rawPage: DEFAULT_PAGE }
+      }
+
+      function buildDashboardUrl(page, options = {}) {
+        const { page: resolvedPage } = normalizePageId(page)
+        const runId =
+          resolvedPage === 'history' && options?.runId ? String(options.runId).trim() : null
+        return resolvedPage === 'history' && runId
+          ? `#history/${encodeURIComponent(runId)}`
+          : `#${resolvedPage}`
+      }
+
+      function formatDocumentTitle(pageId, options = {}) {
+        const { page: resolvedPage } = normalizePageId(pageId)
+        const pageTitle = pageTitles[resolvedPage] || pageTitles[DEFAULT_PAGE]
+        const runId =
+          resolvedPage === 'history' && options?.runId ? String(options.runId).trim() : null
+        return runId
+          ? `${pageTitle} (${runId}) — ${BASE_DOCUMENT_TITLE}`
+          : `${pageTitle} — ${BASE_DOCUMENT_TITLE}`
+      }
+
+      function showPage(id, options = {}) {
+        const { page: resolvedId, isKnown } = normalizePageId(id)
+        const runId =
+          resolvedId === 'history' && options?.runId ? String(options.runId).trim() : null
+        const updateHistory = options.updateHistory !== false
+        const replaceHistory = Boolean(options.replace) || !isKnown
+
+        document.querySelectorAll('.page').forEach((p) => {
+          p.classList.remove('active')
+          p.setAttribute('aria-hidden', 'true')
+        })
+        const targetPage = document.getElementById(`page-${resolvedId}`)
+        if (targetPage) {
+          targetPage.classList.add('active')
+          targetPage.setAttribute('aria-hidden', 'false')
+        }
+
+        document.querySelectorAll('.sb-item').forEach((i) => {
+          i.classList.remove('active')
+          i.removeAttribute('aria-current')
+        })
+        const activeNav = document.querySelector(`.sb-item[data-page="${resolvedId}"]`)
+        if (activeNav) {
+          activeNav.classList.add('active')
+          activeNav.setAttribute('aria-current', 'page')
+        }
+
+        const topbarTitle = document.getElementById('topbar-title')
+        if (topbarTitle) topbarTitle.textContent = pageTitles[resolvedId] || resolvedId
+        document.title = formatDocumentTitle(resolvedId, { runId })
+
+        if (updateHistory && window.history) {
+          const targetUrl = buildDashboardUrl(resolvedId, { runId })
+          const method =
+            replaceHistory || window.location.hash === targetUrl ? 'replaceState' : 'pushState'
+          suppressHashChange = true
+          try {
+            window.history[method](
+              { page: resolvedId, runId },
+              formatDocumentTitle(resolvedId, { runId }),
+              targetUrl
+            )
+          } finally {
+            suppressHashChange = false
+          }
+        }
+
+        if (resolvedId === 'agents') loadAgentPage()
+        if (resolvedId === 'status') loadStatusPage()
+        if (resolvedId === 'transactions') loadTxPage()
+        if (resolvedId === 'history' && typeof loadHistoryPage === 'function') loadHistoryPage()
+
+        activeRunDetailId = runId
+        if (resolvedId === 'history' && runId && typeof openRunDetail === 'function') {
+          openRunDetail(runId, { updateHistory: false, fromRouter: true })
+        } else if (typeof closeRunDetail === 'function') {
+          const modal = document.getElementById('history-detail-modal')
+          if (modal && modal.style.display && modal.style.display !== 'none') {
+            closeRunDetail({ updateHistory: false, fromRouter: true })
+          }
+        }
+
+        if (options.manageFocus !== false && targetPage) {
+          const heading = targetPage.querySelector('h2, h1') || targetPage
+          if (!heading.getAttribute('tabindex')) heading.setAttribute('tabindex', '-1')
+          heading.focus({ preventScroll: true })
+        }
+
+        return { page: resolvedId, runId, isKnown }
+      }
+
+      function initNavigation() {
+        document.querySelectorAll('.sb-item[data-page]').forEach((item) => {
+          if (!item.getAttribute('role')) item.setAttribute('role', 'button')
+          if (!item.getAttribute('tabindex')) item.setAttribute('tabindex', '0')
+          item.addEventListener('keydown', (e) => {
+            if (e.key === 'Enter' || e.key === ' ') {
+              e.preventDefault()
+              showPage(item.getAttribute('data-page'))
+            }
+          })
+        })
+        window.addEventListener('popstate', (event) => {
+          const parsed = parseDashboardRoute(window.location)
+          const page = event.state?.page ? normalizePageId(event.state.page).page : parsed.page
+          const runId =
+            page === 'history'
+              ? event.state?.runId !== undefined
+                ? event.state.runId
+                : parsed.runId
+              : null
+          showPage(page, {
+            runId,
+            updateHistory: !parsed.isKnown,
+            replace: true,
+            manageFocus: true,
+          })
+        })
+        window.addEventListener('hashchange', () => {
+          if (suppressHashChange) return
+          const parsed = parseDashboardRoute(window.location)
+          showPage(parsed.page, {
+            runId: parsed.runId,
+            updateHistory: !parsed.isKnown,
+            replace: true,
+            manageFocus: true,
+          })
+        })
+        const initial = parseDashboardRoute(window.location)
+        showPage(initial.page, {
+          runId: initial.runId,
+          updateHistory: true,
+          replace: true,
+          manageFocus: false,
+        })
       }
 
       // ─── Budget Slider ───
@@ -2656,6 +2892,7 @@
       }
 
       // ─── Init ───
+      initNavigation()
       loadAgents()
       loadWallets()
       connectSSE()
