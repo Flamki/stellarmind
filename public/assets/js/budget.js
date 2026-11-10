@@ -9,5 +9,8 @@ function initBudgetSlider() {
 
   bSlider.addEventListener('input', () => {
     bDisp.textContent = `${parseFloat(bSlider.value).toFixed(2)} USDC`
+    if (typeof handleTaskOrBudgetEdit === 'function') {
+      handleTaskOrBudgetEdit()
+    }
   })
 }

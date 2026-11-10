@@ -4,7 +4,19 @@
  */
 
 let isRunning = false
+let isPreviewing = false
 let activeRun = null
+let currentPreview = null
+let reviewState = 'idle'
+
+function getReviewState() {
+  return {
+    state: reviewState,
+    preview: currentPreview,
+    isRunning,
+    isPreviewing,
+  }
+}
 
 function stopRunHeartbeat() {
   if (!activeRun?.heartbeatTimer) return
@@ -117,46 +129,288 @@ function trackLiveEvent(ev) {
   renderLiveChips(activeRun)
 }
 
-async function runOrchestration() {
-  if (isRunning) return
-  isRunning = true
+function invalidatePlanPreview(reason) {
+  if (!currentPreview) return
+  currentPreview = {
+    ...currentPreview,
+    valid: false,
+    invalidated: true,
+    invalidationCode: 'TASK_OR_BUDGET_EDITED',
+    invalidationReason:
+      reason || 'Task or budget changed. Request a new preview before starting agents.',
+  }
+  reviewState = 'idle'
+  if (typeof renderPlanPreviewInvalidated === 'function') {
+    renderPlanPreviewInvalidated(currentPreview.invalidationReason)
+  }
+}
 
-  const task = document.getElementById('task-input').value.trim()
+function handleTaskOrBudgetEdit() {
+  if (!currentPreview || currentPreview.invalidated) return
+  const taskEl = document.getElementById('task-input')
+  const budgetEl = document.getElementById('budget-slider')
+  const currentTask = taskEl ? taskEl.value.trim() : currentPreview.task
+  const currentBudget = budgetEl ? parseFloat(budgetEl.value) : currentPreview.budget
+  if (
+    currentTask !== currentPreview.task ||
+    Math.abs(Number(currentBudget) - Number(currentPreview.budget)) > 1e-9
+  ) {
+    invalidatePlanPreview('Task or budget changed. Request a new preview before starting agents.')
+  }
+}
+
+function editTaskFromPreview() {
+  invalidatePlanPreview('Editing task or budget. Request a new preview to see updated quotes.')
+  const taskEl = document.getElementById('task-input')
+  if (taskEl && typeof taskEl.focus === 'function') {
+    taskEl.focus()
+  }
+}
+
+async function previewPlan() {
+  if (isPreviewing || isRunning) return null
+  isPreviewing = true
+
+  const taskEl = document.getElementById('task-input')
+  const task = taskEl ? taskEl.value.trim() : ''
   if (!task) {
-    document.getElementById('task-input').focus()
-    isRunning = false
-    return
+    if (taskEl && typeof taskEl.focus === 'function') taskEl.focus()
+    isPreviewing = false
+    return null
   }
 
-  const budget = parseFloat(document.getElementById('budget-slider').value)
+  const budgetEl = document.getElementById('budget-slider')
+  const budget = budgetEl ? parseFloat(budgetEl.value) : 0.15
   const btn = document.getElementById('btn-run')
+  const confirmBtn = document.getElementById('btn-confirm-plan')
 
-  btn.disabled = true
-  btn.innerHTML = '<span class="spinner"></span>Running Agents...'
-
-  startLiveRun(task, budget)
+  reviewState = 'previewing'
+  if (btn) {
+    btn.disabled = true
+    btn.innerHTML = '<span class="spinner"></span>Previewing Plan...'
+  }
+  if (confirmBtn) {
+    confirmBtn.disabled = true
+  }
 
   try {
-    const r = await (
-      await fetch('/api/orchestrate', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ task, budget }),
-      })
-    ).json()
+    const res = await fetch('/api/orchestrate/preview', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ task, budget }),
+    })
 
-    showResult(r)
-    loadWallets()
+    const data = await res.json().catch(() => ({}))
+    if (!res.ok) {
+      throw new Error(data.message || data.error || `Failed to preview plan (${res.status})`)
+    }
+
+    const rawSteps = Array.isArray(data.steps) ? data.steps : []
+    const steps = rawSteps.map((step, idx) => ({
+      ...step,
+      stepId: step.stepId || `step-${idx}`,
+      order: idx + 1,
+      asset: step.currency || step.asset || 'USDC',
+      currency: step.currency || step.asset || 'USDC',
+      quote: String(step.quote ?? step.cost ?? '0.0000'),
+      dependsOn:
+        idx === 0
+          ? 'Step 1 (initial task input)'
+          : `Step ${idx + 1} (depends on Step ${idx}: ${rawSteps[idx - 1].agentName || rawSteps[idx - 1].agentId})`,
+    }))
+
+    const totalAsset = steps[0]?.asset || 'USDC'
+    const totalQuote = String(data.totalQuote ?? '0.0000')
+    const insufficientBudget =
+      steps.length === 0 || Number.parseFloat(totalQuote) > Number.parseFloat(budget)
+
+    currentPreview = {
+      ...data,
+      task,
+      budget,
+      steps,
+      totalQuote,
+      totalAsset,
+      insufficientBudget,
+      valid: !insufficientBudget,
+      invalidated: false,
+      invalidationCode: insufficientBudget ? 'INSUFFICIENT_BUDGET' : null,
+      invalidationReason: insufficientBudget
+        ? `Quoted total (${totalQuote} ${totalAsset}) exceeds budget (${Number(budget).toFixed(2)} ${totalAsset}).`
+        : null,
+    }
+
+    reviewState = 'review'
+    if (typeof renderPlanPreview === 'function') {
+      renderPlanPreview(currentPreview)
+    }
+    return currentPreview
   } catch (e) {
-    addFeed({ type: 'error', message: e.message })
+    reviewState = 'error'
+    currentPreview = null
+    if (typeof addFeed === 'function') {
+      addFeed({ type: 'error', message: e.message })
+    }
+    if (typeof setResultTag === 'function') {
+      setResultTag('Error', 'amber')
+    }
+    const statusLine = document.getElementById('result-status-line')
+    if (statusLine) {
+      statusLine.textContent = `Preview failed: ${e.message}`
+    }
+    return null
+  } finally {
+    isPreviewing = false
+    if (btn) {
+      btn.disabled = false
+      btn.innerHTML = 'Preview Plan'
+    }
+  }
+}
+
+async function confirmPlanExecution() {
+  if (isRunning || isPreviewing) return null
+  if (!currentPreview || !currentPreview.planId || currentPreview.invalidated) {
+    return null
+  }
+
+  // Re-check current inputs in case they were modified without firing input events
+  handleTaskOrBudgetEdit()
+  if (!currentPreview || currentPreview.invalidated) {
+    return null
+  }
+
+  if (currentPreview.insufficientBudget) {
+    if (typeof renderPlanPreview === 'function') {
+      renderPlanPreview(currentPreview)
+    }
+    return null
+  }
+
+  if (currentPreview.expiresAt && Date.now() > new Date(currentPreview.expiresAt).getTime()) {
+    currentPreview = {
+      ...currentPreview,
+      valid: false,
+      invalidated: true,
+      expired: true,
+      invalidationCode: 'QUOTE_EXPIRED',
+      invalidationReason: `Plan quote expired at ${currentPreview.expiresAt}. Request a new preview to continue.`,
+    }
+    reviewState = 'review'
+    if (typeof renderPlanReviewError === 'function') {
+      renderPlanReviewError(currentPreview)
+    }
+    return null
+  }
+
+  const planToExecute = currentPreview
+  isRunning = true
+  reviewState = 'executing'
+  // Mark consumed immediately so repeated clicks cannot trigger a second run
+  currentPreview = {
+    ...planToExecute,
+    valid: false,
+    invalidated: true,
+    consumed: true,
+  }
+
+  const btn = document.getElementById('btn-run')
+  const confirmBtn = document.getElementById('btn-confirm-plan')
+  if (btn) {
+    btn.disabled = true
+    btn.innerHTML = '<span class="spinner"></span>Running Agents...'
+  }
+  if (confirmBtn) {
+    confirmBtn.disabled = true
+    confirmBtn.innerHTML = '<span class="spinner"></span>Executing...'
+  }
+
+  startLiveRun(planToExecute.task, planToExecute.budget)
+
+  try {
+    const res = await fetch('/api/orchestrate/execute', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        planId: planToExecute.planId,
+        idempotencyKey: `exec_${planToExecute.planId}`,
+      }),
+    })
+
+    const data = await res.json().catch(() => ({}))
+    if (!res.ok) {
+      const code = data.code || ''
+      if (
+        code === 'QUOTE_EXPIRED' ||
+        code === 'QUOTE_CHANGED' ||
+        code === 'PLAN_NOT_FOUND' ||
+        res.status === 409
+      ) {
+        if (activeRun) activeRun.running = false
+        stopRunHeartbeat()
+        const resultPanel = document.getElementById('result-panel')
+        if (resultPanel) resultPanel.classList.remove('running')
+        setResultTag('Review Needed', 'amber')
+        const statusLine = document.getElementById('result-status-line')
+        if (statusLine) {
+          statusLine.textContent =
+            data.message || 'Quote expired or changed before execution. Please review and re-quote.'
+        }
+
+        currentPreview = {
+          ...planToExecute,
+          valid: false,
+          invalidated: true,
+          expired: code === 'QUOTE_EXPIRED',
+          quoteChanged: code === 'QUOTE_CHANGED',
+          invalidationCode: code || 'QUOTE_INVALID',
+          invalidationReason:
+            data.message || 'Quote expired or changed. Please request a new preview.',
+        }
+        reviewState = 'review'
+        if (typeof renderPlanReviewError === 'function') {
+          renderPlanReviewError(currentPreview)
+        }
+        return null
+      }
+
+      throw new Error(data.message || data.error || `Run failed (${res.status})`)
+    }
+
+    currentPreview = null
+    reviewState = 'completed'
+    if (typeof hidePlanPreview === 'function') {
+      hidePlanPreview()
+    }
+    showResult(data)
+    if (typeof loadWallets === 'function') {
+      loadWallets()
+    }
+    return data
+  } catch (e) {
+    reviewState = 'error'
+    if (typeof addFeed === 'function') {
+      addFeed({ type: 'error', message: e.message })
+    }
     if (activeRun) activeRun.running = false
     stopRunHeartbeat()
     setResultTag('Error', 'amber')
     document.getElementById('result-status-line').textContent = `Run failed: ${e.message}`
     renderLiveChips(activeRun)
+    return null
   } finally {
     isRunning = false
-    btn.disabled = false
-    btn.innerHTML = 'Run Agents'
+    if (btn) {
+      btn.disabled = false
+      btn.innerHTML = 'Preview Plan'
+    }
+    if (confirmBtn) {
+      confirmBtn.innerHTML = 'Confirm & Run Agents'
+      confirmBtn.disabled = Boolean(!currentPreview || currentPreview.invalidated)
+    }
   }
+}
+
+async function runOrchestration() {
+  return previewPlan()
 }

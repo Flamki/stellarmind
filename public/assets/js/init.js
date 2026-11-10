@@ -16,10 +16,16 @@ function initApp() {
   setInterval(loadWallets, 15000)
 
   // Set up task input Enter key handler
-  document.getElementById('task-input').addEventListener('keydown', (e) => {
+  const taskInput = document.getElementById('task-input')
+  taskInput.addEventListener('keydown', (e) => {
     if (e.key === 'Enter' && !e.shiftKey) {
       e.preventDefault()
       runOrchestration()
+    }
+  })
+  taskInput.addEventListener('input', () => {
+    if (typeof handleTaskOrBudgetEdit === 'function') {
+      handleTaskOrBudgetEdit()
     }
   })
 }

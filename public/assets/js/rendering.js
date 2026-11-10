@@ -153,6 +153,184 @@ function showResult(r) {
   pushLiveLine('Final answer generated')
 }
 
+function renderPlanPreview(preview) {
+  const panel = document.getElementById('plan-preview-panel')
+  if (!panel) return
+  panel.style.display = 'block'
+  panel.classList.add('visible')
+
+  const tag = document.getElementById('preview-tag')
+  const statusLine = document.getElementById('preview-status-line')
+  const warningEl = document.getElementById('preview-warning')
+  const stepsEl = document.getElementById('preview-steps')
+  const totalEl = document.getElementById('preview-total-quote')
+  const budgetEl = document.getElementById('preview-budget')
+  const expiresEl = document.getElementById('preview-expires')
+  const confirmBtn = document.getElementById('btn-confirm-plan')
+
+  const steps = Array.isArray(preview?.steps) ? preview.steps : []
+  const totalAsset = preview?.totalAsset || steps[0]?.currency || steps[0]?.asset || 'USDC'
+  const totalQuote = preview?.totalQuote ?? '0.0000'
+  const budgetVal =
+    preview?.budget !== undefined && preview?.budget !== null
+      ? Number(preview.budget).toFixed(2)
+      : '0.00'
+  const insufficientBudget = Boolean(
+    preview?.insufficientBudget ||
+    steps.length === 0 ||
+    Number.parseFloat(totalQuote) > Number.parseFloat(preview?.budget ?? Infinity)
+  )
+
+  if (tag) {
+    tag.textContent = insufficientBudget ? 'Insufficient Budget' : 'Quote Ready'
+    tag.className = insufficientBudget ? 'tag amber' : 'tag green'
+  }
+
+  if (statusLine) {
+    statusLine.textContent =
+      preview?.plan ||
+      `Quoted execution plan for "${preview?.task || ''}" (${steps.length} step${steps.length === 1 ? '' : 's'})`
+  }
+
+  if (warningEl) {
+    if (insufficientBudget) {
+      warningEl.style.display = 'block'
+      warningEl.textContent =
+        steps.length === 0
+          ? `Insufficient budget (${budgetVal} ${totalAsset}) to schedule any agent steps. Increase budget and preview again.`
+          : `Total quoted charge (${totalQuote} ${totalAsset}) exceeds the selected budget (${budgetVal} ${totalAsset}). Increase budget or edit task before confirming.`
+    } else {
+      warningEl.style.display = 'none'
+      warningEl.textContent = ''
+    }
+  }
+
+  if (stepsEl) {
+    if (steps.length === 0) {
+      stepsEl.innerHTML =
+        '<div class="preview-empty">No agents could be scheduled within the current budget.</div>'
+    } else {
+      stepsEl.innerHTML = steps
+        .map((step, idx) => {
+          const stepNum = idx + 1
+          const asset = step.currency || step.asset || totalAsset
+          const quote = step.quote ?? step.cost ?? '0.0000'
+          const dependencyLabel =
+            step.dependsOn ||
+            (idx === 0
+              ? 'Step 1 (initial task input)'
+              : `Step ${stepNum} (depends on Step ${idx}: ${steps[idx - 1].agentName || steps[idx - 1].agentId})`)
+          const safeName =
+            typeof escapeHtml === 'function'
+              ? escapeHtml(step.agentName || step.agentId || `Agent ${stepNum}`)
+              : String(step.agentName || step.agentId || `Agent ${stepNum}`)
+          const safeId =
+            typeof escapeHtml === 'function'
+              ? escapeHtml(step.agentId || '')
+              : String(step.agentId || '')
+          const safeInput =
+            typeof escapeHtml === 'function'
+              ? escapeHtml(step.input || '')
+              : String(step.input || '')
+          const safeDep =
+            typeof escapeHtml === 'function' ? escapeHtml(dependencyLabel) : String(dependencyLabel)
+          const safeQuote =
+            typeof escapeHtml === 'function' ? escapeHtml(`${quote} ${asset}`) : `${quote} ${asset}`
+          return `<div class="preview-step-item" data-step-index="${idx}" data-agent-id="${safeId}">
+            <div class="preview-step-header">
+              <span class="preview-step-order">#${stepNum} · ${safeName} (<code>${safeId}</code>)</span>
+              <span class="preview-step-quote">${safeQuote}</span>
+            </div>
+            <div class="preview-step-dep">Dependency: ${safeDep}</div>
+            <div class="preview-step-input">Input: ${safeInput}</div>
+          </div>`
+        })
+        .join('')
+    }
+  }
+
+  if (totalEl) {
+    totalEl.textContent = `${totalQuote} ${totalAsset}`
+  }
+  if (budgetEl) {
+    budgetEl.textContent = `${budgetVal} ${totalAsset}`
+  }
+  if (expiresEl) {
+    expiresEl.textContent = preview?.expiresAt
+      ? new Date(preview.expiresAt).toLocaleTimeString()
+      : '—'
+  }
+  if (confirmBtn) {
+    confirmBtn.disabled = insufficientBudget || Boolean(preview?.invalidated)
+  }
+}
+
+function renderPlanPreviewInvalidated(reason) {
+  const panel = document.getElementById('plan-preview-panel')
+  if (!panel) return
+  const tag = document.getElementById('preview-tag')
+  const warningEl = document.getElementById('preview-warning')
+  const confirmBtn = document.getElementById('btn-confirm-plan')
+
+  if (tag) {
+    tag.textContent = 'Preview Outdated'
+    tag.className = 'tag amber'
+  }
+  if (warningEl) {
+    warningEl.style.display = 'block'
+    warningEl.textContent =
+      reason || 'Task or budget changed. Request a new preview before starting agents.'
+  }
+  if (confirmBtn) {
+    confirmBtn.disabled = true
+  }
+}
+
+function renderPlanReviewError(previewErrorState) {
+  const panel = document.getElementById('plan-preview-panel')
+  if (!panel) return
+  panel.style.display = 'block'
+  panel.classList.add('visible')
+
+  const tag = document.getElementById('preview-tag')
+  const statusLine = document.getElementById('preview-status-line')
+  const warningEl = document.getElementById('preview-warning')
+  const confirmBtn = document.getElementById('btn-confirm-plan')
+
+  const code = previewErrorState?.invalidationCode || 'QUOTE_INVALID'
+  const label =
+    code === 'QUOTE_EXPIRED'
+      ? 'Quote Expired'
+      : code === 'QUOTE_CHANGED'
+        ? 'Quote Changed'
+        : 'Review Required'
+
+  if (tag) {
+    tag.textContent = label
+    tag.className = 'tag amber'
+  }
+  if (statusLine) {
+    statusLine.textContent =
+      'Execution did not start because the quoted plan is no longer valid. Review and refresh your quote below.'
+  }
+  if (warningEl) {
+    warningEl.style.display = 'block'
+    warningEl.textContent =
+      previewErrorState?.invalidationReason ||
+      'The prior quote has expired or agent pricing changed. Please generate a fresh preview.'
+  }
+  if (confirmBtn) {
+    confirmBtn.disabled = true
+  }
+}
+
+function hidePlanPreview() {
+  const panel = document.getElementById('plan-preview-panel')
+  if (!panel) return
+  panel.style.display = 'none'
+  panel.classList.remove('visible')
+}
+
 async function openRunDetail(runId) {
   const modal = document.getElementById('history-detail-modal')
   const loading = document.getElementById('history-detail-loading')

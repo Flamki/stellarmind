@@ -1301,7 +1301,67 @@
                     value="0.15"
                   />
                 </div>
-                <button class="btn" id="btn-run" onclick="runOrchestration()">Run Agents</button>
+                <button class="btn" id="btn-run" onclick="runOrchestration()">Preview Plan</button>
+              </div>
+            </div>
+          </div>
+
+          <div class="card result-panel" id="plan-preview-panel" style="display: none">
+            <div class="card-h">
+              <h2>📋 Quoted Execution Plan Review</h2>
+              <span class="tag green" id="preview-tag">Quote Ready</span>
+            </div>
+            <div class="card-b">
+              <div class="result-status" id="preview-status-line">
+                Review the selected agents, dependency order, and quoted service charges before
+                starting execution.
+              </div>
+              <div
+                id="preview-warning"
+                style="
+                  display: none;
+                  margin-bottom: 12px;
+                  padding: 10px 12px;
+                  background: rgba(251, 191, 36, 0.1);
+                  border-left: 3px solid var(--amber);
+                  border-radius: var(--radius-xs);
+                  color: var(--amber);
+                  font-size: 12px;
+                "
+              ></div>
+              <div
+                id="preview-steps"
+                style="display: flex; flex-direction: column; gap: 8px; margin-bottom: 12px"
+              ></div>
+              <div class="chips" style="margin-bottom: 14px">
+                <div class="chip">
+                  Total Quoted: <span class="v" id="preview-total-quote">0.0000 USDC</span>
+                </div>
+                <div class="chip">
+                  Selected Budget: <span class="v" id="preview-budget">0.15 USDC</span>
+                </div>
+                <div class="chip">Quote Expires: <span class="v" id="preview-expires">—</span></div>
+              </div>
+              <div style="display: flex; gap: 10px; flex-wrap: wrap">
+                <button class="btn" id="btn-confirm-plan" onclick="confirmPlanExecution()">
+                  Confirm &amp; Run Agents
+                </button>
+                <button
+                  class="btn"
+                  id="btn-edit-task"
+                  onclick="editTaskFromPreview()"
+                  style="background: var(--bg-input); color: var(--text-primary)"
+                >
+                  Edit Task
+                </button>
+                <button
+                  class="btn"
+                  id="btn-refresh-preview"
+                  onclick="previewPlan()"
+                  style="background: var(--bg-input); color: var(--accent-light)"
+                >
+                  Refresh Quote
+                </button>
               </div>
             </div>
           </div>
@@ -2072,6 +2132,10 @@
       const bDisp = document.getElementById('budget-display')
       bSlider.addEventListener('input', () => {
         bDisp.textContent = `${parseFloat(bSlider.value).toFixed(2)} USDC`
+        if (typeof handleTaskOrBudgetEdit === 'function') handleTaskOrBudgetEdit()
+      })
+      document.getElementById('task-input').addEventListener('input', () => {
+        if (typeof handleTaskOrBudgetEdit === 'function') handleTaskOrBudgetEdit()
       })
 
       // ─── Load Agents (sidebar) ───
@@ -2420,31 +2484,241 @@
         }
       }
 
-      // ─── Orchestrate ───
-      async function runOrchestration() {
-        if (isRunning) return
-        isRunning = true
+      // ─── Orchestrate (Quoted Plan Preview & Confirm) ───
+      let isPreviewing = false
+      let currentPreview = null
+      let reviewState = 'idle'
+
+      function invalidatePlanPreview(reason) {
+        if (!currentPreview) return
+        currentPreview = {
+          ...currentPreview,
+          valid: false,
+          invalidated: true,
+          invalidationCode: 'TASK_OR_BUDGET_EDITED',
+          invalidationReason:
+            reason || 'Task or budget changed. Request a new preview before starting agents.',
+        }
+        reviewState = 'idle'
+        const tag = document.getElementById('preview-tag')
+        const warningEl = document.getElementById('preview-warning')
+        const confirmBtn = document.getElementById('btn-confirm-plan')
+        if (tag) {
+          tag.textContent = 'Preview Outdated'
+          tag.className = 'tag amber'
+        }
+        if (warningEl) {
+          warningEl.style.display = 'block'
+          warningEl.textContent = currentPreview.invalidationReason
+        }
+        if (confirmBtn) confirmBtn.disabled = true
+      }
+
+      function handleTaskOrBudgetEdit() {
+        if (!currentPreview || currentPreview.invalidated) return
+        const currentTask = document.getElementById('task-input').value.trim()
+        const currentBudget = parseFloat(bSlider.value)
+        if (
+          currentTask !== currentPreview.task ||
+          Math.abs(Number(currentBudget) - Number(currentPreview.budget)) > 1e-9
+        ) {
+          invalidatePlanPreview(
+            'Task or budget changed. Request a new preview before starting agents.'
+          )
+        }
+      }
+
+      function editTaskFromPreview() {
+        invalidatePlanPreview(
+          'Editing task or budget. Request a new preview to see updated quotes.'
+        )
+        document.getElementById('task-input').focus()
+      }
+
+      function renderPlanPreview(preview) {
+        const panel = document.getElementById('plan-preview-panel')
+        if (!panel) return
+        panel.style.display = 'block'
+        panel.classList.add('visible')
+        const tag = document.getElementById('preview-tag')
+        const statusLine = document.getElementById('preview-status-line')
+        const warningEl = document.getElementById('preview-warning')
+        const stepsEl = document.getElementById('preview-steps')
+        const totalEl = document.getElementById('preview-total-quote')
+        const budgetEl = document.getElementById('preview-budget')
+        const expiresEl = document.getElementById('preview-expires')
+        const confirmBtn = document.getElementById('btn-confirm-plan')
+
+        const steps = Array.isArray(preview?.steps) ? preview.steps : []
+        const totalAsset = preview?.totalAsset || steps[0]?.currency || 'USDC'
+        const totalQuote = preview?.totalQuote ?? '0.0000'
+        const budgetVal = Number(preview?.budget ?? 0).toFixed(2)
+        const insufficientBudget = Boolean(
+          preview?.insufficientBudget ||
+          steps.length === 0 ||
+          Number.parseFloat(totalQuote) > Number.parseFloat(preview?.budget ?? Infinity)
+        )
+
+        if (tag) {
+          tag.textContent = insufficientBudget ? 'Insufficient Budget' : 'Quote Ready'
+          tag.className = insufficientBudget ? 'tag amber' : 'tag green'
+        }
+        if (statusLine) {
+          statusLine.textContent =
+            preview?.plan || `Quoted execution plan for "${preview?.task || ''}"`
+        }
+        if (warningEl) {
+          if (insufficientBudget) {
+            warningEl.style.display = 'block'
+            warningEl.textContent = `Total quoted charge (${totalQuote} ${totalAsset}) exceeds budget (${budgetVal} ${totalAsset}).`
+          } else {
+            warningEl.style.display = 'none'
+            warningEl.textContent = ''
+          }
+        }
+        if (stepsEl) {
+          stepsEl.innerHTML = steps
+            .map(
+              (s, idx) => `
+              <div class="preview-step-item" style="background: var(--bg-card-alt); padding: 10px 12px; border-radius: var(--radius-xs); border: 1px solid var(--border);">
+                <div style="display: flex; justify-content: space-between; font-weight: 600; font-size: 12px;">
+                  <span>#${idx + 1} · ${s.agentName || s.agentId} (<code>${s.agentId}</code>)</span>
+                  <span style="color: var(--green); font-family: 'JetBrains Mono', monospace;">${s.quote} ${s.currency || totalAsset}</span>
+                </div>
+                <div style="font-size: 11px; color: var(--text-muted); margin-top: 4px;">Dependency: ${s.dependsOn}</div>
+                <div style="font-size: 11.5px; color: var(--text-secondary); margin-top: 4px;">Input: ${s.input}</div>
+              </div>`
+            )
+            .join('')
+        }
+        if (totalEl) totalEl.textContent = `${totalQuote} ${totalAsset}`
+        if (budgetEl) budgetEl.textContent = `${budgetVal} ${totalAsset}`
+        if (expiresEl) {
+          expiresEl.textContent = preview?.expiresAt
+            ? new Date(preview.expiresAt).toLocaleTimeString()
+            : '—'
+        }
+        if (confirmBtn) confirmBtn.disabled = insufficientBudget || Boolean(preview?.invalidated)
+      }
+
+      async function previewPlan() {
+        if (isPreviewing || isRunning) return null
+        isPreviewing = true
         const task = document.getElementById('task-input').value.trim()
         if (!task) {
           document.getElementById('task-input').focus()
-          isRunning = false
-          return
+          isPreviewing = false
+          return null
         }
         const budget = parseFloat(bSlider.value)
         const btn = document.getElementById('btn-run')
         btn.disabled = true
-        btn.innerHTML = '<span class="spinner"></span>Running Agents...'
-        startLiveRun(task, budget)
+        btn.innerHTML = '<span class="spinner"></span>Previewing Plan...'
         try {
-          const r = await (
-            await fetch('/api/orchestrate', {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({ task, budget }),
-            })
-          ).json()
+          const res = await fetch('/api/orchestrate/preview', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ task, budget }),
+          })
+          const data = await res.json().catch(() => ({}))
+          if (!res.ok) throw new Error(data.message || data.error || 'Preview failed')
+          const rawSteps = Array.isArray(data.steps) ? data.steps : []
+          const steps = rawSteps.map((step, idx) => ({
+            ...step,
+            stepId: step.stepId || `step-${idx}`,
+            order: idx + 1,
+            asset: step.currency || step.asset || 'USDC',
+            currency: step.currency || step.asset || 'USDC',
+            quote: String(step.quote ?? step.cost ?? '0.0000'),
+            dependsOn:
+              idx === 0
+                ? 'Step 1 (initial task input)'
+                : `Step ${idx + 1} (depends on Step ${idx}: ${rawSteps[idx - 1].agentName || rawSteps[idx - 1].agentId})`,
+          }))
+          const totalAsset = steps[0]?.asset || 'USDC'
+          const totalQuote = String(data.totalQuote ?? '0.0000')
+          const insufficientBudget =
+            steps.length === 0 || Number.parseFloat(totalQuote) > Number.parseFloat(budget)
+          currentPreview = {
+            ...data,
+            task,
+            budget,
+            steps,
+            totalQuote,
+            totalAsset,
+            insufficientBudget,
+            valid: !insufficientBudget,
+            invalidated: false,
+          }
+          reviewState = 'review'
+          renderPlanPreview(currentPreview)
+          return currentPreview
+        } catch (e) {
+          addFeed({ type: 'error', message: e.message })
+          return null
+        } finally {
+          isPreviewing = false
+          btn.disabled = false
+          btn.innerHTML = 'Preview Plan'
+        }
+      }
+
+      async function confirmPlanExecution() {
+        if (isRunning || isPreviewing) return null
+        if (!currentPreview || !currentPreview.planId || currentPreview.invalidated) return null
+        handleTaskOrBudgetEdit()
+        if (!currentPreview || currentPreview.invalidated || currentPreview.insufficientBudget)
+          return null
+        const planToExecute = currentPreview
+        isRunning = true
+        reviewState = 'executing'
+        currentPreview = { ...planToExecute, valid: false, invalidated: true, consumed: true }
+        const btn = document.getElementById('btn-run')
+        const confirmBtn = document.getElementById('btn-confirm-plan')
+        btn.disabled = true
+        btn.innerHTML = '<span class="spinner"></span>Running Agents...'
+        if (confirmBtn) confirmBtn.disabled = true
+        startLiveRun(planToExecute.task, planToExecute.budget)
+        try {
+          const res = await fetch('/api/orchestrate/execute', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              planId: planToExecute.planId,
+              idempotencyKey: `exec_${planToExecute.planId}`,
+            }),
+          })
+          const r = await res.json().catch(() => ({}))
+          if (!res.ok) {
+            if (
+              r.code === 'QUOTE_EXPIRED' ||
+              r.code === 'QUOTE_CHANGED' ||
+              r.code === 'PLAN_NOT_FOUND'
+            ) {
+              if (activeRun) activeRun.running = false
+              stopRunHeartbeat()
+              const tag = document.getElementById('preview-tag')
+              const warningEl = document.getElementById('preview-warning')
+              if (tag) {
+                tag.textContent = r.code === 'QUOTE_EXPIRED' ? 'Quote Expired' : 'Quote Changed'
+                tag.className = 'tag amber'
+              }
+              if (warningEl) {
+                warningEl.style.display = 'block'
+                warningEl.textContent = r.message || 'Quote expired or changed.'
+              }
+              reviewState = 'review'
+              return null
+            }
+            throw new Error(r.message || r.error || 'Execution failed')
+          }
+          const previewPanel = document.getElementById('plan-preview-panel')
+          if (previewPanel) previewPanel.style.display = 'none'
+          currentPreview = null
+          reviewState = 'completed'
           showResult(r)
           loadWallets()
+          return r
         } catch (e) {
           addFeed({ type: 'error', message: e.message })
           if (activeRun) activeRun.running = false
@@ -2452,11 +2726,16 @@
           setResultTag('Error', 'amber')
           document.getElementById('result-status-line').textContent = `Run failed: ${e.message}`
           renderLiveChips(activeRun)
+          return null
         } finally {
           isRunning = false
           btn.disabled = false
-          btn.innerHTML = 'Run Agents'
+          btn.innerHTML = 'Preview Plan'
         }
+      }
+
+      async function runOrchestration() {
+        return previewPlan()
       }
 
       function normalizeFinalAnswer(text) {
