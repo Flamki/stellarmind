@@ -1,16 +1,13 @@
 import assert from 'node:assert/strict'
 import fs from 'node:fs/promises'
+import os from 'node:os'
 import path from 'node:path'
-import { fileURLToPath } from 'node:url'
 import {
   InMemoryRunHistoryStore,
   FileRunHistoryStore,
   createRunHistoryStore,
   INTERRUPTED_REASON_SERVER_RESTART,
 } from '../src/storage/run-history.js'
-
-const __dirname = path.dirname(fileURLToPath(import.meta.url))
-const testDir = path.join(__dirname, 'fixtures')
 
 let failures = 0
 
@@ -26,12 +23,13 @@ function test(name, fn) {
 }
 
 async function withTempFile(testName, callback) {
-  const testPath = path.join(testDir, `run-history-recovery-${testName}.json`)
+  const tempRoot = await fs.mkdtemp(path.join(os.tmpdir(), `stellarmind-recovery-${testName}-`))
+  const testPath = path.join(tempRoot, 'Workspace With Spaces', `run-history-${testName}.json`)
   try {
-    await fs.mkdir(testDir, { recursive: true })
+    await fs.mkdir(path.dirname(testPath), { recursive: true })
     await callback(testPath)
   } finally {
-    await fs.unlink(testPath).catch(() => {})
+    await fs.rm(tempRoot, { recursive: true, force: true }).catch(() => {})
   }
 }
 
@@ -92,7 +90,8 @@ await test('preserves existing events, results, plan, usage and txProofs on inte
   assert.equal(after.events[1].type, 'run_interrupted')
   assert.equal(after.events[1].reason, INTERRUPTED_REASON_SERVER_RESTART)
   assert.equal(after.plan, null)
-  assert.equal(after.results, null)
+  assert.deepEqual(after.results, [])
+  assert.equal(after.output, null)
   assert.deepEqual(after.txProofs, [])
 })
 

@@ -143,12 +143,19 @@ Windows alternatives:
 # nvm-windows
 nvm install 20.19.0
 nvm use 20.19.0
-npm install
+npm ci
+npm test
+npm run smoke
 
 # Volta
 volta install node@20.19.0
-npm install
+npm ci
+npm test
+npm run smoke
 ```
+
+CI runs the offline regression suites and startup/storage smoke checks on both `ubuntu-latest` and
+`windows-latest` using the Node runtime pinned in `.nvmrc`.
 
 ### 1. Claim an issue
 

@@ -1,22 +1,17 @@
 import { FileRunHistoryStore } from '../src/storage/run-history.js'
 import fs from 'node:fs/promises'
+import os from 'node:os'
 import path from 'node:path'
-import { fileURLToPath } from 'node:url'
-
-const __dirname = path.dirname(fileURLToPath(import.meta.url))
-const testDir = path.join(__dirname, 'fixtures')
 
 async function withTempFile(testName, callback) {
+  const tempRoot = await fs.mkdtemp(path.join(os.tmpdir(), `stellarmind-schema-${testName}-`))
+  const testDir = path.join(tempRoot, 'Workspace With Spaces')
   const testPath = path.join(testDir, `run-history-${testName}.json`)
   try {
     await fs.mkdir(testDir, { recursive: true })
-    await callback(testPath)
+    await callback(testPath, testDir)
   } finally {
-    try {
-      await fs.unlink(testPath)
-    } catch {
-      // Ignore if file doesn't exist
-    }
+    await fs.rm(tempRoot, { recursive: true, force: true }).catch(() => {})
   }
 }
 
@@ -105,7 +100,7 @@ await withTempFile('current', async (testPath) => {
 })
 
 // Test 3: Invalid JSON file is preserved and recovered
-await withTempFile('invalid', async (testPath) => {
+await withTempFile('invalid', async (testPath, testDir) => {
   console.log('Test 3: Invalid JSON file recovery')
   await fs.writeFile(testPath, '{ invalid json }', 'utf8')
 

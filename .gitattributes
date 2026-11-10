@@ -1,35 +1,37 @@
-# Auto-detect text files and normalize line endings
-* text=auto
+# Auto-detect text files and normalize line endings to LF across platforms
+* text=auto eol=lf
 
 # Source code
-*.js text
-*.ts text
-*.jsx text
-*.tsx text
-*.css text
-*.scss text
-*.html text
-*.json text
-*.yml text
-*.yaml text
-*.xml text
-*.vue text
-*.svelte text
+*.js text eol=lf
+*.mjs text eol=lf
+*.cjs text eol=lf
+*.ts text eol=lf
+*.jsx text eol=lf
+*.tsx text eol=lf
+*.css text eol=lf
+*.scss text eol=lf
+*.html text eol=lf
+*.json text eol=lf
+*.yml text eol=lf
+*.yaml text eol=lf
+*.xml text eol=lf
+*.vue text eol=lf
+*.svelte text eol=lf
 
 # Scripts
 *.sh text eol=lf
 *.bash text eol=lf
-*.py text
-*.rb text
+*.py text eol=lf
+*.rb text eol=lf
 
 # Config
-*.env text
-*.env.example text
-.editorconfig text
-.gitignore text
-.gitattributes text
-*.md text
-*.txt text
+*.env text eol=lf
+*.env.example text eol=lf
+.editorconfig text eol=lf
+.gitignore text eol=lf
+.gitattributes text eol=lf
+*.md text eol=lf
+*.txt text eol=lf
 
 # Binaries - treat as binary
 *.png binary

@@ -200,6 +200,7 @@ export class InMemoryRunHistoryStore {
     if (!run || !attempt) return null
     run.paymentAttempts = upsertPaymentAttempt(run.paymentAttempts, attempt)
     run.pendingPaymentAttempts = selectPendingAttempts(run.paymentAttempts)
+    run.paymentAttemptSummary = summarizePaymentAttempts(run.paymentAttempts)
     run.updatedAt = new Date().toISOString()
     return attempt
   }
@@ -393,6 +394,39 @@ export class InMemoryRunHistoryStore {
   }
 }
 
+const WINDOWS_RETRYABLE_RENAME_CODES = new Set(['EPERM', 'EACCES', 'EBUSY'])
+
+/**
+ * Replaces `targetPath` with `tempPath` safely across POSIX and Windows.
+ * On Windows, `fs.rename` over an existing destination can transiently fail
+ * with `EPERM`, `EACCES`, or `EBUSY`. Retries briefly and falls back to
+ * `copyFile` + `unlink` when `rename` remains blocked by Windows replacement
+ * semantics.
+ */
+export async function replaceFileWithTemp(tempPath, targetPath, fsOps = fs) {
+  let lastErr = null
+  for (let attempt = 0; attempt < 4; attempt++) {
+    try {
+      await fsOps.rename(tempPath, targetPath)
+      return
+    } catch (err) {
+      lastErr = err
+      if (!WINDOWS_RETRYABLE_RENAME_CODES.has(err?.code) && err?.code !== 'EEXIST') {
+        throw err
+      }
+      await new Promise((resolve) => setTimeout(resolve, 15 * (attempt + 1)))
+    }
+  }
+
+  if (lastErr && (WINDOWS_RETRYABLE_RENAME_CODES.has(lastErr.code) || lastErr.code === 'EEXIST')) {
+    await fsOps.copyFile(tempPath, targetPath)
+    await fsOps.unlink(tempPath).catch(() => {})
+    return
+  }
+
+  throw lastErr
+}
+
 export class FileRunHistoryStore extends InMemoryRunHistoryStore {
   constructor(filePath, maxRuns = 200) {
     super(maxRuns)
@@ -574,7 +608,7 @@ export class FileRunHistoryStore extends InMemoryRunHistoryStore {
       const tempPath = `${this.filePath}.${Date.now()}.${crypto.randomBytes(4).toString('hex')}.tmp`
       try {
         await fs.writeFile(tempPath, payload, 'utf8')
-        await fs.rename(tempPath, this.filePath)
+        await replaceFileWithTemp(tempPath, this.filePath)
       } catch (err) {
         try {
           await fs.unlink(tempPath).catch(() => {})
