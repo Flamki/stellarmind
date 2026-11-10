@@ -636,6 +636,59 @@
       }
 
       /* ═══ FEED ═══ */
+      .feed-controls {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 8px;
+        flex-wrap: wrap;
+        margin-bottom: 8px;
+      }
+
+      .feed-ctrl-group {
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        flex-wrap: wrap;
+      }
+
+      .feed-ctrl-select,
+      .feed-ctrl-btn {
+        padding: 4px 8px;
+        background: var(--bg-input);
+        border: 1px solid var(--border);
+        border-radius: var(--radius-xs);
+        color: var(--text-secondary);
+        font-family: 'Inter', sans-serif;
+        font-size: 10.5px;
+        font-weight: 600;
+        cursor: pointer;
+        transition: var(--tr);
+      }
+
+      .feed-ctrl-select:hover,
+      .feed-ctrl-btn:hover {
+        background: var(--bg-hover);
+        color: var(--text-primary);
+        border-color: var(--border-active);
+      }
+
+      .feed-ctrl-btn[aria-pressed='true'] {
+        background: rgba(251, 191, 36, 0.14);
+        color: var(--amber);
+        border-color: rgba(251, 191, 36, 0.35);
+      }
+
+      .feed-pause-banner {
+        font-size: 10.5px;
+        color: var(--amber);
+        background: rgba(251, 191, 36, 0.08);
+        border: 1px solid rgba(251, 191, 36, 0.25);
+        border-radius: var(--radius-xs);
+        padding: 6px 10px;
+        margin-bottom: 8px;
+      }
+
       .feed {
         max-height: 370px;
         overflow-y: auto;
@@ -1339,6 +1392,68 @@
                 <span class="tag" id="ev-cnt">0 Events</span>
               </div>
               <div class="card-b" style="padding: 10px 14px">
+                <div class="feed-controls" role="toolbar" aria-label="Live event feed controls">
+                  <div class="feed-ctrl-group">
+                    <select
+                      id="feed-filter"
+                      class="feed-ctrl-select"
+                      onchange="setFeedFilter(this.value)"
+                      aria-label="Filter feed by event type"
+                    >
+                      <option value="all">All event types</option>
+                      <option value="group:orchestration">Orchestration (start/plan/done)</option>
+                      <option value="group:agent">Agent calls &amp; responses</option>
+                      <option value="group:payment">Payments (x402 &amp; Stellar)</option>
+                      <option value="group:error">Budget &amp; errors</option>
+                      <option value="orchestrator_start">orchestrator_start</option>
+                      <option value="orchestrator_plan">orchestrator_plan</option>
+                      <option value="agent_call">agent_call</option>
+                      <option value="agent_response">agent_response</option>
+                      <option value="x402_payment">x402_payment</option>
+                      <option value="x402_retry">x402_retry</option>
+                      <option value="payment">payment</option>
+                      <option value="budget_limit">budget_limit</option>
+                      <option value="orchestrator_complete">orchestrator_complete</option>
+                      <option value="error">error</option>
+                    </select>
+                    <select
+                      id="feed-limit"
+                      class="feed-ctrl-select"
+                      onchange="setFeedRetentionLimit(this.value)"
+                      aria-label="Maximum retained feed events"
+                    >
+                      <option value="50">Keep 50</option>
+                      <option value="100" selected>Keep 100</option>
+                      <option value="200">Keep 200</option>
+                    </select>
+                  </div>
+                  <div class="feed-ctrl-group">
+                    <button
+                      type="button"
+                      class="feed-ctrl-btn"
+                      id="feed-pause-btn"
+                      onclick="toggleFeedPause()"
+                      aria-pressed="false"
+                    >
+                      ⏸ Pause Display
+                    </button>
+                    <button
+                      type="button"
+                      class="feed-ctrl-btn"
+                      id="feed-clear-btn"
+                      onclick="clearFeed()"
+                    >
+                      🧹 Clear
+                    </button>
+                  </div>
+                </div>
+                <div
+                  class="feed-pause-banner"
+                  id="feed-pause-banner"
+                  role="status"
+                  aria-live="polite"
+                  style="display: none"
+                ></div>
                 <div class="feed" id="feed">
                   <div class="empty-state" id="feed-empty">
                     <div class="es-icon">📡</div>
@@ -2305,26 +2420,49 @@
         } catch {}
       }
 
-      // ─── SSE ───
-      function connectSSE() {
-        const es = new EventSource('/api/events')
-        es.onmessage = (e) => {
-          try {
-            const ev = JSON.parse(e.data)
-            if (ev.type !== 'connected') addFeed(ev)
-          } catch {}
-        }
-        es.onerror = () => setTimeout(connectSSE, 3000)
+      // ─── SSE & Bounded Feed Controls ───
+      const DEFAULT_FEED_MAX_EVENTS = 100
+      const MIN_FEED_MAX_EVENTS = 10
+      const MAX_FEED_MAX_EVENTS = 500
+      const FEED_FILTER_GROUPS = {
+        'group:orchestration': ['orchestrator_start', 'orchestrator_plan', 'orchestrator_complete'],
+        orchestration: ['orchestrator_start', 'orchestrator_plan', 'orchestrator_complete'],
+        orchestrator: ['orchestrator_start', 'orchestrator_plan', 'orchestrator_complete'],
+        'group:agent': ['agent_call', 'agent_response'],
+        agent: ['agent_call', 'agent_response'],
+        agents: ['agent_call', 'agent_response'],
+        'group:payment': ['payment', 'x402_payment', 'x402_retry'],
+        payments: ['payment', 'x402_payment', 'x402_retry'],
+        'group:error': ['budget_limit', 'error'],
+        alerts: ['budget_limit', 'error'],
+        errors: ['budget_limit', 'error'],
+      }
+      let clearedAtCnt = 0
+      let feedRetentionLimit = DEFAULT_FEED_MAX_EVENTS
+      let feedEvents = []
+      let pausedSnapshotEvents = null
+      let isFeedPaused = false
+      let pausedBufferedCount = 0
+      let activeFeedFilter = 'all'
+      let nextFeedSeq = 1
+
+      function normalizeRetentionLimit(limit) {
+        const parsed = Number.parseInt(limit, 10)
+        if (!Number.isFinite(parsed) || parsed <= 0) return DEFAULT_FEED_MAX_EVENTS
+        return Math.max(MIN_FEED_MAX_EVENTS, Math.min(MAX_FEED_MAX_EVENTS, parsed))
       }
 
-      function addFeed(ev) {
-        const f = document.getElementById('feed')
-        const em = document.getElementById('feed-empty')
-        if (em) em.style.display = 'none'
-        evCnt++
-        document.getElementById('ev-cnt').textContent = `${evCnt} Events`
-        const el = document.createElement('div')
-        el.className = 'fi'
+      function matchesFeedFilter(ev, filter = activeFeedFilter) {
+        if (!ev || typeof ev !== 'object') return false
+        const norm = typeof filter === 'string' ? filter.trim() : 'all'
+        if (!norm || norm === 'all') return true
+        if (Object.prototype.hasOwnProperty.call(FEED_FILTER_GROUPS, norm)) {
+          return FEED_FILTER_GROUPS[norm].includes(ev.type)
+        }
+        return ev.type === norm
+      }
+
+      function describeFeedEvent(ev) {
         let ic = '\u{1F4E1}',
           cl = 'agt',
           lb = '',
@@ -2347,7 +2485,6 @@
             cl = 'agt'
             lb = `${ev.agent} called`
             sb = `${ev.cost} USDC | ${ev.paymentFlow || 'stellar'}`
-            highlightAgent(ev.agentId)
             break
           case 'x402_payment':
             ic = '\u{1F510}'
@@ -2407,9 +2544,217 @@
         const lk = ev.explorerUrl
           ? `<a href="${ev.explorerUrl}" target="_blank" class="fi-link">TX &nearr;</a>`
           : ''
+        return { ic, cl, lb, sb, lk }
+      }
+
+      function createFeedElement(entry) {
+        const { ev, seq } = entry
+        const { ic, cl, lb, sb, lk } = describeFeedEvent(ev)
+        const el = document.createElement('div')
+        el.className = 'fi'
+        el.setAttribute('data-event-type', ev.type || 'unknown')
+        el.setAttribute('data-event-seq', String(seq))
         el.innerHTML = `<div class="fi-icon ${cl}">${ic}</div><div class="fi-info"><div class="fi-l">${lb}</div><div class="fi-s">${sb}</div></div>${lk}`
-        f.prepend(el)
+        return el
+      }
+
+      function getDisplayedSourceEntries() {
+        return isFeedPaused && Array.isArray(pausedSnapshotEvents)
+          ? pausedSnapshotEvents
+          : feedEvents
+      }
+
+      function getVisibleFeedEntries() {
+        const source = getDisplayedSourceEntries()
+        const matching = []
+        for (let i = source.length - 1; i >= 0; i -= 1) {
+          if (matchesFeedFilter(source[i].ev, activeFeedFilter)) matching.push(source[i])
+        }
+        return matching
+      }
+
+      function updateFeedCountersAndControls() {
+        const visibleCount = getVisibleFeedEntries().length
+        const sourceCount = getDisplayedSourceEntries().length
+        const cntEl = document.getElementById('ev-cnt')
+        if (cntEl) {
+          if (evCnt === 0) {
+            cntEl.textContent = '0 Events'
+          } else {
+            const parts = []
+            if (activeFeedFilter !== 'all') {
+              parts.push(`${visibleCount}/${sourceCount} shown`)
+            } else if (evCnt > feedRetentionLimit && sourceCount === feedRetentionLimit) {
+              parts.push(`${visibleCount} shown (max ${feedRetentionLimit})`)
+            } else {
+              parts.push(`${visibleCount} shown`)
+            }
+            if (isFeedPaused) parts.push(`paused +${pausedBufferedCount}`)
+            parts.push(`${evCnt} total Events`)
+            cntEl.textContent = parts.join(' · ')
+          }
+        }
+        const pauseBtn = document.getElementById('feed-pause-btn')
+        if (pauseBtn) {
+          pauseBtn.textContent = isFeedPaused
+            ? pausedBufferedCount > 0
+              ? `▶ Resume Display (${pausedBufferedCount})`
+              : '▶ Resume Display'
+            : '⏸ Pause Display'
+          pauseBtn.setAttribute('aria-pressed', isFeedPaused ? 'true' : 'false')
+        }
+        const pauseBanner = document.getElementById('feed-pause-banner')
+        if (pauseBanner) {
+          if (isFeedPaused) {
+            pauseBanner.style.display = 'block'
+            pauseBanner.textContent =
+              pausedBufferedCount > 0
+                ? `Feed display paused (${pausedBufferedCount} new event${pausedBufferedCount === 1 ? '' : 's'} buffered). Server execution and live run progress continue.`
+                : 'Feed display paused. Server execution and live run progress continue.'
+          } else {
+            pauseBanner.style.display = 'none'
+            pauseBanner.textContent = ''
+          }
+        }
+      }
+
+      function trimRenderedFeedNodes(feedContainer) {
+        if (!feedContainer) return
+        const children = Array.from(feedContainer.children).filter(
+          (child) => child.id !== 'feed-empty' && !child.classList?.contains('empty-state')
+        )
+        for (let i = children.length - 1; i >= feedRetentionLimit; i -= 1) {
+          feedContainer.removeChild(children[i])
+        }
+      }
+
+      function updateEmptyStateDisplay(feedContainer, visibleCount) {
+        let em = document.getElementById('feed-empty')
+        if (!em && feedContainer) {
+          em = document.createElement('div')
+          em.className = 'empty-state'
+          em.id = 'feed-empty'
+          feedContainer.appendChild(em)
+        }
+        if (!em) return
+        if (visibleCount > 0) {
+          em.style.display = 'none'
+          return
+        }
+        em.style.display = ''
+        const sourceCount = getDisplayedSourceEntries().length
+        if (sourceCount > 0 && activeFeedFilter !== 'all') {
+          em.innerHTML =
+            '<div class="es-icon">🔎</div><p>No retained events match the active filter.</p>'
+        } else if (clearedAtCnt > 0 && evCnt > 0) {
+          em.innerHTML = `<div class="es-icon">🧹</div><p>Feed cleared (${evCnt} session events received).<br />New events will appear here automatically.</p>`
+        } else {
+          em.innerHTML =
+            '<div class="es-icon">📡</div><p>Waiting for agent activity...<br />Submit a task to see real-time events</p>'
+        }
+      }
+
+      function renderFeed() {
+        const f = document.getElementById('feed')
+        if (!f) return
+        const em = document.getElementById('feed-empty')
+        f.innerHTML = ''
+        if (em) f.appendChild(em)
+        const visibleEntries = getVisibleFeedEntries()
+        updateEmptyStateDisplay(f, visibleEntries.length)
+        for (let i = visibleEntries.length - 1; i >= 0; i -= 1) {
+          f.prepend(createFeedElement(visibleEntries[i]))
+        }
+        trimRenderedFeedNodes(f)
+        updateFeedCountersAndControls()
+      }
+
+      function connectSSE() {
+        const es = new EventSource('/api/events')
+        es.onmessage = (e) => {
+          try {
+            const ev = JSON.parse(e.data)
+            if (ev.type !== 'connected') addFeed(ev)
+          } catch {}
+        }
+        es.onerror = () => setTimeout(connectSSE, 3000)
+      }
+
+      function addFeed(ev) {
+        if (!ev || typeof ev !== 'object') return
+        evCnt += 1
+        const entry = { seq: nextFeedSeq++, ev }
+        feedEvents.push(entry)
+        if (feedEvents.length > feedRetentionLimit) {
+          feedEvents.splice(0, feedEvents.length - feedRetentionLimit)
+        }
+        if (ev.type === 'agent_call') highlightAgent(ev.agentId)
         trackLiveEvent(ev)
+        if (isFeedPaused) {
+          pausedBufferedCount += 1
+          updateFeedCountersAndControls()
+          return
+        }
+        const f = document.getElementById('feed')
+        if (f && matchesFeedFilter(ev, activeFeedFilter)) {
+          const em = document.getElementById('feed-empty')
+          if (em) em.style.display = 'none'
+          f.prepend(createFeedElement(entry))
+          trimRenderedFeedNodes(f)
+        } else if (f) {
+          updateEmptyStateDisplay(f, getVisibleFeedEntries().length)
+        }
+        updateFeedCountersAndControls()
+      }
+
+      function setFeedPaused(paused) {
+        const nextPaused = Boolean(paused)
+        if (nextPaused === isFeedPaused) return isFeedPaused
+        isFeedPaused = nextPaused
+        if (isFeedPaused) {
+          pausedSnapshotEvents = feedEvents.slice()
+          pausedBufferedCount = 0
+          updateFeedCountersAndControls()
+        } else {
+          pausedSnapshotEvents = null
+          pausedBufferedCount = 0
+          renderFeed()
+        }
+        return isFeedPaused
+      }
+
+      function toggleFeedPause() {
+        return setFeedPaused(!isFeedPaused)
+      }
+
+      function clearFeed() {
+        feedEvents = []
+        pausedBufferedCount = 0
+        clearedAtCnt = evCnt
+        pausedSnapshotEvents = isFeedPaused ? [] : null
+        renderFeed()
+      }
+
+      function setFeedFilter(filterValue) {
+        activeFeedFilter =
+          typeof filterValue === 'string' && filterValue.trim() ? filterValue.trim() : 'all'
+        renderFeed()
+        return activeFeedFilter
+      }
+
+      function setFeedRetentionLimit(limit) {
+        feedRetentionLimit = normalizeRetentionLimit(limit)
+        if (feedEvents.length > feedRetentionLimit) {
+          feedEvents = feedEvents.slice(-feedRetentionLimit)
+        }
+        if (
+          Array.isArray(pausedSnapshotEvents) &&
+          pausedSnapshotEvents.length > feedRetentionLimit
+        ) {
+          pausedSnapshotEvents = pausedSnapshotEvents.slice(-feedRetentionLimit)
+        }
+        renderFeed()
+        return feedRetentionLimit
       }
 
       function highlightAgent(id) {
