@@ -20,10 +20,9 @@ stellarmind/
 │   ├── routes/         # REST API route handlers
 │   ├── stellar/        # Stellar wallet integration
 │   └── storage/        # Run history persistence
-├── tests/              # Test suites
-│   └── load/           # Load test scenarios (k6, Artillery)
+├── tests/              # Automated unit & integration test suites (node --test)
 ├── package.json        # Node.js dependencies and scripts
-├── vercel.json         # Vercel deployment configuration
+├── eslint.config.js    # ESLint configuration
 ├── CONTRIBUTING.md     # Contribution guidelines
 ├── SECURITY.md         # Security policy
 └── README.md           # Project overview
@@ -31,17 +30,20 @@ stellarmind/
 
 ## Core Source Code (`src/`)
 
-| Directory/File          | Purpose                                              |
-| ----------------------- | ---------------------------------------------------- |
-| `src/agents/`           | Agent orchestration, registry, budgeting, settlement |
-| `src/middleware/`       | Auth, error handling, rate limiting                  |
-| `src/routes/`           | REST API route handlers                              |
-| `src/stellar/`          | Stellar wallet and blockchain integration            |
-| `src/storage/`          | Run history and persistence layer                    |
-| `src/config.js`         | Application configuration                            |
-| `src/logger.js`         | Structured logging                                   |
-| `src/pricing.config.js` | Pricing model configuration                          |
-| `src/server.js`         | Express server entry point                           |
+| Directory/File             | Purpose                                                                 |
+| -------------------------- | ----------------------------------------------------------------------- |
+| `src/agents/`              | Agent orchestration, registry, budgeting, settlement                    |
+| `src/middleware/`          | Auth, error handling, rate limiting                                     |
+| `src/routes/`              | REST API route modules (`premium-routes.js`, `orchestration-routes.js`) |
+| `src/stellar/`             | Stellar wallet and blockchain integration                               |
+| `src/storage/`             | Run history and persistence layer (`run-history.js`)                    |
+| `src/app.js`               | Express app factory (`createApp`)                                       |
+| `src/config.js`            | Application configuration and network profiles                          |
+| `src/logger.js`            | Structured logging                                                      |
+| `src/pricing.config.js`    | Centralized endpoint pricing (single source of truth)                   |
+| `src/pricing.validator.js` | Startup validator matching pricing config against registry              |
+| `src/requestValidation.js` | Query and body validation middleware                                    |
+| `src/server.js`            | HTTP server entry point and x402 payment middleware wiring              |
 
 ### Key Directories
 
@@ -58,13 +60,13 @@ files:
 
 #### `src/routes/`
 
-Express route handlers. New endpoints should be registered here and follow REST conventions. Each
-route file exports a router.
+Express route handlers (`src/routes/premium-routes.js` and `src/routes/orchestration-routes.js`),
+wired by `createApp()` in `src/app.js`.
 
-#### `src/pricing/`
+#### `src/pricing.config.js` & `src/pricing.validator.js`
 
-The pricing engine that calculates costs based on agent usage, token consumption, and plan tiers.
-See `PRICING_INDEX.md` for business logic.
+Centralized x402 route pricing configuration and startup validation ensuring every priced route
+matches its agent definition in `src/agents/registry.js`.
 
 #### `src/stellar/`
 
@@ -85,6 +87,7 @@ Stellar blockchain integration for wallet management and payment settlement.
 | `docs/architecture.md`         | System architecture overview           |
 | `docs/API_EXAMPLES.md`         | REST API usage examples                |
 | `docs/ASSET_AMOUNTS.md`        | Asset amount precision and accounting  |
+| `docs/DOCKER_DEPLOYMENT.md`    | Docker and container deployment guide  |
 | `docs/repository-map.md`       | This file — repository structure guide |
 | `docs/issue-task-checklist.md` | Checklist for implementing issues      |
 
@@ -95,45 +98,49 @@ Stellar blockchain integration for wallet management and payment settlement.
 | `.env.example`     | Environment variables template |
 | `package.json`     | Dependencies and scripts       |
 | `eslint.config.js` | Linting rules                  |
-| `vercel.json`      | Deployment configuration       |
 
 ## Tests (`tests/`)
 
-1. `cp .env.example .env` — configure environment
-2. `npm install` — install dependencies
-3. `npm run dev` — start development server
-4. Visit `http://localhost:3001`
-
-- `*.test.js` — Unit and integration tests (Jest)
-- `load/` — Performance and load tests (k6, Artillery)
+- `tests/*.test.js` — Unit and integration test suites executed via `npm test` or
+  `node tests/<file>.test.js`. No external API keys or network access required.
+- `tests/smoke.test.js` — Local HTTP smoke check (`npm run smoke`) against a running server.
+- `src/demo-preflight.js` — Live Stellar network & wallet readiness check (`npm run preflight`).
 
 ## Quick Start (New Contributors)
 
 1. **Read**: `CONTRIBUTING.md` and this repository map
 2. **Setup**: `nvm use && npm install`
 3. **Configure**: `cp .env.example .env` — configure environment
-4. **Prepare**: `npm run setup` and `npm run setup:usdc` — generate wallets
-5. **Develop**: `npm run dev` — starts the development server at `http://localhost:3001`
-6. **Test**: `npm test` — runs the full test suite
-7. **Lint**: `npm run lint` — checks code style
+4. **Prepare**: `npm run setup` and `npm run setup:usdc` — generate wallets (optional for offline
+   tests)
+5. **Develop**: `npm run dev` — starts the development server at `http://localhost:3402`
+6. **Test**: `npm test` — runs the full automated unit and integration test suite
+7. **Lint**: `npm run lint` and `npm run lint:md` — checks code and markdown style
 8. **Submit**: Open a PR following the PR template
 
 ## Common Workflows
 
-| Task                 | Command                 |
-| -------------------- | ----------------------- |
-| Start dev server     | `npm run dev`           |
-| Run all tests        | `npm test`              |
-| Run single test      | `npx jest path/to/test` |
-| Lint code            | `npm run lint`          |
-| Fix lint issues      | `npm run lint:fix`      |
-| Format code          | `npm run format`        |
-| Build for production | `npm run build`         |
+| Task                      | Command                                                        |
+| ------------------------- | -------------------------------------------------------------- |
+| Start dev server          | `npm run dev`                                                  |
+| Run all tests             | `npm test`                                                     |
+| Run a targeted test suite | `npm run test:premium` (or `node --test tests/<file>.test.js`) |
+| Run CLI demo              | `npm run demo`                                                 |
+| Run local HTTP smoke test | `npm run smoke`                                                |
+| Run Stellar preflight     | `npm run preflight`                                            |
+| Lint code                 | `npm run lint`                                                 |
+| Fix lint issues           | `npm run lint:fix`                                             |
+| Lint Markdown docs        | `npm run lint:md`                                              |
+| Format code               | `npm run format`                                               |
 
 ## Common Tasks
 
-- **Adding a new agent**: See `src/agents/registry.js`, then add service in `src/agents/services.js`
-- **Adding a new API endpoint**: Create route handler in `src/routes/` or add to `src/server.js`
+- **Adding a new agent**: Add pricing in `src/pricing.config.js`, add catalog metadata in
+  `src/agents/registry.js`, implement the service in `src/agents/services.js`, add query validation
+  in `src/requestValidation.js`, register the handler in `src/routes/premium-routes.js`, and wire
+  dispatch in `src/agents/orchestrator.js` (see `CONTRIBUTING.md` for full walkthrough)
+- **Adding a new API endpoint**: Register route handlers in `src/routes/premium-routes.js`,
+  `src/routes/orchestration-routes.js`, or `src/app.js`
 - **Modifying the UI**: See `public/assets/js/` and `public/assets/css/`
 - **Testing**: `npm test`
 - **Understanding payment flow**: See `CONTRIBUTING.md` and `docs/architecture.md`

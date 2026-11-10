@@ -42,17 +42,70 @@ User → Orchestrator (Claude plans tasks)
 
 ### Adding a New Agent
 
-1. Add the agent definition in `src/agents/registry.js`
-2. Add the service function in `src/agents/services.js`
-3. Add the premium endpoint to `src/routes/premium-routes.js` (the sole owner of premium handlers)
-   and its price to `src/pricing.config.js`; `src/app.js` only registers the route module
-4. Map the agent ID to its endpoint in `src/agents/orchestrator.js`
+To add a new specialist agent (for example, `translate-bot` at `/api/premium/translate`), update the
+pricing, registry, service, validation, route, and orchestrator modules in lockstep:
 
-### Running Tests
+1. **Add endpoint pricing in [`src/pricing.config.js`](src/pricing.config.js)**: Add the route entry
+   (e.g., `'GET /api/premium/translate'`) in `pricingConfig.endpoints` with its `price` (such as
+   `'$0.02'`), `agent` (`'translate-bot'`), `description`, and `emoji`. Startup validation in
+   [`src/pricing.validator.js`](src/pricing.validator.js) enforces that every priced endpoint maps
+   to a registered agent with a valid price.
+2. **Add the catalog entry in [`src/agents/registry.js`](src/agents/registry.js)**: Add the agent
+   object to `AGENTS` with matching `id`, `name`, `description`, `endpoint` (e.g.,
+   `'/api/translate'`), numeric `price` (`'0.02'`), `currency` (`'USDC'`), `capability`, `model`,
+   and `provider`.
+3. **Add the service implementation in [`src/agents/services.js`](src/agents/services.js)**:
+   Register the model identifier in `AGENT_MODELS` and `MODEL_LABELS`, add a deterministic offline
+   fallback in `FALLBACKS`, and export the service function (e.g., `runTranslate(input, options)`)
+   using `callClaude()`.
+4. **Validate query input in [`src/requestValidation.js`](src/requestValidation.js)**: Add query
+   parameter validation for the new `/api/premium/{agent}` path inside `validatePremiumQuery()`.
+5. **Register the premium route in [`src/routes/premium-routes.js`](src/routes/premium-routes.js)**:
+   `src/routes/premium-routes.js` is the sole owner of `/api/premium/*` handlers (wired once by
+   `createApp()` in [`src/app.js`](src/app.js); never register duplicate handlers in
+   [`src/server.js`](src/server.js)). Read the route price via
+   `pricingConfig.getPrice('GET /api/premium/...')` so responses stay consistent with the catalog.
+   If you also expose a free internal route (`/api/{agent}`), wire it in [`src/app.js`](src/app.js).
+6. **Connect orchestrator dispatch in [`src/agents/orchestrator.js`](src/agents/orchestrator.js)**:
+   Map the agent ID to its service function in `SERVICE_MAP` and to its URL builder in
+   `PREMIUM_ENDPOINT_MAP`.
+
+Verify that pricing, catalog metadata, and premium routes remain aligned:
 
 ```bash
-npm run demo    # Runs 3 automated tasks with budget enforcement
-npm test        # Same as demo
+node -e "
+import('./src/pricing.config.js').then(async ({ pricingConfig }) => {
+  const { validatePricingStartup } = await import('./src/pricing.validator.js');
+  validatePricingStartup(pricingConfig);
+});
+"
+npm run test:premium
+```
+
+### Running Tests and Verification Commands
+
+All unit and integration test suites run offline with deterministic mocks/fallbacks and do **not**
+require `ANTHROPIC_API_KEY`, funded Stellar keys, or external network access.
+
+| Command                      | Purpose                                                                                                                                   | External Keys / Network Required?                                              |
+| ---------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------ |
+| `npm test`                   | Run the full unit and integration test suite                                                                                              | **No** — runs completely offline                                               |
+| `npm run test:validation`    | Run request validation unit tests (`tests/api.validation.test.js`)                                                                        | **No**                                                                         |
+| `npm run test:parser`        | Run x402 settlement header parser unit tests (`src/agents/settlement-header.test.js`)                                                     | **No**                                                                         |
+| `npm run test:budget`        | Run budget enforcement & exact asset math tests (`tests/orchestrator.budget.test.js`)                                                     | **No**                                                                         |
+| `npm run test:usage`         | Run provider token usage accounting tests (`tests/usage-tracking.test.js`)                                                                | **No**                                                                         |
+| `npm run test:premium`       | Run premium route & ownership integration tests (`tests/premium-endpoints.integration.test.js`, `tests/premium-routes-ownership.test.js`) | **No**                                                                         |
+| `npm run test:normalization` | Run Claude content block normalization tests (`tests/response-normalization.test.js`)                                                     | **No**                                                                         |
+| `npm run test:recovery`      | Run interrupted run history recovery tests (`tests/run-history-recovery.test.js`)                                                         | **No**                                                                         |
+| `npm run test:queue`         | Run orchestration admission queue tests (`tests/admission-queue.test.js`, `tests/admission-queue.integration.test.js`)                    | **No**                                                                         |
+| `npm run smoke`              | Run HTTP smoke checks against a running local server (`tests/smoke.test.js`)                                                              | Local server required (`http://localhost:3402`); no external API keys required |
+| `npm run demo`               | Run 3 automated orchestration tasks in the CLI (`src/demo.js`, also aliased as `npm run test:demo`)                                       | Optional — uses fallback responses offline; uses Claude + Stellar when set     |
+| `npm run preflight`          | Verify Stellar RPC/Horizon reachability, wallets, and USDC trustlines (`src/demo-preflight.js`)                                           | **Yes** — requires Stellar network access and configured wallet addresses      |
+
+To run a single test file directly:
+
+```bash
+node tests/premium-endpoints.integration.test.js
 ```
 
 ### Security Hygiene
@@ -193,8 +246,10 @@ Keep changes focused on the issue you claimed. Run locally to verify nothing bre
 
 ```bash
 npm install
+npm test
 npm run lint
-npm run format
+npm run lint:md
+npm run format:check
 npm run dev
 ```
 
