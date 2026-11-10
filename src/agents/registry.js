@@ -4,13 +4,13 @@
  */
 import { MODEL_LABELS } from './services.js'
 import { AssetAmount, DEFAULT_ASSET } from './amount.js'
+import { getAgentPrice, pricingConfig } from '../pricing.config.js'
 
-export const AGENTS = [
+export const AGENT_DEFINITIONS = [
   {
     id: 'research-bot',
     name: '🔬 Research Agent',
     endpoint: '/api/research',
-    price: '0.01',
     currency: 'USDC',
     model: MODEL_LABELS.research,
     capability: 'Deep web research and fact-finding on any topic',
@@ -22,7 +22,6 @@ export const AGENTS = [
     id: 'summary-bot',
     name: '📝 Summary Agent',
     endpoint: '/api/summarize',
-    price: '0.01',
     currency: 'USDC',
     model: MODEL_LABELS.summary,
     capability: 'Text summarization and key insight extraction',
@@ -33,7 +32,6 @@ export const AGENTS = [
     id: 'analyst-bot',
     name: '📊 Analysis Agent',
     endpoint: '/api/analyze',
-    price: '0.05',
     currency: 'USDC',
     model: MODEL_LABELS.analysis,
     capability: 'Deep strategic analysis with structured insights',
@@ -45,7 +43,6 @@ export const AGENTS = [
     id: 'code-bot',
     name: '💻 Code Agent',
     endpoint: '/api/code',
-    price: '0.03',
     currency: 'USDC',
     model: MODEL_LABELS.code,
     capability: 'Code generation, review, and debugging',
@@ -54,34 +51,71 @@ export const AGENTS = [
   },
 ]
 
+function createDynamicAgentDescriptor(def, cfg = pricingConfig) {
+  const descriptor = { ...def }
+  Object.defineProperty(descriptor, 'price', {
+    enumerable: true,
+    configurable: true,
+    get() {
+      return getAgentPrice(def.id, cfg)
+    },
+  })
+  return descriptor
+}
+
+/**
+ * Build the marketplace agent catalog with prices derived from a pricing configuration.
+ * Validates that every registered agent has a unique price mapping in `cfg`.
+ *
+ * @param {Object} [cfg=pricingConfig]
+ * @returns {Array<Object>}
+ */
+export function buildAgentsCatalog(cfg = pricingConfig) {
+  return AGENT_DEFINITIONS.map((def) => {
+    // Eagerly resolve once to fail fast on missing/duplicate mappings in `cfg`.
+    getAgentPrice(def.id, cfg)
+    return createDynamicAgentDescriptor(def, cfg)
+  })
+}
+
+export const AGENTS = buildAgentsCatalog(pricingConfig)
+
 /**
  * Discover agents by capability keyword
  */
-export function discoverAgents(query) {
+export function discoverAgents(query, cfg = pricingConfig) {
   const q = query.toLowerCase()
-  return AGENTS.filter(
+  const catalog = cfg === pricingConfig ? AGENTS : buildAgentsCatalog(cfg)
+  return catalog.filter(
     (a) =>
       a.capability.toLowerCase().includes(q) || a.name.toLowerCase().includes(q) || a.id.includes(q)
   )
 }
 
 /**
- * Get agent by ID
+ * Get agent by ID, resolving its price from `cfg` (defaults to global `pricingConfig`).
  */
-export function getAgentById(id) {
-  return AGENTS.find((a) => a.id === id)
+export function getAgentById(id, cfg = pricingConfig) {
+  if (cfg === pricingConfig) {
+    return AGENTS.find((a) => a.id === id)
+  }
+  const def = AGENT_DEFINITIONS.find((a) => a.id === id)
+  if (!def) return undefined
+  getAgentPrice(def.id, cfg)
+  return createDynamicAgentDescriptor(def, cfg)
 }
 
 /**
  * Get total cost estimate for a set of agent IDs using exact asset amounts.
  * @param {string[]} agentIds
  * @param {string} [asset='USDC']
+ * @param {Object} [cfg=pricingConfig]
  * @returns {AssetAmount}
  */
-export function estimateCost(agentIds, asset = DEFAULT_ASSET) {
+export function estimateCost(agentIds, asset = DEFAULT_ASSET, cfg = pricingConfig) {
   let total = AssetAmount.zero(asset)
   for (const id of agentIds || []) {
-    const agent = getAgentById(id)
+    const agent = getAgentById(id, cfg)
     if (agent?.price) {
       total = total.plus(AssetAmount.from(agent.price, agent.currency || asset))
     }

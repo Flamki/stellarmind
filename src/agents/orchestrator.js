@@ -1,7 +1,7 @@
 import crypto from 'node:crypto'
 import { config } from '../config.js'
 import { AGENTS, getAgentById } from './registry.js'
-import { validatePlan } from './plan-validator.js'
+import { validatePlan, buildFallbackPlan } from './plan-validator.js'
 import {
   runResearch,
   runSummary,
@@ -732,47 +732,7 @@ Respond ONLY with valid JSON (no markdown, no code fences):
           unavailableUsage(PLANNING_MODEL, 'planning_call_failed')
         )
       }
-      const subtasks = []
-      let remaining = exactBudget
-
-      const researchCost = AssetAmount.from('0.01', 'USDC')
-      const summaryCost = AssetAmount.from('0.01', 'USDC')
-      const analystCost = AssetAmount.from('0.05', 'USDC')
-      const codeCost = AssetAmount.from('0.03', 'USDC')
-
-      if (remaining.isGreaterThanOrEqualTo(researchCost)) {
-        subtasks.push({ agentId: 'research-bot', input: task, cost: '0.01' })
-        remaining = remaining.minus(researchCost)
-      }
-      if (remaining.isGreaterThanOrEqualTo(summaryCost)) {
-        subtasks.push({
-          agentId: 'summary-bot',
-          input: `Summarize findings about: ${task}`,
-          cost: '0.01',
-        })
-        remaining = remaining.minus(summaryCost)
-      }
-      if (remaining.isGreaterThanOrEqualTo(analystCost)) {
-        subtasks.push({ agentId: 'analyst-bot', input: task, cost: '0.05' })
-        remaining = remaining.minus(analystCost)
-      }
-      if (remaining.isGreaterThanOrEqualTo(codeCost)) {
-        subtasks.push({
-          agentId: 'code-bot',
-          input: `Write an implementation related to: ${task}`,
-          cost: '0.03',
-        })
-        remaining = remaining.minus(codeCost)
-      }
-
-      subtasks.forEach((s, i) => {
-        s.stepId = `step-${i}`
-      })
-
-      plan = {
-        plan: `Multi-agent workflow: ${subtasks.map((s) => s.agentId).join(' -> ')} (${subtasks.length} agents, ${budget} USDC budget)`,
-        subtasks,
-      }
+      plan = buildFallbackPlan(task, budget, context.pricingConfig)
     }
   }
 
@@ -1170,42 +1130,7 @@ Respond ONLY with valid JSON (no markdown, no code fences):
           unavailableUsage(PLANNING_MODEL, 'planning_call_failed')
         )
       }
-      const subtasks = []
-      let remaining = exactBudget
-      const researchCost = AssetAmount.from('0.01', 'USDC')
-      const summaryCost = AssetAmount.from('0.01', 'USDC')
-      const analystCost = AssetAmount.from('0.05', 'USDC')
-      const codeCost = AssetAmount.from('0.03', 'USDC')
-
-      if (remaining.isGreaterThanOrEqualTo(researchCost)) {
-        subtasks.push({ agentId: 'research-bot', input: task, cost: '0.01' })
-        remaining = remaining.minus(researchCost)
-      }
-      if (remaining.isGreaterThanOrEqualTo(summaryCost)) {
-        subtasks.push({
-          agentId: 'summary-bot',
-          input: `Summarize findings about: ${task}`,
-          cost: '0.01',
-        })
-        remaining = remaining.minus(summaryCost)
-      }
-      if (remaining.isGreaterThanOrEqualTo(analystCost)) {
-        subtasks.push({ agentId: 'analyst-bot', input: task, cost: '0.05' })
-        remaining = remaining.minus(analystCost)
-      }
-      if (remaining.isGreaterThanOrEqualTo(codeCost)) {
-        subtasks.push({
-          agentId: 'code-bot',
-          input: `Write an implementation related to: ${task}`,
-          cost: '0.03',
-        })
-        remaining = remaining.minus(codeCost)
-      }
-
-      plan = {
-        plan: `Multi-agent workflow: ${subtasks.map((s) => s.agentId).join(' → ')} (${subtasks.length} agents, ${budget} USDC budget)`,
-        subtasks,
-      }
+      plan = buildFallbackPlan(task, budget, context.pricingConfig)
     }
   }
 

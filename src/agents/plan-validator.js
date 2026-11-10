@@ -11,9 +11,30 @@
  * via agentCost(), never from the plan itself.
  */
 import { getAgentById } from './registry.js'
+import { AssetAmount, agentCost } from './budget.js'
+import { pricingConfig } from '../pricing.config.js'
 
 export const MAX_SUBTASKS = 6
 export const MAX_INPUT_LENGTH = 4000
+
+const FALLBACK_CANDIDATES = [
+  {
+    agentId: 'research-bot',
+    buildInput: (task) => task,
+  },
+  {
+    agentId: 'summary-bot',
+    buildInput: (task) => `Summarize findings about: ${task}`,
+  },
+  {
+    agentId: 'analyst-bot',
+    buildInput: (task) => task,
+  },
+  {
+    agentId: 'code-bot',
+    buildInput: (task) => `Write an implementation related to: ${task}`,
+  },
+]
 
 /**
  * Validates a raw parsed plan object and returns a normalized, safe plan.
@@ -80,35 +101,31 @@ export function validatePlan(rawPlan) {
  * Used when the model's plan is missing, malformed, or fails validatePlan().
  * Routed back through validatePlan() so the fallback carries the same
  * stable step IDs and guarantees as a model-generated plan.
+ *
+ * Prices are resolved dynamically from the agent registry / pricing configuration
+ * and compared using exact AssetAmount arithmetic (Issue #148).
+ *
  * @param {string} task
- * @param {number} budget
+ * @param {number|string} budget
+ * @param {Object} [cfg=pricingConfig]
  * @returns {{ plan: string, subtasks: Array }}
  */
-export function buildFallbackPlan(task, budget) {
+export function buildFallbackPlan(task, budget, cfg = pricingConfig) {
   const subtasks = []
-  let remaining = budget
+  let remaining = AssetAmount.from(budget, 'USDC')
 
-  if (remaining >= 0.01) {
-    subtasks.push({ agentId: 'research-bot', input: task })
-    remaining -= 0.01
-  }
-  if (remaining >= 0.01) {
-    subtasks.push({
-      agentId: 'summary-bot',
-      input: `Summarize findings about: ${task}`,
-    })
-    remaining -= 0.01
-  }
-  if (remaining >= 0.05) {
-    subtasks.push({ agentId: 'analyst-bot', input: task })
-    remaining -= 0.05
-  }
-  if (remaining >= 0.03) {
-    subtasks.push({
-      agentId: 'code-bot',
-      input: `Write an implementation related to: ${task}`,
-    })
-    remaining -= 0.03
+  for (const candidate of FALLBACK_CANDIDATES) {
+    const agent = getAgentById(candidate.agentId, cfg)
+    if (!agent) continue
+
+    const cost = agentCost(agent)
+    if (remaining.isGreaterThanOrEqualTo(cost)) {
+      subtasks.push({
+        agentId: candidate.agentId,
+        input: candidate.buildInput(task),
+      })
+      remaining = remaining.minus(cost)
+    }
   }
 
   const built = {

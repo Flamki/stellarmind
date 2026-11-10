@@ -10,6 +10,8 @@
  * - Consistent agent references
  */
 
+import { REGISTERED_AGENT_IDS } from './pricing.config.js'
+
 /**
  * Validate a single price string
  * @param {string} price - Price in format '$X.XX'
@@ -116,11 +118,60 @@ export function validateEndpointInfo(endpoint, info) {
 }
 
 /**
+ * Validate that all registered marketplace agents have unique, valid price mappings.
+ * Detects missing or duplicate agent-to-price mappings at startup.
+ *
+ * @param {Object} pricingConfig - Pricing configuration object
+ * @param {string[]} [requiredAgents=REGISTERED_AGENT_IDS] - Agent IDs that must be mapped
+ * @returns {{ valid: boolean, errors: string[] }}
+ */
+export function validateAgentPriceMappings(pricingConfig, requiredAgents = REGISTERED_AGENT_IDS) {
+  const errors = []
+
+  if (!pricingConfig || typeof pricingConfig !== 'object' || !pricingConfig.endpoints) {
+    return { valid: false, errors: ['Pricing config must have an "endpoints" object'] }
+  }
+
+  const agentToEndpoints = new Map()
+  for (const [endpoint, info] of Object.entries(pricingConfig.endpoints)) {
+    if (!info || typeof info !== 'object' || !info.agent) continue
+    const list = agentToEndpoints.get(info.agent) || []
+    list.push({ endpoint, price: info.price })
+    agentToEndpoints.set(info.agent, list)
+  }
+
+  for (const [agentId, mappings] of agentToEndpoints.entries()) {
+    if (mappings.length > 1) {
+      errors.push(
+        `Duplicate agent: '${agentId}' mapped across multiple endpoints (${mappings.map((m) => m.endpoint).join(', ')})`
+      )
+    }
+  }
+
+  for (const agentId of requiredAgents || []) {
+    const mappings = agentToEndpoints.get(agentId)
+    if (!mappings || mappings.length === 0) {
+      errors.push(`Missing pricing mapping for registered agent '${agentId}'`)
+      continue
+    }
+    const priceValidation = validatePrice(mappings[0].price)
+    if (!priceValidation.valid) {
+      errors.push(
+        `Invalid price mapping for registered agent '${agentId}': ${priceValidation.error}`
+      )
+    }
+  }
+
+  return { valid: errors.length === 0, errors }
+}
+
+/**
  * Validate entire pricing configuration
  * @param {Object} pricingConfig - Pricing configuration object
+ * @param {{ requiredAgents?: string[] }} [options]
  * @returns {Object} { valid: boolean, errors: string[] }
  */
-export function validatePricingConfig(pricingConfig) {
+export function validatePricingConfig(pricingConfig, options = {}) {
   const errors = []
 
   if (!pricingConfig || typeof pricingConfig !== 'object') {
@@ -169,6 +220,18 @@ export function validatePricingConfig(pricingConfig) {
     }
   }
 
+  const requiredAgents =
+    options.requiredAgents ??
+    (Array.isArray(pricingConfig.requiredAgents) ? pricingConfig.requiredAgents : null)
+
+  if (Array.isArray(requiredAgents) && requiredAgents.length > 0) {
+    for (const agentId of requiredAgents) {
+      if (!seenAgents.has(agentId)) {
+        errors.push(`Missing pricing mapping for registered agent '${agentId}'`)
+      }
+    }
+  }
+
   return { valid: errors.length === 0, errors }
 }
 
@@ -202,12 +265,14 @@ export function validateX402Compatibility(pricingConfig, config) {
  * @param {Object} config - Application config
  * @returns {Object} { valid: boolean, errors: string[], warnings: string[] }
  */
-export function validateAll(pricingConfig, config) {
+export function validateAll(pricingConfig, config, options = {}) {
   const errors = []
   const warnings = []
 
+  const requiredAgents = options.requiredAgents ?? config?.requiredAgents
+
   // Validate pricing config structure
-  const pricingValidation = validatePricingConfig(pricingConfig)
+  const pricingValidation = validatePricingConfig(pricingConfig, { requiredAgents })
   if (!pricingValidation.valid) {
     errors.push(...pricingValidation.errors)
   }
