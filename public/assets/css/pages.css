@@ -261,6 +261,66 @@
 }
 
 /* ═══ AGENT REGISTRY PAGE ═══ */
+.agent-controls {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  align-items: flex-end;
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 14px 18px;
+}
+
+.agent-control-group {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  min-width: 140px;
+}
+
+.agent-control-group.search-group {
+  flex: 1 1 220px;
+}
+
+.agent-control-label {
+  font-size: 10px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.6px;
+  color: var(--text-muted);
+}
+
+.agent-input,
+.agent-select {
+  padding: 8px 11px;
+  background: var(--bg-input);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-xs);
+  color: var(--text-primary);
+  font-family: 'Inter', sans-serif;
+  font-size: 12px;
+  outline: none;
+  transition: var(--tr);
+}
+
+.agent-input:focus,
+.agent-select:focus {
+  border-color: var(--border-active);
+  box-shadow: 0 0 0 2px var(--accent-glow);
+}
+
+.agent-toolbar-meta {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+  font-size: 11.5px;
+  color: var(--text-secondary);
+  padding: 0 4px;
+}
+
 .agent-cards {
   display: grid;
   grid-template-columns: repeat(2, 1fr);
@@ -275,6 +335,16 @@
   position: relative;
   transition: var(--tr);
   overflow: hidden;
+  cursor: pointer;
+}
+
+.ac.selected {
+  border-color: var(--accent-light);
+  box-shadow: 0 0 0 2px var(--accent-glow);
+}
+
+.ac.selected::before {
+  opacity: 1;
 }
 
 .ac::before {
