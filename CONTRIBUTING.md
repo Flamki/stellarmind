@@ -51,8 +51,9 @@ User → Orchestrator (Claude plans tasks)
 ### Running Tests
 
 ```bash
-npm run demo    # Runs 3 automated tasks with budget enforcement
-npm test        # Same as demo
+npm run demo          # Runs 3 automated tasks with budget enforcement
+npm test              # Runs offline unit and integration suites (including OpenAPI contract check)
+npm run test:openapi  # Validates docs/openapi.yaml and docs/API_EXAMPLES.md against createApp
 ```
 
 ### Security Hygiene

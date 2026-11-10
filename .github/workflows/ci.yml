@@ -76,6 +76,9 @@ jobs:
       - name: API validation tests
         run: npm run test:validation
 
+      - name: OpenAPI contract check
+        run: npm run test:openapi
+
   smoke:
     name: Smoke
     runs-on: ubuntu-latest

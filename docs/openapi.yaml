@@ -1,51 +1,131 @@
 openapi: '3.0.3'
 info:
   title: StellarMind API
-  description: REST API for the StellarMind agent orchestration platform
+  description: REST API for the StellarMind AI agent marketplace with x402 micropayments on Stellar
   version: '1.0.0'
   contact:
     name: StellarMind Team
 servers:
-  - url: http://localhost:3000/api/v1
-    description: Local development
+  - url: http://localhost:3001
+    description: Local development server
 paths:
-  /agents:
+  /healthz:
+    get:
+      summary: Liveness health check
+      operationId: getHealthz
+      tags: [System]
+      responses:
+        '200':
+          description: Server process is alive
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HealthStatus'
+              example:
+                status: ok
+                uptime: 842.31
+                timestamp: '2026-07-30T12:00:00.000Z'
+
+  /readyz:
+    get:
+      summary: Readiness check
+      operationId: getReadyz
+      tags: [System]
+      responses:
+        '200':
+          description: All required components are ready
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ReadinessStatus'
+        '503':
+          description: One or more components are not ready
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ReadinessStatus'
+
+  /api/status:
+    get:
+      summary: System status, network profile, and x402 pricing metadata
+      operationId: getStatus
+      tags: [System]
+      responses:
+        '200':
+          description: System status and x402 configuration
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SystemStatus'
+              example:
+                name: StellarMind
+                version: '1.0.0'
+                description: AI Agent Marketplace with x402 Micropayments on Stellar
+                status: online
+                network: stellar:testnet
+                facilitator: https://www.x402.org/facilitator
+                agents: 4
+                x402:
+                  enabled: true
+                  middleware: '@x402/express (paymentMiddlewareFromConfig)'
+                  client: '@x402/fetch (wrapFetchWithPayment + ExactStellarScheme)'
+                  premiumEndpoints:
+                    - GET /api/premium/research ($0.01)
+                    - GET /api/premium/summarize ($0.01)
+                    - GET /api/premium/analyze ($0.05)
+                    - GET /api/premium/code ($0.03)
+                  pricing:
+                    - endpoint: GET /api/premium/research
+                      price: $0.01
+                      agent: research-bot
+                      description: Research Agent - Web research and information gathering
+                      emoji: 🔬
+                  flow:
+                    402 → wrapFetchWithPayment signs USDC tx → retry with X-PAYMENT → facilitator
+                    settles on-chain → 200
+                wallets:
+                  server: GABCDEF1...
+                  orchestrator: G2345678...
+                  buyer: GA987654...
+                claudeEnabled: true
+                orchestrationQueue:
+                  active: 0
+                  queued: 0
+                  maxConcurrent: 2
+                  queueCapacity: 10
+                  queueTimeoutMs: 30000
+                  multiReplicaCoordination: false
+                  note:
+                    In-process admission queue bounds concurrency on this node; no cross-node
+                    distributed coordination.
+                runHistory:
+                  storage: file
+                  file: ./data/run-history.json
+                  maxRuns: 200
+
+  /api/agents:
     get:
       summary: List all registered agents
       operationId: listAgents
       tags: [Agents]
       responses:
         '200':
-          description: Agent list
+          description: Registered agent catalog
           content:
             application/json:
               schema:
                 type: array
+                minItems: 1
                 items:
                   $ref: '#/components/schemas/Agent'
-    post:
-      summary: Register a new agent
-      operationId: registerAgent
-      tags: [Agents]
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              $ref: '#/components/schemas/AgentInput'
-      responses:
-        '201':
-          description: Agent registered
-        '400':
-          description: Invalid input
 
-  /agents/{agentId}:
+  /api/agents/{id}:
     get:
-      summary: Get agent details
+      summary: Get agent details by ID
       operationId: getAgent
       tags: [Agents]
       parameters:
-        - name: agentId
+        - name: id
           in: path
           required: true
           schema:
@@ -59,23 +139,169 @@ paths:
                 $ref: '#/components/schemas/Agent'
         '404':
           description: Agent not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
 
-  /orchestration:
+  /api/agents/discover/{capability}:
+    get:
+      summary: Discover agents matching a capability keyword
+      operationId: discoverAgents
+      tags: [Agents]
+      parameters:
+        - name: capability
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Matching agents
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Agent'
+
+  /api/premium/research:
+    get:
+      summary: Premium research agent endpoint (x402-protected)
+      operationId: getPremiumResearch
+      tags: [Premium]
+      parameters:
+        - name: topic
+          in: query
+          required: false
+          schema:
+            type: string
+            minLength: 1
+            maxLength: 500
+      responses:
+        '200':
+          description: Research agent response after payment
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PremiumResearchResponse'
+        '400':
+          description: Invalid query parameters
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ValidationErrorResponse'
+        '402':
+          description: Payment required
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PaymentRequiredResponse'
+
+  /api/premium/summarize:
+    get:
+      summary: Premium summary agent endpoint (x402-protected)
+      operationId: getPremiumSummarize
+      tags: [Premium]
+      parameters:
+        - name: text
+          in: query
+          required: false
+          schema:
+            type: string
+            minLength: 1
+            maxLength: 5000
+      responses:
+        '200':
+          description: Summary agent response after payment
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PremiumSummarizeResponse'
+        '400':
+          description: Invalid query parameters
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ValidationErrorResponse'
+        '402':
+          description: Payment required
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PaymentRequiredResponse'
+
+  /api/premium/analyze:
+    get:
+      summary: Premium analysis agent endpoint (x402-protected)
+      operationId: getPremiumAnalyze
+      tags: [Premium]
+      parameters:
+        - name: topic
+          in: query
+          required: false
+          schema:
+            type: string
+            minLength: 1
+            maxLength: 500
+      responses:
+        '200':
+          description: Analysis agent response after payment
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PremiumAnalyzeResponse'
+        '400':
+          description: Invalid query parameters
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ValidationErrorResponse'
+        '402':
+          description: Payment required
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PaymentRequiredResponse'
+
+  /api/premium/code:
+    get:
+      summary: Premium code agent endpoint (x402-protected)
+      operationId: getPremiumCode
+      tags: [Premium]
+      parameters:
+        - name: prompt
+          in: query
+          required: false
+          schema:
+            type: string
+            minLength: 1
+            maxLength: 2000
+      responses:
+        '200':
+          description: Code agent response after payment
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PremiumCodeResponse'
+        '400':
+          description: Invalid query parameters
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ValidationErrorResponse'
+        '402':
+          description: Payment required
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PaymentRequiredResponse'
+
+  /api/orchestrate:
     post:
       summary: Start an orchestration run
       operationId: startOrchestration
       tags: [Orchestration]
-      description: >
-        Submit an orchestration task. By default the request blocks until the run completes
-        (synchronous mode). To receive an immediate 202 Accepted response with a run handle, use one
-        of the async triggers below.
-
-        **Async triggers (any one is sufficient):** - Query parameter `?async=true` - Body field
-        `"mode": "async"` - Header `Prefer: respond-async`
-
-        **Idempotency:** Include an `Idempotency-Key` header (or `X-Idempotency-Key`) to prevent
-        duplicate runs. If the same key is reused with different parameters, the server responds 409
-        Conflict.
       parameters:
         - name: async
           in: query
@@ -83,20 +309,17 @@ paths:
           schema:
             type: string
             enum: ['true', 'false']
-          description: Set to "true" to receive an immediate 202 response
         - name: Idempotency-Key
           in: header
           required: false
           schema:
             type: string
             maxLength: 256
-          description: Client-generated key to prevent duplicate submissions
         - name: Prefer
           in: header
           required: false
           schema:
             type: string
-          description: Set to "respond-async" to receive an immediate 202 response
       requestBody:
         required: true
         content:
@@ -105,20 +328,16 @@ paths:
               $ref: '#/components/schemas/OrchestrationInput'
       responses:
         '200':
-          description: Synchronous completion (default mode)
+          description: Synchronous orchestration completion
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/OrchestrationResult'
         '202':
-          description: Async mode — run accepted, work in progress
+          description: Async mode — run accepted
           headers:
             Location:
               description: URL to poll for run status
-              schema:
-                type: string
-            Preference-Applied:
-              description: Echoed when the Prefer header was used
               schema:
                 type: string
           content:
@@ -126,19 +345,29 @@ paths:
               schema:
                 $ref: '#/components/schemas/RunAccepted'
         '400':
-          description: Validation error (missing/invalid task, budget, mode, or idempotency key)
+          description: Validation error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ValidationErrorResponse'
         '409':
-          description: Idempotency key conflict (same key, different parameters)
+          description: Idempotency key conflict
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '503':
+          description: Admission queue capacity exceeded or wait timeout
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
 
-  /orchestration/preview:
+  /api/orchestrate/preview:
     post:
       summary: Preview an orchestration plan and quote work before execution
       operationId: previewOrchestration
       tags: [Orchestration]
-      description: >
-        Generates and validates an orchestration plan, returning validated steps, per-step quotes,
-        total quote, expiry timestamp, and any planner-provider usage. Makes zero premium agent
-        calls or settlement attempts.
       requestBody:
         required: true
         content:
@@ -151,38 +380,19 @@ paths:
           content:
             application/json:
               schema:
-                type: object
-                properties:
-                  planId:
-                    type: string
-                  task:
-                    type: string
-                  budget:
-                    type: number
-                  plan:
-                    type: string
-                  steps:
-                    type: array
-                    items:
-                      type: object
-                  totalQuote:
-                    type: string
-                  expiresAt:
-                    type: string
-                  usage:
-                    type: object
+                $ref: '#/components/schemas/OrchestrationPreview'
         '400':
           description: Validation error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ValidationErrorResponse'
 
-  /orchestration/execute:
+  /api/orchestrate/execute:
     post:
       summary: Execute a previously previewed orchestration plan
       operationId: executeOrchestrationPlan
       tags: [Orchestration]
-      description: >
-        Executes a stored plan by planId, validating the plan and current pricing against the
-        accepted quote. Returns QUOTE_EXPIRED or QUOTE_CHANGED error if expired or if pricing
-        changed.
       requestBody:
         required: true
         content:
@@ -193,7 +403,6 @@ paths:
               properties:
                 planId:
                   type: string
-                  description: Plan identifier returned from /orchestration/preview
                 mode:
                   type: string
                   enum: [sync, async]
@@ -208,58 +417,34 @@ paths:
               schema:
                 $ref: '#/components/schemas/OrchestrationResult'
         '400':
-          description:
-            Quote expired (QUOTE_EXPIRED), price changed (QUOTE_CHANGED), or validation error
-        '404':
-          description: Plan not found (PLAN_NOT_FOUND)
-
-  /orchestration/{runId}/status:
-    get:
-      summary: Get orchestration run status
-      operationId: getOrchestrationStatus
-      tags: [Orchestration]
-      parameters:
-        - name: runId
-          in: path
-          required: true
-          schema:
-            type: string
-      responses:
-        '200':
-          description: Run status
+          description: Quote expired, price changed, or validation error
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/OrchestrationStatus'
-
-  /runs/{runId}:
-    get:
-      summary: Get run detail
-      operationId: getRunDetail
-      tags: [Orchestration]
-      description: >
-        Retrieve the full detail of a run, including its current status, output (when completed),
-        and error information (when failed). This is the endpoint referred to by the Location header
-        in 202 responses.
-      parameters:
-        - name: runId
-          in: path
-          required: true
-          schema:
-            type: string
-      responses:
-        '200':
-          description: Run detail
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          description: Plan not found
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/RunDetail'
-        '404':
-          description: Run not found
+                $ref: '#/components/schemas/ErrorResponse'
 
-  /runs:
+  /api/orchestrate/queue:
     get:
-      summary: List recent runs
+      summary: Inspect orchestration admission queue state
+      operationId: getOrchestrationQueue
+      tags: [Orchestration]
+      responses:
+        '200':
+          description: Admission queue state
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/QueueState'
+
+  /api/runs:
+    get:
+      summary: List recent orchestration runs
       operationId: listRuns
       tags: [Orchestration]
       parameters:
@@ -275,78 +460,385 @@ paths:
           content:
             application/json:
               schema:
-                type: object
-                properties:
-                  count:
-                    type: integer
-                  runs:
-                    type: array
-                    items:
-                      $ref: '#/components/schemas/RunDetail'
+                $ref: '#/components/schemas/RunListResponse'
 
-  /budget:
+  /api/runs/{id}:
     get:
-      summary: Get budget information
-      operationId: getBudget
-      tags: [Budget]
+      summary: Get run detail by ID
+      operationId: getRunDetail
+      tags: [Orchestration]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
       responses:
         '200':
-          description: Budget details
+          description: Full run detail
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/Budget'
-
-  /wallet:
-    get:
-      summary: Get wallet status
-      operationId: getWallet
-      tags: [Wallet]
-      responses:
-        '200':
-          description: Wallet details
-
-  /health:
-    get:
-      summary: Health check
-      operationId: healthCheck
-      tags: [System]
-      responses:
-        '200':
-          description: System healthy
+                $ref: '#/components/schemas/RunDetail'
+        '404':
+          description: Run not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
 
 components:
   schemas:
+    HealthStatus:
+      type: object
+      required: [status, uptime, timestamp]
+      properties:
+        status:
+          type: string
+          enum: [ok]
+        uptime:
+          type: number
+        timestamp:
+          type: string
+
+    ReadinessStatus:
+      type: object
+      required: [status, ready, timestamp, components]
+      properties:
+        status:
+          type: string
+          enum: [ready, not_ready]
+        ready:
+          type: boolean
+        timestamp:
+          type: string
+        components:
+          type: object
+          required: [app, anthropic, x402]
+          properties:
+            app:
+              type: object
+              required: [ready, description]
+              properties:
+                ready:
+                  type: boolean
+                description:
+                  type: string
+            anthropic:
+              type: object
+              required: [configured, ready, description]
+              properties:
+                configured:
+                  type: boolean
+                ready:
+                  type: boolean
+                description:
+                  type: string
+            x402:
+              type: object
+              required: [enabled, ready, description]
+              properties:
+                enabled:
+                  type: boolean
+                ready:
+                  type: boolean
+                description:
+                  type: string
+
+    PricingEntry:
+      type: object
+      required: [endpoint, price, agent, description, emoji]
+      properties:
+        endpoint:
+          type: string
+        price:
+          type: string
+        agent:
+          type: string
+        description:
+          type: string
+        emoji:
+          type: string
+
+    QueueState:
+      type: object
+      required:
+        - active
+        - queued
+        - maxConcurrent
+        - queueCapacity
+        - queueTimeoutMs
+        - multiReplicaCoordination
+        - note
+      properties:
+        active:
+          type: integer
+        queued:
+          type: integer
+        maxConcurrent:
+          type: integer
+        queueCapacity:
+          type: integer
+        queueTimeoutMs:
+          type: integer
+        multiReplicaCoordination:
+          type: boolean
+        note:
+          type: string
+        retryAfterDefaultSec:
+          type: integer
+
+    SystemStatus:
+      type: object
+      required:
+        - name
+        - version
+        - description
+        - status
+        - network
+        - facilitator
+        - agents
+        - x402
+        - wallets
+        - claudeEnabled
+        - orchestrationQueue
+        - runHistory
+      properties:
+        name:
+          type: string
+        version:
+          type: string
+        description:
+          type: string
+        status:
+          type: string
+          enum: [online]
+        network:
+          type: string
+        facilitator:
+          type: string
+        agents:
+          type: integer
+        x402:
+          type: object
+          required: [enabled, middleware, client, premiumEndpoints, pricing, flow]
+          properties:
+            enabled:
+              type: boolean
+            middleware:
+              type: string
+            client:
+              type: string
+            premiumEndpoints:
+              type: array
+              items:
+                type: string
+            pricing:
+              type: array
+              minItems: 1
+              items:
+                $ref: '#/components/schemas/PricingEntry'
+            flow:
+              type: string
+        wallets:
+          type: object
+          required: [server, orchestrator, buyer]
+          properties:
+            server:
+              type: string
+            orchestrator:
+              type: string
+            buyer:
+              type: string
+        claudeEnabled:
+          type: boolean
+        orchestrationQueue:
+          $ref: '#/components/schemas/QueueState'
+        runHistory:
+          type: object
+          required: [storage, file, maxRuns]
+          properties:
+            storage:
+              type: string
+            file:
+              type: string
+              nullable: true
+            maxRuns:
+              type: integer
+
     Agent:
       type: object
+      required:
+        - id
+        - name
+        - endpoint
+        - price
+        - currency
+        - model
+        - capability
+        - description
+        - status
       properties:
         id:
           type: string
         name:
           type: string
-        provider:
+        endpoint:
+          type: string
+        price:
+          type: string
+        currency:
           type: string
         model:
+          type: string
+        capability:
+          type: string
+        description:
           type: string
         status:
           type: string
-          enum: [active, inactive, error]
-        createdAt:
-          type: string
-          format: date-time
+          enum: [online, active, inactive, error]
 
-    AgentInput:
+    PremiumResearchResponse:
       type: object
-      required: [name, provider, model]
+      required: [agent, topic, result, model, cost, paidVia]
       properties:
-        name:
+        agent:
           type: string
-        provider:
+          enum: [research-bot]
+        topic:
+          type: string
+        result:
           type: string
         model:
           type: string
-        config:
+        cost:
+          type: string
+        paidVia:
+          type: string
+          enum: [x402]
+
+    PremiumSummarizeResponse:
+      type: object
+      required: [agent, result, model, cost, paidVia]
+      properties:
+        agent:
+          type: string
+          enum: [summary-bot]
+        result:
+          type: string
+        model:
+          type: string
+        cost:
+          type: string
+        paidVia:
+          type: string
+          enum: [x402]
+
+    PremiumAnalyzeResponse:
+      type: object
+      required: [agent, topic, result, model, cost, paidVia]
+      properties:
+        agent:
+          type: string
+          enum: [analyst-bot]
+        topic:
+          type: string
+        result:
+          type: string
+        model:
+          type: string
+        cost:
+          type: string
+        paidVia:
+          type: string
+          enum: [x402]
+
+    PremiumCodeResponse:
+      type: object
+      required: [agent, prompt, result, model, cost, paidVia]
+      properties:
+        agent:
+          type: string
+          enum: [code-bot]
+        prompt:
+          type: string
+        result:
+          type: string
+        model:
+          type: string
+        cost:
+          type: string
+        paidVia:
+          type: string
+          enum: [x402]
+
+    PaymentRequiredResponse:
+      type: object
+      required: [error]
+      properties:
+        error:
+          type: string
+        message:
+          type: string
+        price:
+          type: string
+        asset:
+          type: string
+        network:
+          type: string
+
+    ValidationErrorDetail:
+      type: object
+      required: [field, reason]
+      properties:
+        field:
+          type: string
+        reason:
+          type: string
+        code:
+          type: string
+        received: {}
+
+    ValidationErrorResponse:
+      type: object
+      required: [code, message, requestId, details]
+      properties:
+        code:
+          type: string
+          enum: [INVALID_INPUT, INVALID_API_KEY, INVALID_LIMIT, INVALID_DIRECTION, INVALID_CURSOR]
+        message:
+          type: string
+        requestId:
+          type: string
+        details:
+          type: array
+          minItems: 1
+          items:
+            $ref: '#/components/schemas/ValidationErrorDetail'
+        stack:
+          type: string
+
+    ErrorResponse:
+      type: object
+      required: [code, message, requestId]
+      properties:
+        code:
+          type: string
+        message:
+          type: string
+        requestId:
+          type: string
+        retryAfter:
+          type: integer
+        state:
           type: object
+        details:
+          type: array
+          items:
+            type: object
+        stack:
+          type: string
 
     OrchestrationInput:
       type: object
@@ -354,206 +846,348 @@ components:
       properties:
         task:
           type: string
-          description: The task description for the orchestrator to plan and execute
         budget:
           type: number
-          description: Maximum USDC budget for this orchestration run
         mode:
           type: string
           enum: [sync, async]
           default: sync
-          description: Submission mode. "async" returns 202 immediately.
         idempotencyKey:
           type: string
           maxLength: 256
-          description: >
-            Optional idempotency key (alternative to the Idempotency-Key header). Prevents duplicate
-            runs when the same key is used.
 
-    OrchestrationStatus:
+    SettledAssetTotal:
       type: object
+      required: [asset, amount, count, txCount]
       properties:
-        runId:
+        asset:
           type: string
-        status:
+        issuer:
           type: string
-          enum: [pending, running, completed, failed]
-        progress:
-          type: number
-        result:
+          nullable: true
+        network:
+          type: string
+          nullable: true
+        amount:
+          type: string
+        amountExact:
           type: object
+        count:
+          type: integer
+        txCount:
+          type: integer
+
+    OrchestrationStepResult:
+      type: object
+      required: [agentId]
+      properties:
+        agentId:
+          type: string
+        stepId:
+          type: string
+        agentName:
+          type: string
+        model:
+          type: string
+        input:
+          type: string
+        output:
+          type: string
+        skipped:
+          type: boolean
+        reason:
+          type: string
+        cost:
+          type: string
+        currency:
+          type: string
+        quotedAmount:
+          type: string
+        quotedAsset:
+          type: string
+        settledAmount:
+          type: string
+          nullable: true
+        settledAsset:
+          type: string
+          nullable: true
+        settledIssuer:
+          type: string
+          nullable: true
+        settledNetwork:
+          type: string
+          nullable: true
+        settlement:
+          type: object
+          nullable: true
+        paidVia:
+          type: string
+        paymentSuccess:
+          type: boolean
+        txHash:
+          type: string
+          nullable: true
+        explorerUrl:
+          type: string
+          nullable: true
 
     OrchestrationResult:
       type: object
+      required:
+        - runId
+        - task
+        - plan
+        - budget
+        - totalSpent
+        - quotedTotal
+        - settledTotals
+        - settledSummary
+        - budgetExhausted
+        - agentsUsed
+        - agentsSkipped
+        - paymentProtocol
+        - results
+        - payments
+        - txCount
+        - elapsed
       properties:
         runId:
           type: string
         task:
           type: string
         plan:
+          type: string
+        budget:
+          type: number
+        budgetExact:
           type: object
+        totalSpent:
+          type: string
+        totalSpentExact:
+          type: object
+        quotedTotal:
+          type: string
+        quotedTotalExact:
+          type: object
+        settledTotals:
+          type: array
+          items:
+            $ref: '#/components/schemas/SettledAssetTotal'
+        settledSummary:
+          type: string
+        settledPaymentCount:
+          type: integer
+        settlementConversionPolicy:
+          type: object
+          required: [applied, reason]
+          properties:
+            applied:
+              type: boolean
+            reason:
+              type: string
+        budgetExhausted:
+          type: boolean
+        agentsUsed:
+          type: integer
+        agentsSkipped:
+          type: integer
+        paymentProtocol:
+          type: string
+        x402PaymentCount:
+          type: integer
+        xlmFallbackCount:
+          type: integer
+        unpaidCount:
+          type: integer
+        x402Configured:
+          type: boolean
+        x402WalletReady:
+          type: boolean
+          nullable: true
+        x402WalletHint:
+          type: string
+          nullable: true
         results:
           type: array
           items:
+            $ref: '#/components/schemas/OrchestrationStepResult'
+        payments:
+          type: array
+          items:
             type: object
-        totalPaid:
-          type: string
-        totalCost:
-          type: string
+        txCount:
+          type: integer
         elapsed:
           type: string
+        usage:
+          type: object
+        paymentAttempts:
+          type: array
+          items:
+            type: object
+        paymentAttemptSummary:
+          type: object
+        pendingPaymentCount:
+          type: integer
+
+    OrchestrationPreview:
+      type: object
+      required: [planId, task, budget, plan, steps, totalQuote, expiresAt, usage]
+      properties:
+        planId:
+          type: string
+        task:
+          type: string
+        budget:
+          type: number
+        budgetExact:
+          type: object
+        plan:
+          type: string
+        steps:
+          type: array
+          items:
+            type: object
+            required: [agentId, agentName, model, input, quote, currency]
+            properties:
+              agentId:
+                type: string
+              agentName:
+                type: string
+              model:
+                type: string
+              input:
+                type: string
+              quote:
+                type: string
+              quoteExact:
+                type: object
+              currency:
+                type: string
+        totalQuote:
+          type: string
+        totalQuoteExact:
+          type: object
+        expiresAt:
+          type: string
+        usage:
+          type: object
 
     RunAccepted:
       type: object
-      description: Returned with HTTP 202 when async mode is used
+      required: [runId, status, url, runUrl, task, budget, createdAt, mode]
       properties:
         runId:
           type: string
-          description: Unique run identifier
         status:
           type: string
-          enum: [running]
+          enum: [running, completed, failed, interrupted]
         url:
           type: string
-          description: URL to poll for run status and results
         runUrl:
           type: string
-          description: Alias for url (backward compatibility)
         task:
           type: string
         budget:
           type: number
         createdAt:
           type: string
-          format: date-time
         mode:
           type: string
           enum: [async]
+        idempotent:
+          type: boolean
 
     RunDetail:
       type: object
-      description: |
-        Full run record including status, output, and error information.
-        - running: `output` is `null` and `outputAvailable` is `false`
-        - failed: `output` is `null`, `outputAvailable` is `false`, and `error` holds the failure data
-        - completed: `output` contains the persisted orchestration results and `outputAvailable` is `true`
-        - legacy records without persisted output: `output` remains `null` and `outputAvailable` is `false`
+      required:
+        - id
+        - runId
+        - status
+        - task
+        - budget
+        - createdAt
+        - updatedAt
+        - outputAvailable
+        - results
+        - txProofs
+        - events
       properties:
+        id:
+          type: string
         runId:
           type: string
         status:
           type: string
-          enum: [running, completed, failed]
+          enum: [running, completed, failed, interrupted]
         task:
           type: string
         budget:
           type: number
+        source:
+          type: string
         createdAt:
           type: string
-          format: date-time
         updatedAt:
           type: string
-          format: date-time
         completedAt:
           type: string
-          format: date-time
+          nullable: true
+        interruptedAt:
+          type: string
+          nullable: true
+        interruptedReason:
+          type: string
+          nullable: true
+        plan:
+          type: string
           nullable: true
         outputAvailable:
           type: boolean
-          description: true only when the final output has been persisted and is safe to read
         output:
           type: array
           items:
             type: object
           nullable: true
-          description:
-            Persisted orchestration results. Null while running, after failures, or for legacy
-            records without stored output.
+        results:
+          type: array
+          items:
+            type: object
         error:
           type: object
           nullable: true
-          description: Error details (null unless run failed)
           properties:
             message:
               type: string
             code:
               type: string
-        quotedTotal:
-          type: string
-          description:
-            Quoted/reserved cost the budget guardrail admitted (USDC). Not a settled total.
-        settledTotals:
-          type: array
-          description: |
-            Settled amounts grouped per asset (asset, issuer, network). Amounts of
-            different assets are never added together; there is no USDC/XLM
-            conversion policy in this deployment.
-          items:
-            type: object
-            properties:
-              asset:
-                type: string
-              issuer:
-                type: string
-                nullable: true
-              network:
-                type: string
-                nullable: true
-              amount:
-                type: string
-              count:
-                type: integer
-              txCount:
-                type: integer
-        txProofs:
-          type: array
-          description: Settled transaction proofs, including the actual settled asset and amount.
-          items:
-            type: object
-            properties:
-              method:
-                type: string
-              txHash:
-                type: string
-                nullable: true
-              explorerUrl:
-                type: string
-                nullable: true
-              asset:
-                type: string
-                nullable: true
-                description: Settled asset code (USDC for x402, XLM for the direct fallback)
-              issuer:
-                type: string
-                nullable: true
-              network:
-                type: string
-                nullable: true
-              amount:
-                type: string
-                nullable: true
-              quotedAmount:
-                type: string
-                nullable: true
         summary:
           type: object
           nullable: true
+        usage:
+          type: object
+          nullable: true
+        txProofs:
+          type: array
+          items:
+            type: object
         events:
           type: array
           items:
             type: object
 
-    Budget:
+    RunListResponse:
       type: object
+      required: [storage, count, runs]
       properties:
-        total:
-          type: number
-        spent:
-          type: number
-        remaining:
-          type: number
-        currency:
+        storage:
           type: string
-
-# Generated for Stellar Wave bounty #36
-
+        file:
+          type: string
+          nullable: true
+        count:
+          type: integer
+        runs:
+          type: array
+          items:
+            $ref: '#/components/schemas/RunDetail'

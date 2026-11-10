@@ -206,6 +206,15 @@ curl -s http://localhost:3001/api/status | jq
     "buyer": "GA987654..."
   },
   "claudeEnabled": true,
+  "orchestrationQueue": {
+    "active": 0,
+    "queued": 0,
+    "maxConcurrent": 2,
+    "queueCapacity": 10,
+    "queueTimeoutMs": 30000,
+    "multiReplicaCoordination": false,
+    "note": "In-process admission queue bounds concurrency on this node; no cross-node distributed coordination."
+  },
   "runHistory": {
     "storage": "file",
     "file": "./data/run-history.json",
@@ -337,11 +346,9 @@ curl -s http://localhost:3001/api/agents/analyst-bot | jq
 
 ```json
 {
-  "error": {
-    "status": 404,
-    "code": "NOT_FOUND",
-    "message": "Agent not found"
-  }
+  "code": "NOT_FOUND",
+  "message": "Agent not found",
+  "requestId": "6a8e1102-3d12-4989-9a0b-1029384756ab"
 }
 ```
 
@@ -969,28 +976,68 @@ curl -s "http://localhost:3001/api/runs?limit=5" | jq
   "runs": [
     {
       "id": "run_1722345600000_abc123",
+      "runId": "run_1722345600000_abc123",
       "task": "Explain why x402 on Stellar matters for AI agents.",
       "budget": 0.15,
-      "totalSpent": "0.1000",
       "status": "completed",
-      "agentCount": 4,
       "source": "POST /api/orchestrate",
       "createdAt": "2026-07-30T12:00:00.000Z",
+      "updatedAt": "2026-07-30T12:00:12.453Z",
       "completedAt": "2026-07-30T12:00:12.453Z",
+      "outputAvailable": true,
       "plan": "Multi-agent workflow: research-bot → summary-bot → analyst-bot → code-bot",
+      "results": [
+        {
+          "agentId": "research-bot",
+          "output": "Research findings on x402..."
+        }
+      ],
+      "output": [
+        {
+          "agentId": "research-bot",
+          "output": "Research findings on x402..."
+        }
+      ],
+      "error": null,
+      "summary": {
+        "totalSpent": "0.1000",
+        "quotedTotal": "0.1000"
+      },
+      "usage": null,
+      "txProofs": [],
       "events": []
     },
     {
       "id": "run_1722345600000_def456",
+      "runId": "run_1722345600000_def456",
       "task": "Summarize the benefits of x402",
       "budget": 0.1,
-      "totalSpent": "0.0200",
       "status": "completed",
-      "agentCount": 2,
       "source": "GET /api/orchestrate",
       "createdAt": "2026-07-30T11:55:00.000Z",
+      "updatedAt": "2026-07-30T11:55:08.210Z",
       "completedAt": "2026-07-30T11:55:08.210Z",
+      "outputAvailable": true,
       "plan": "Multi-agent workflow: research-bot → summary-bot",
+      "results": [
+        {
+          "agentId": "summary-bot",
+          "output": "Summary of x402 benefits..."
+        }
+      ],
+      "output": [
+        {
+          "agentId": "summary-bot",
+          "output": "Summary of x402 benefits..."
+        }
+      ],
+      "error": null,
+      "summary": {
+        "totalSpent": "0.0200",
+        "quotedTotal": "0.0200"
+      },
+      "usage": null,
+      "txProofs": [],
       "events": []
     }
   ]
@@ -1180,11 +1227,9 @@ curl -s -X POST http://localhost:3001/api/config/apikey \
 
 ```json
 {
-  "error": {
-    "status": 400,
-    "code": "INVALID_API_KEY",
-    "message": "Invalid API key. Must start with sk-ant-"
-  }
+  "code": "INVALID_API_KEY",
+  "message": "Invalid API key. Must start with sk-ant-",
+  "requestId": "c01d2345-6789-4abc-def0-1234567890ab"
 }
 ```
 
@@ -1196,18 +1241,16 @@ All errors follow a consistent structure:
 
 ```json
 {
-  "error": {
-    "status": 400,
-    "code": "INVALID_INPUT",
-    "message": "Invalid request query parameters",
-    "details": [
-      {
-        "field": "topic",
-        "reason": "Must be no more than 500 characters",
-        "received": "..."
-      }
-    ]
-  }
+  "code": "INVALID_INPUT",
+  "message": "Invalid request query parameters",
+  "requestId": "4f8a92c1-9012-4def-8123-abcdef012345",
+  "details": [
+    {
+      "field": "topic",
+      "reason": "Must be no more than 500 characters",
+      "received": "..."
+    }
+  ]
 }
 ```
 
