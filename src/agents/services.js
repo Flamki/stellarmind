@@ -3,7 +3,9 @@ import { config } from '../config.js'
 import { usageFromMessage, unavailableUsage } from './usage.js'
 import { normalizeContent } from './response-normalization.js'
 
-export let anthropic = new Anthropic({ apiKey: config.anthropicApiKey })
+// Disable SDK-level retries so the application retry loop in createAnthropicMessage
+// is the single source of truth for retry budget and timeout enforcement (#149).
+export let anthropic = new Anthropic({ apiKey: config.anthropicApiKey, maxRetries: 0 })
 
 // Track whether Claude API is available
 let claudeAvailable = true
@@ -29,32 +31,103 @@ export const MODEL_LABELS = {
  * Security: Key is stored in memory only, never logged or persisted.
  */
 export function setApiKey(newKey) {
-  anthropic = new Anthropic({ apiKey: newKey })
+  anthropic = new Anthropic({ apiKey: newKey, maxRetries: 0 })
   config.anthropicApiKey = newKey
   claudeAvailable = true
   // Security: Never log the actual key, only confirm it was set
   console.log('  🔑 Anthropic API key updated at runtime (ephemeral, session-only)')
 }
 
-function sleep(ms) {
-  return new Promise((resolve) => setTimeout(resolve, ms))
+function createAbortError(message = 'Anthropic request aborted') {
+  const err = new Error(message)
+  err.code = 'REQUEST_ABORTED'
+  err.name = 'AbortError'
+  return err
 }
 
-function withTimeout(promise, timeoutMs) {
-  return Promise.race([
-    promise,
-    new Promise((_, reject) => {
-      setTimeout(() => {
-        const err = new Error(`Anthropic request timed out after ${timeoutMs}ms`)
-        err.code = 'ANTHROPIC_TIMEOUT'
-        err.status = 408
-        reject(err)
-      }, timeoutMs)
-    }),
-  ])
+function createTimeoutError(timeoutMs) {
+  const err = new Error(`Anthropic request timed out after ${timeoutMs}ms`)
+  err.code = 'ANTHROPIC_TIMEOUT'
+  err.status = 408
+  return err
+}
+
+export function abortableSleep(ms, signal) {
+  if (signal?.aborted) {
+    return Promise.reject(createAbortError())
+  }
+  return new Promise((resolve, reject) => {
+    let timerId = null
+    const onAbort = () => {
+      if (timerId !== null) {
+        clearTimeout(timerId)
+        timerId = null
+      }
+      reject(createAbortError())
+    }
+    if (signal) {
+      signal.addEventListener('abort', onAbort, { once: true })
+    }
+    timerId = setTimeout(() => {
+      timerId = null
+      if (signal) {
+        signal.removeEventListener('abort', onAbort)
+      }
+      resolve()
+    }, ms)
+  })
+}
+
+export async function runAttemptWithDeadline(attemptFn, timeoutMs, parentSignal) {
+  if (parentSignal?.aborted) {
+    throw createAbortError()
+  }
+
+  const attemptController = new AbortController()
+  let timerId = null
+  let timedOut = false
+
+  const onParentAbort = () => {
+    attemptController.abort(createAbortError())
+  }
+
+  if (parentSignal) {
+    parentSignal.addEventListener('abort', onParentAbort, { once: true })
+  }
+
+  const timeoutPromise = new Promise((_, reject) => {
+    timerId = setTimeout(() => {
+      timerId = null
+      timedOut = true
+      const timeoutErr = createTimeoutError(timeoutMs)
+      attemptController.abort(timeoutErr)
+      reject(timeoutErr)
+    }, timeoutMs)
+  })
+
+  try {
+    return await Promise.race([attemptFn(attemptController.signal), timeoutPromise])
+  } catch (err) {
+    if (parentSignal?.aborted && !timedOut) {
+      throw createAbortError()
+    }
+    if (timedOut && err?.code !== 'ANTHROPIC_TIMEOUT') {
+      throw createTimeoutError(timeoutMs)
+    }
+    throw err
+  } finally {
+    if (timerId !== null) {
+      clearTimeout(timerId)
+      timerId = null
+    }
+    if (parentSignal) {
+      parentSignal.removeEventListener('abort', onParentAbort)
+    }
+  }
 }
 
 function isTransientAnthropicError(err) {
+  if (err?.code === 'REQUEST_ABORTED' || err?.name === 'AbortError') return false
   const status = err?.status
   if ([408, 409, 429, 500, 502, 503, 504].includes(status)) return true
 
@@ -81,13 +154,45 @@ export async function createAnthropicMessage(payload, options = {}) {
   const timeoutMs = options.timeoutMs ?? config.anthropicRequestTimeoutMs
   const maxRetries = options.maxRetries ?? config.anthropicMaxRetries
   const baseDelayMs = options.baseDelayMs ?? config.anthropicRetryBaseDelayMs
+  const overallTimeoutMs = options.overallTimeoutMs ?? options.deadlineMs ?? null
+  const signal = options.signal
   const onRetryAttempt = options.onRetryAttempt
+  const nowFn = options.now ?? Date.now
+  const createFn =
+    typeof options.createFn === 'function'
+      ? options.createFn
+      : (reqPayload, reqOptions) => anthropic.messages.create(reqPayload, reqOptions)
+
+  const startedAt = nowFn()
+  const overallDeadline =
+    Number.isFinite(overallTimeoutMs) && overallTimeoutMs > 0 ? startedAt + overallTimeoutMs : null
 
   let attempt = 0
   while (true) {
+    if (signal?.aborted) {
+      throw createAbortError()
+    }
+
+    let attemptTimeoutMs = timeoutMs
+    if (overallDeadline !== null) {
+      const remainingMs = overallDeadline - nowFn()
+      if (remainingMs <= 0) {
+        throw createTimeoutError(overallTimeoutMs)
+      }
+      attemptTimeoutMs = Math.min(timeoutMs, remainingMs)
+    }
+
     try {
-      return await withTimeout(anthropic.messages.create(payload), timeoutMs)
+      return await runAttemptWithDeadline(
+        (attemptSignal) => createFn(payload, { signal: attemptSignal, maxRetries: 0 }),
+        attemptTimeoutMs,
+        signal
+      )
     } catch (err) {
+      if (signal?.aborted || err?.code === 'REQUEST_ABORTED') {
+        throw createAbortError()
+      }
+
       const transient = isTransientAnthropicError(err)
       if (!transient) {
         const fastFail = new Error(
@@ -111,6 +216,20 @@ export async function createAnthropicMessage(payload, options = {}) {
 
       const nextAttempt = attempt + 1
       const delayMs = baseDelayMs * 2 ** attempt
+
+      if (overallDeadline !== null) {
+        const remainingBeforeSleep = overallDeadline - nowFn()
+        if (remainingBeforeSleep <= delayMs) {
+          const deadlineErr = new Error(
+            `Anthropic API retry delay (${delayMs}ms) exceeds remaining overall deadline (${Math.max(0, remainingBeforeSleep)}ms)`
+          )
+          deadlineErr.code = 'ANTHROPIC_TIMEOUT'
+          deadlineErr.status = 408
+          deadlineErr.cause = err
+          throw deadlineErr
+        }
+      }
+
       console.warn(
         `Anthropic transient error, retrying attempt ${nextAttempt}/${maxRetries} in ${delayMs}ms: ${err.message}`
       )
@@ -121,7 +240,7 @@ export async function createAnthropicMessage(payload, options = {}) {
         status: err?.status || null,
         error: err?.message || 'unknown error',
       })
-      await sleep(delayMs)
+      await abortableSleep(delayMs, signal)
       attempt += 1
     }
   }
@@ -220,6 +339,12 @@ async function callClaude(model, maxTokens, prompt, fallbackFn, fallbackInput, o
       },
       {
         onRetryAttempt: options.onRetryAttempt,
+        signal: options.signal,
+        timeoutMs: options.timeoutMs,
+        maxRetries: options.maxRetries,
+        baseDelayMs: options.baseDelayMs,
+        overallTimeoutMs: options.overallTimeoutMs,
+        createFn: options.createFn,
       }
     )
     claudeAvailable = true
