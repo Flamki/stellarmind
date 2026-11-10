@@ -23,6 +23,7 @@ function startLiveRun(task, budget) {
     completed: 0,
     spent: 0,
     running: true,
+    failed: false,
     startedAgents: new Set(),
     completedAgents: new Set(),
     heartbeatTimer: null,
@@ -36,6 +37,14 @@ function startLiveRun(task, budget) {
     `Working on: "${task}". Live updates will appear below as each agent responds.`
   document.getElementById('result-live').innerHTML = ''
   document.getElementById('result-out').textContent = 'Starting orchestrator...'
+  document.getElementById('result-chips').innerHTML = ''
+
+  const progressFill = document.getElementById('progress-fill')
+  const progressPercent = document.getElementById('progress-percent')
+  const progressLabel = document.getElementById('progress-label')
+  if (progressFill) progressFill.style.width = '0%'
+  if (progressPercent) progressPercent.textContent = '0%'
+  if (progressLabel) progressLabel.textContent = 'Starting...'
 
   pushLiveLine('Orchestrator started')
 
@@ -137,23 +146,30 @@ async function runOrchestration() {
   startLiveRun(task, budget)
 
   try {
-    const r = await (
-      await fetch('/api/orchestrate', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ task, budget }),
-      })
-    ).json()
+    const r = await requestJson('/api/orchestrate', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ task, budget }),
+    })
 
     showResult(r)
     loadWallets()
   } catch (e) {
-    addFeed({ type: 'error', message: e.message })
-    if (activeRun) activeRun.running = false
-    stopRunHeartbeat()
-    setResultTag('Error', 'amber')
-    document.getElementById('result-status-line').textContent = `Run failed: ${e.message}`
-    renderLiveChips(activeRun)
+    const corr = e.correlationId || e.requestId
+    addFeed({
+      type: 'error',
+      message: corr ? `${e.message} (ID: ${corr})` : e.message,
+      correlationId: corr || null,
+    })
+    if (typeof showOrchestrationError === 'function') {
+      showOrchestrationError(e)
+    } else {
+      if (activeRun) activeRun.running = false
+      stopRunHeartbeat()
+      setResultTag('Error', 'amber')
+      document.getElementById('result-status-line').textContent = `Run failed: ${e.message}`
+      renderLiveChips(activeRun)
+    }
   } finally {
     isRunning = false
     btn.disabled = false

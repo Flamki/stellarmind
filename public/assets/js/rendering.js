@@ -1,7 +1,173 @@
 /**
  * Rendering Module
- * Handles result display and progress rendering
+ * Handles result display, shared HTTP JSON parsing, and error/progress rendering
  */
+
+function defaultHttpStatusMessage(status) {
+  if (status === 400 || status === 422) return 'Invalid request parameters.'
+  if (status === 401 || status === 403) return 'Authentication or authorization failed.'
+  if (status === 404) return 'Requested resource was not found.'
+  if (status === 429) return 'Too many requests. Please wait before retrying.'
+  if (status >= 500) return 'Server encountered an internal error. Please try again.'
+  return `Request failed with HTTP ${status}.`
+}
+
+async function requestJson(url, options = {}) {
+  let response
+  try {
+    response = await fetch(url, options)
+  } catch (networkErr) {
+    const err = new Error(
+      `Connection failed or was interrupted while contacting ${url}: ${networkErr?.message || 'network error'}`
+    )
+    err.status = 0
+    err.code = 'NETWORK_ERROR'
+    err.correlationId = null
+    err.requestId = null
+    err.retryable = true
+    err.isHttpError = true
+    throw err
+  }
+
+  const headerCorrelationId =
+    response?.headers?.get?.('x-correlation-id') || response?.headers?.get?.('x-request-id') || null
+  const retryAfterHeader = response?.headers?.get?.('retry-after') || null
+
+  let parsed = null
+  let parseFailed = false
+
+  if (typeof response.text === 'function') {
+    try {
+      const rawText = await response.text()
+      if (rawText && rawText.trim().length > 0) {
+        parsed = JSON.parse(rawText)
+      } else {
+        parseFailed = true
+      }
+    } catch {
+      parseFailed = true
+    }
+  } else if (typeof response.json === 'function') {
+    try {
+      parsed = await response.json()
+    } catch {
+      parseFailed = true
+    }
+  } else {
+    parseFailed = true
+  }
+
+  if (!response.ok) {
+    const status = Number(response.status) || 500
+    const correlationId = parsed?.requestId || parsed?.correlationId || headerCorrelationId || null
+    const code =
+      parsed?.code ||
+      parsed?.errorType ||
+      (status === 429 ? 'RATE_LIMITED' : status === 400 ? 'VALIDATION_ERROR' : `HTTP_${status}`)
+    const retryAfter =
+      parsed?.retryAfter ?? (retryAfterHeader ? Number(retryAfterHeader) || retryAfterHeader : null)
+    const details = Array.isArray(parsed?.details) ? parsed.details : null
+
+    let baseMessage = parsed?.message || parsed?.error || ''
+    if (!baseMessage) {
+      baseMessage = parseFailed
+        ? `${defaultHttpStatusMessage(status)} (HTTP ${status} non-JSON response)`
+        : defaultHttpStatusMessage(status)
+    }
+
+    if (details && details.length > 0) {
+      const detailSummary = details
+        .map((d) => (d.field ? `${d.field}: ${d.message || d.reason}` : d.message || d.reason))
+        .filter(Boolean)
+        .join('; ')
+      if (detailSummary && !baseMessage.includes(detailSummary)) {
+        baseMessage = `${baseMessage} (${detailSummary})`
+      }
+    }
+
+    if (status === 429 && retryAfter !== null && !String(baseMessage).includes('Retry after')) {
+      baseMessage = `${baseMessage} (Retry after ${retryAfter}s)`
+    }
+
+    const err = new Error(baseMessage)
+    err.status = status
+    err.code = code
+    err.correlationId = correlationId
+    err.requestId = correlationId
+    err.retryAfter = retryAfter
+    err.details = details
+    err.data = parsed
+    err.retryable =
+      parsed?.retryable !== undefined ? Boolean(parsed.retryable) : status >= 500 || status === 429
+    err.isHttpError = true
+    throw err
+  }
+
+  if (parseFailed || !parsed || typeof parsed !== 'object') {
+    const err = new Error(
+      `Received an interrupted or non-JSON response from ${url} (HTTP ${response.status || 200}).`
+    )
+    err.status = Number(response.status) || 200
+    err.code = 'INVALID_JSON_RESPONSE'
+    err.correlationId = headerCorrelationId
+    err.requestId = headerCorrelationId
+    err.retryable = true
+    err.isHttpError = true
+    throw err
+  }
+
+  return parsed
+}
+
+function showOrchestrationError(err) {
+  const p = document.getElementById('result-panel')
+  const out = document.getElementById('result-out')
+  const ch = document.getElementById('result-chips')
+
+  p.classList.add('visible')
+  p.classList.remove('running')
+  setResultTag('Error', 'amber')
+  stopRunHeartbeat()
+
+  const message = err?.message || err?.error || 'Orchestration request failed.'
+  const code = err?.code || (err?.status ? `HTTP_${err.status}` : 'EXECUTION_ERROR')
+  const correlationId = err?.correlationId || err?.requestId || null
+  const corrSuffix = correlationId ? ` [Correlation ID: ${correlationId}]` : ''
+
+  document.getElementById('result-status-line').textContent = `Run failed: ${message}${corrSuffix}`
+
+  out.textContent = [
+    `ERROR (${code})`,
+    message,
+    correlationId ? `Correlation ID: ${correlationId}` : null,
+  ]
+    .filter(Boolean)
+    .join('\n')
+
+  if (activeRun) {
+    activeRun.running = false
+    activeRun.failed = true
+  }
+
+  const safeCode = typeof escapeHtml === 'function' ? escapeHtml(code) : String(code)
+  const safeCorr =
+    correlationId && typeof escapeHtml === 'function' ? escapeHtml(correlationId) : correlationId
+
+  ch.innerHTML = `
+    <div class="chip">Status: <span class="v">Failed</span></div>
+    <div class="chip">Code: <span class="v">${safeCode}</span></div>
+    ${safeCorr ? `<div class="chip">Correlation ID: <span class="v">${safeCorr}</span></div>` : ''}
+  `
+
+  const progressFill = document.getElementById('progress-fill')
+  const progressPercent = document.getElementById('progress-percent')
+  const progressLabel = document.getElementById('progress-label')
+  if (progressFill) progressFill.style.width = '0%'
+  if (progressPercent) progressPercent.textContent = '0%'
+  if (progressLabel) progressLabel.textContent = `Failed · ${code}`
+
+  pushLiveLine(`Run failed: ${message}`)
+}
 
 /**
  * Per-asset settled totals for display (issue #130).
@@ -93,6 +259,17 @@ function normalizeFinalAnswer(text) {
 }
 
 function showResult(r) {
+  if (
+    !r ||
+    typeof r !== 'object' ||
+    r.isHttpError ||
+    (r.error && !Array.isArray(r.results)) ||
+    (r.code && r.message && !Array.isArray(r.results))
+  ) {
+    showOrchestrationError(r || new Error('Empty orchestration response'))
+    return
+  }
+
   const p = document.getElementById('result-panel')
   const out = document.getElementById('result-out')
   const ch = document.getElementById('result-chips')
@@ -165,19 +342,16 @@ async function openRunDetail(runId) {
   errorEl.style.display = 'none'
 
   try {
-    const res = await fetch(`/api/runs/${runId}`)
-    if (!res.ok) {
-      const d = await res.json().catch(() => ({}))
-      throw new Error(d.error || `Failed to load run ${runId}`)
-    }
-    const run = await res.json()
+    const run = await requestJson(`/api/runs/${encodeURIComponent(runId)}`)
     loading.style.display = 'none'
     content.style.display = 'block'
     renderRunDetail(run)
   } catch (err) {
     loading.style.display = 'none'
     errorEl.style.display = 'block'
-    errorEl.innerHTML = `<p style="color: var(--red);">Error: ${escapeHtml(err.message)}</p>`
+    const corr = err.correlationId || err.requestId
+    const corrHtml = corr ? ` <small>(ID: ${escapeHtml(corr)})</small>` : ''
+    errorEl.innerHTML = `<p style="color: var(--red);">Error: ${escapeHtml(err.message)}${corrHtml}</p>`
   }
 }
 

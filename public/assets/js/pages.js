@@ -5,8 +5,8 @@
 
 async function loadStatusPage() {
   try {
-    const s = await (await fetch('/api/status')).json()
-    const k = await (await fetch('/api/config/apikey')).json()
+    const s = await requestJson('/api/status')
+    const k = await requestJson('/api/config/apikey')
 
     document.getElementById('status-grid').innerHTML = `
       <div class="status-card"><div class="sc-icon">🟢</div><div class="sc-label">System Status</div><div class="sc-value">${s.status?.toUpperCase()}</div><div class="sc-sub">StellarMind v${s.version}</div></div>
@@ -67,13 +67,26 @@ async function loadStatusPage() {
         </div>
       </div>
     `
-  } catch {}
+  } catch (err) {
+    const corr = err?.correlationId || err?.requestId
+    const corrHtml = corr ? `<div class="sc-sub">Correlation ID: ${escapeHtml(corr)}</div>` : ''
+    const statusGrid = document.getElementById('status-grid')
+    if (statusGrid) {
+      statusGrid.innerHTML = `
+        <div class="status-card" style="grid-column: 1 / -1; border-color: var(--red);">
+          <div class="sc-icon">⚠️</div>
+          <div class="sc-label">Status Load Error</div>
+          <div class="sc-value" style="color: var(--red);">${escapeHtml(err?.message || 'Failed to load system status')}</div>
+          ${corrHtml}
+        </div>
+      `
+    }
+  }
 }
 
 async function loadTxPage() {
   try {
-    const response = await fetch('/api/wallet/transactions')
-    const data = await response.json()
+    const data = await requestJson('/api/wallet/transactions')
 
     // Handle error state
     if (!data.success) {
@@ -152,15 +165,24 @@ async function loadTxPage() {
       .join('')
   } catch (err) {
     console.error('Failed to load transactions:', err)
+    const corr = err?.correlationId || err?.requestId || err?.data?.correlationId
+    const errorType = err?.data?.errorType || err?.code || 'NETWORK_ERROR'
+    document.getElementById('tx-cnt').textContent = '0'
+    document.getElementById('tx-total').textContent = '0 Transactions'
     document.getElementById('tx-body').innerHTML = `
       <tr>
         <td colspan="5" style="text-align:center;padding:32px;">
           <div style="color:var(--red);margin-bottom:12px;">
-            🌐 Network error: ${err.message}
+            ${getTransactionErrorIcon(errorType)} ${escapeHtml(err.message || 'Failed to load transactions')}
           </div>
           <button onclick="loadTxPage()" style="padding:8px 16px;background:var(--accent);color:white;border:none;border-radius:4px;cursor:pointer;">
             🔄 Retry
           </button>
+          ${
+            corr
+              ? `<div style="color:var(--text-muted);font-size:12px;margin-top:8px;">Error ID: ${escapeHtml(corr)}</div>`
+              : ''
+          }
         </td>
       </tr>
     `
@@ -193,22 +215,22 @@ async function saveApiKey() {
   btn.textContent = 'Saving...'
 
   try {
-    const res = await fetch('/api/config/apikey', {
+    const d = await requestJson('/api/config/apikey', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ apiKey: key }),
     })
 
-    const d = await res.json()
     if (d.success) {
       alert('API Key updated successfully! Agents will now use your key.')
       document.getElementById('api-key-input').value = ''
       loadStatusPage()
     } else {
-      alert(`Error: ${d.error}`)
+      alert(`Error: ${d.error || d.message}`)
     }
   } catch (err) {
-    alert(`Failed to save key: ${err.message}`)
+    const corr = err?.correlationId || err?.requestId
+    alert(`Failed to save key: ${err.message}${corr ? ` (ID: ${corr})` : ''}`)
   } finally {
     btn.disabled = false
     btn.textContent = 'Update Key'
@@ -233,8 +255,7 @@ async function loadHistoryPage() {
     const limit = document.getElementById('history-limit')?.value || 20
     if (statusFilter) params.set('status', statusFilter)
     params.set('limit', limit)
-    const res = await fetch(`/api/runs?${params.toString()}`)
-    const data = await res.json()
+    const data = await requestJson(`/api/runs?${params.toString()}`)
     loadingEl.style.display = 'none'
 
     if (!data.runs || data.runs.length === 0) {
@@ -285,12 +306,18 @@ async function loadHistoryPage() {
   } catch (err) {
     loadingEl.style.display = 'none'
     emptyEl.style.display = 'block'
-    emptyEl.innerHTML = '<div class="es-icon">❌</div><p>Failed to load run history</p>'
+    const corr = err?.correlationId || err?.requestId
+    const corrHtml = corr ? ` <small>(ID: ${escapeHtml(corr)})</small>` : ''
+    emptyEl.innerHTML = `<div class="es-icon">❌</div><p>Failed to load run history: ${escapeHtml(err?.message || 'Unknown error')}${corrHtml}</p>`
   }
 }
 
 function escapeHtml(text) {
-  const div = document.createElement('div')
-  div.textContent = text
-  return div.innerHTML
+  const str = String(text ?? '')
+  return str
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;')
 }
