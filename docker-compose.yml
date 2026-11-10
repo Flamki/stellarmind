@@ -49,6 +49,8 @@ networks:
 volumes:
   redis_data:
   # Run history (/app/data/run-history.json) survives container recreation.
+  # Backup:  docker exec stellarmind node src/run-history-backup.js backup /app/data/run-history.backup.json
+  # Restore: docker exec stellarmind node src/run-history-backup.js restore /app/data/run-history.backup.json /app/data/run-history.json
   stellarmind_data:
 
 # Generated for Stellar Wave bounty #28

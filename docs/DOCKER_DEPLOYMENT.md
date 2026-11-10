@@ -271,6 +271,44 @@ docker run -d \
   stellarmind:latest
 ```
 
+### Backup, Restore, and Verification Workflow
+
+Use the built-in CLI (`src/run-history-backup.js`) to create checksum-verified backups of run
+history, verify snapshot integrity, and restore into a local directory or Docker named volume
+without risking data loss on failed restores.
+
+**Local environment:**
+
+```bash
+# 1. Create a verified snapshot (defaults to data/backups/run-history-<timestamp>.backup.json)
+npm run history:backup -- ./backups/run-history.backup.json
+
+# 2. Verify snapshot integrity, schema compatibility, run counts, and txProofs
+npm run history:verify -- ./backups/run-history.backup.json
+
+# 3. Restore into data/run-history.json (preserves any existing file as .pre-restore.<timestamp>.bak)
+npm run history:restore -- ./backups/run-history.backup.json data/run-history.json
+```
+
+**Docker / Docker Compose (`stellarmind_data` volume):**
+
+```bash
+# 1. Create a verified backup inside the container and copy it to the host
+docker exec stellarmind node src/run-history-backup.js backup /app/data/run-history.backup.json
+docker cp stellarmind:/app/data/run-history.backup.json ./run-history.backup.json
+
+# 2. Verify the backup file on the host (or inside the container)
+npm run history:verify -- ./run-history.backup.json
+
+# 3. Restore a verified backup into the container volume and restart
+docker cp ./run-history.backup.json stellarmind:/app/data/run-history.backup.json
+docker exec stellarmind node src/run-history-backup.js restore /app/data/run-history.backup.json /app/data/run-history.json
+docker-compose restart stellarmind
+```
+
+If a backup file is malformed, has an unsupported schema version, or fails its SHA-256 checksum
+check, `restore` aborts before modifying `/app/data/run-history.json`.
+
 ### Logs
 
 Map the logs directory to persist application logs:

@@ -59,19 +59,20 @@ as a real, verifiable transaction on the Stellar testnet.
 
 ### Components
 
-| Component         | File                                                                    | Responsibility                                                   |
-| ----------------- | ----------------------------------------------------------------------- | ---------------------------------------------------------------- |
-| HTTP server       | [`src/server.js`](../src/server.js)                                     | Routes, SSE hub, health checks, mounts the x402 paywall          |
-| Config            | [`src/config.js`](../src/config.js)                                     | Env-driven config (network, wallets, Anthropic, rate limits)     |
-| Pricing config    | [`src/pricing.config.js`](../src/pricing.config.js)                     | Single source of truth for premium prices; generates x402 config |
-| Pricing validator | [`src/pricing.validator.js`](../src/pricing.validator.js)               | Fails startup fast on invalid pricing                            |
-| Agent registry    | [`src/agents/registry.js`](../src/agents/registry.js)                   | Catalog of the 4 priced agents + discovery helpers               |
-| Agent services    | [`src/agents/services.js`](../src/agents/services.js)                   | Claude calls with timeout/retry, model fallback, demo fallbacks  |
-| Orchestrator      | [`src/agents/orchestrator.js`](../src/agents/orchestrator.js)           | Task planning, budget enforcement, paid agent calls              |
-| Settlement header | [`src/agents/settlement-header.js`](../src/agents/settlement-header.js) | Decodes the x402 settlement header → transaction hash            |
-| Stellar wallet    | [`src/stellar/wallet.js`](../src/stellar/wallet.js)                     | Horizon testnet balances, payments, transaction history          |
-| Middleware        | [`src/middleware/`](../src/middleware)                                  | `requestId`, centralized `errorHandler`, rate limiters           |
-| Dashboard         | [`public/index.html`](../public/index.html)                             | Browser UI; calls the API and subscribes to the SSE stream       |
+| Component         | File                                                                    | Responsibility                                                                     |
+| ----------------- | ----------------------------------------------------------------------- | ---------------------------------------------------------------------------------- |
+| HTTP server       | [`src/server.js`](../src/server.js)                                     | Routes, SSE hub, health checks, mounts the x402 paywall                            |
+| Config            | [`src/config.js`](../src/config.js)                                     | Env-driven config (network, wallets, Anthropic, rate limits)                       |
+| Pricing config    | [`src/pricing.config.js`](../src/pricing.config.js)                     | Single source of truth for premium prices; generates x402 config                   |
+| Pricing validator | [`src/pricing.validator.js`](../src/pricing.validator.js)               | Fails startup fast on invalid pricing                                              |
+| Agent registry    | [`src/agents/registry.js`](../src/agents/registry.js)                   | Catalog of the 4 priced agents + discovery helpers                                 |
+| Agent services    | [`src/agents/services.js`](../src/agents/services.js)                   | Claude calls with timeout/retry, model fallback, demo fallbacks                    |
+| Orchestrator      | [`src/agents/orchestrator.js`](../src/agents/orchestrator.js)           | Task planning, budget enforcement, paid agent calls                                |
+| Settlement header | [`src/agents/settlement-header.js`](../src/agents/settlement-header.js) | Decodes the x402 settlement header → transaction hash                              |
+| Stellar wallet    | [`src/stellar/wallet.js`](../src/stellar/wallet.js)                     | Horizon testnet balances, payments, transaction history                            |
+| Run history       | [`src/storage/run-history.js`](../src/storage/run-history.js)           | Versioned file/memory run persistence, startup recovery, verified backup & restore |
+| Middleware        | [`src/middleware/`](../src/middleware)                                  | `requestId`, centralized `errorHandler`, rate limiters                             |
+| Dashboard         | [`public/index.html`](../public/index.html)                             | Browser UI; calls the API and subscribes to the SSE stream                         |
 
 ## Request Flow
 
@@ -214,6 +215,27 @@ USDC total separately (`settledSummary`, e.g. `0.01 USDC + 0.05 XLM`) and
 Run history stores the same asset information: `summary.quotedTotal`, `summary.settledTotals`, and
 `txProofs[*].asset` / `.amount` match the API and event payloads, so the dashboard renders what was
 actually settled.
+
+### Run History Backup, Restore, and Verification (#183)
+
+`FileRunHistoryStore` ([`src/storage/run-history.js`](../src/storage/run-history.js)) and the CLI
+([`src/run-history-backup.js`](../src/run-history-backup.js)) provide an atomic, checksum-verified
+snapshot and restore workflow for durable audit history (`data/run-history.json` locally and
+`/app/data/run-history.json` in Docker):
+
+- **Backup (`npm run history:backup -- [backupPath]`)**: Flushes any pending writes, validates the
+  source file, computes a deterministic SHA-256 checksum over `{ version, runs, idempotency }`, and
+  writes an atomic snapshot containing `backupMetadata` (`checksum`, `runCount`, `statusCounts`,
+  `txProofCount`, `outputAvailableCount`).
+- **Verify (`npm run history:verify -- [filePath]`)**: Parses and validates schema compatibility,
+  run record structure, `txProofs`, and `backupMetadata.checksum` without modifying the file on
+  disk.
+- **Restore (`npm run history:restore -- <backupPath> [targetPath]`)**: Validates the backup file
+  (JSON syntax, schema version, record integrity, and SHA-256 checksum) **before** touching the
+  target store. Preserves any existing target file at `<targetPath>.pre-restore.<timestamp>.bak`,
+  atomically writes the restored history, and verifies that `FileRunHistoryStore` loads all run
+  outputs and `txProofs` cleanly. Incompatible or corrupted backups are rejected without modifying
+  the existing store.
 
 ## Orchestration Flow
 

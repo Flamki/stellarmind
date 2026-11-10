@@ -631,6 +631,369 @@ export class FileRunHistoryStore extends InMemoryRunHistoryStore {
     }
     return recoveredIds
   }
+
+  /**
+   * Flush any queued writes and create a verified backup snapshot at `backupPath`.
+   * @param {string} backupPath
+   * @returns {Promise<object>} Backup verification report
+   */
+  async createBackup(backupPath) {
+    await this.flush()
+    return backupRunHistory(this.filePath, backupPath, { store: this })
+  }
+
+  /**
+   * Verify `backupPath`, atomically restore it to `this.filePath` (preserving
+   * the existing file first by default), and reload the in-memory store state.
+   * If verification fails, `this.filePath` and in-memory state remain untouched.
+   * @param {string} backupPath
+   * @param {object} [options]
+   * @returns {Promise<object>} Restore verification report
+   */
+  async restoreFromBackup(backupPath, options = {}) {
+    await this.flush()
+    const report = await restoreRunHistory(backupPath, this.filePath, options)
+    this.runs = []
+    this.idempotencyMap.clear()
+    await this.init()
+    return report
+  }
+}
+
+const VALID_RUN_STATUSES = new Set(['running', 'completed', 'interrupted', 'failed'])
+
+/**
+ * Compute a deterministic SHA-256 checksum over the canonical run history payload.
+ */
+export function computeHistoryChecksum(
+  runs = [],
+  idempotency = [],
+  version = CURRENT_SCHEMA_VERSION
+) {
+  const canonical = JSON.stringify({
+    version,
+    runs,
+    idempotency,
+  })
+  return crypto.createHash('sha256').update(canonical, 'utf8').digest('hex')
+}
+
+/**
+ * Validate and inspect parsed run history JSON (either a raw history file or a
+ * backup snapshot containing `backupMetadata`). Throws with a descriptive `code`
+ * if the schema version is incompatible, records are malformed, or the backup
+ * checksum does not match.
+ *
+ * @param {object} data
+ * @returns {object} Validated payload and summary metrics
+ */
+export function inspectRunHistoryData(data) {
+  if (!data || typeof data !== 'object' || Array.isArray(data)) {
+    const err = new Error('Run history payload must be a JSON object')
+    err.code = 'INVALID_BACKUP_SCHEMA'
+    throw err
+  }
+
+  if (data.runs !== undefined && !Array.isArray(data.runs)) {
+    const err = new Error('Run history "runs" field must be an array')
+    err.code = 'INVALID_BACKUP_SCHEMA'
+    throw err
+  }
+
+  if (data.idempotency !== undefined && !Array.isArray(data.idempotency)) {
+    const err = new Error('Run history "idempotency" field must be an array')
+    err.code = 'INVALID_BACKUP_SCHEMA'
+    throw err
+  }
+
+  for (const [idx, run] of (data.runs || []).entries()) {
+    if (!run || typeof run !== 'object' || Array.isArray(run)) {
+      const err = new Error(`Run entry at index ${idx} must be an object`)
+      err.code = 'INVALID_RUN_RECORD'
+      throw err
+    }
+    if (typeof run.id !== 'string' || run.id.trim().length === 0) {
+      const err = new Error(`Run entry at index ${idx} is missing a valid string "id"`)
+      err.code = 'INVALID_RUN_RECORD'
+      throw err
+    }
+    if (typeof run.status !== 'string' || !VALID_RUN_STATUSES.has(run.status)) {
+      const err = new Error(
+        `Run "${run.id}" has invalid status "${run.status}" (expected running, completed, interrupted, or failed)`
+      )
+      err.code = 'INVALID_RUN_RECORD'
+      throw err
+    }
+    if (run.txProofs !== undefined && !Array.isArray(run.txProofs)) {
+      const err = new Error(`Run "${run.id}" has a non-array "txProofs" field`)
+      err.code = 'INVALID_RUN_RECORD'
+      throw err
+    }
+  }
+
+  const validator = new FileRunHistoryStore('memory-validator.json')
+  let migrated
+  try {
+    migrated = validator.validateAndMigrate(data)
+  } catch (err) {
+    const wrapped = new Error(err.message)
+    wrapped.code = err.message?.includes('Unsupported schema version')
+      ? 'UNSUPPORTED_SCHEMA_VERSION'
+      : 'INVALID_BACKUP_SCHEMA'
+    throw wrapped
+  }
+
+  const normalizedVersion = CURRENT_SCHEMA_VERSION
+  const rawVersionForChecksum =
+    data.version === undefined ? LEGACY_VERSION : Number.parseInt(data.version, 10)
+  const computedRawChecksum = computeHistoryChecksum(
+    data.runs || [],
+    data.idempotency || [],
+    rawVersionForChecksum
+  )
+  const computedNormalizedChecksum = computeHistoryChecksum(
+    migrated.runs,
+    migrated.idempotency,
+    normalizedVersion
+  )
+
+  if (data.backupMetadata !== undefined) {
+    if (!data.backupMetadata || typeof data.backupMetadata !== 'object') {
+      const err = new Error('backupMetadata must be an object when present')
+      err.code = 'INVALID_BACKUP_METADATA'
+      throw err
+    }
+    if (data.backupMetadata.checksum !== undefined) {
+      const expected = data.backupMetadata.checksum
+      if (expected !== computedRawChecksum && expected !== computedNormalizedChecksum) {
+        const err = new Error(
+          `Backup checksum mismatch: expected ${expected}, computed ${computedRawChecksum}`
+        )
+        err.code = 'BACKUP_CHECKSUM_MISMATCH'
+        throw err
+      }
+    }
+  }
+
+  const statusCounts = {
+    completed: 0,
+    interrupted: 0,
+    failed: 0,
+    running: 0,
+  }
+  let txProofCount = 0
+  let outputAvailableCount = 0
+
+  for (const run of migrated.runs) {
+    if (Object.prototype.hasOwnProperty.call(statusCounts, run.status)) {
+      statusCounts[run.status] += 1
+    }
+    if (Array.isArray(run.txProofs)) {
+      txProofCount += run.txProofs.length
+    }
+    if (run.outputAvailable) {
+      outputAvailableCount += 1
+    }
+  }
+
+  return {
+    version: normalizedVersion,
+    originalVersion: migrated.version,
+    runs: migrated.runs,
+    idempotency: migrated.idempotency,
+    runCount: migrated.runs.length,
+    statusCounts,
+    txProofCount,
+    outputAvailableCount,
+    idempotencyCount: migrated.idempotency.length,
+    checksum: computedNormalizedChecksum,
+  }
+}
+
+/**
+ * Read, parse, and verify a run-history or backup file without modifying disk state.
+ *
+ * @param {string} filePath
+ * @returns {Promise<object>} Verification summary
+ */
+export async function verifyRunHistoryFile(filePath) {
+  let raw
+  try {
+    raw = await fs.readFile(filePath, 'utf8')
+  } catch (err) {
+    const readErr = new Error(
+      `Unable to read run history file at ${filePath} (${err.code || err.message})`
+    )
+    readErr.code = err.code || 'BACKUP_READ_FAILED'
+    readErr.cause = err
+    throw readErr
+  }
+
+  let parsed
+  try {
+    parsed = JSON.parse(raw)
+  } catch (err) {
+    const parseErr = new Error(`Malformed JSON in run history file at ${filePath}: ${err.message}`)
+    parseErr.code = 'INVALID_BACKUP_JSON'
+    parseErr.cause = err
+    throw parseErr
+  }
+
+  const inspected = inspectRunHistoryData(parsed)
+  return {
+    valid: true,
+    filePath,
+    version: inspected.version,
+    originalVersion: inspected.originalVersion,
+    runCount: inspected.runCount,
+    statusCounts: inspected.statusCounts,
+    txProofCount: inspected.txProofCount,
+    outputAvailableCount: inspected.outputAvailableCount,
+    idempotencyCount: inspected.idempotencyCount,
+    checksum: inspected.checksum,
+    runs: inspected.runs,
+    idempotency: inspected.idempotency,
+  }
+}
+
+/**
+ * Create a verified, atomic snapshot of `sourcePath` at `backupPath`.
+ * If `options.store` is provided, flushes pending writes before reading `sourcePath`.
+ *
+ * @param {string} sourcePath
+ * @param {string} backupPath
+ * @param {object} [options]
+ * @param {FileRunHistoryStore} [options.store]
+ * @returns {Promise<object>} Backup verification report
+ */
+export async function backupRunHistory(sourcePath, backupPath, { store } = {}) {
+  if (store && typeof store.flush === 'function') {
+    await store.flush()
+  }
+
+  const verifiedSource = await verifyRunHistoryFile(sourcePath)
+  await fs.mkdir(path.dirname(backupPath), { recursive: true })
+
+  const createdAt = new Date().toISOString()
+  const snapshotPayload = {
+    version: CURRENT_SCHEMA_VERSION,
+    runs: verifiedSource.runs,
+    idempotency: verifiedSource.idempotency,
+    backupMetadata: {
+      formatVersion: 1,
+      createdAt,
+      sourcePath,
+      checksum: verifiedSource.checksum,
+      runCount: verifiedSource.runCount,
+      statusCounts: verifiedSource.statusCounts,
+      txProofCount: verifiedSource.txProofCount,
+      outputAvailableCount: verifiedSource.outputAvailableCount,
+    },
+  }
+
+  const tempPath = `${backupPath}.${Date.now()}.${crypto.randomBytes(4).toString('hex')}.tmp`
+  try {
+    await fs.writeFile(tempPath, JSON.stringify(snapshotPayload, null, 2), 'utf8')
+    await fs.rename(tempPath, backupPath)
+  } catch (err) {
+    await fs.unlink(tempPath).catch(() => {})
+    throw err
+  }
+
+  const verifiedBackup = await verifyRunHistoryFile(backupPath)
+  return {
+    valid: true,
+    sourcePath,
+    backupPath,
+    createdAt,
+    version: verifiedBackup.version,
+    runCount: verifiedBackup.runCount,
+    statusCounts: verifiedBackup.statusCounts,
+    txProofCount: verifiedBackup.txProofCount,
+    outputAvailableCount: verifiedBackup.outputAvailableCount,
+    idempotencyCount: verifiedBackup.idempotencyCount,
+    checksum: verifiedBackup.checksum,
+  }
+}
+
+/**
+ * Verify a backup file and atomically restore it to `targetPath`.
+ *
+ * Guarantees:
+ * - `backupPath` is fully validated (JSON syntax, schema compatibility, record
+ *   integrity, and SHA-256 checksum) BEFORE `targetPath` is touched.
+ * - If `targetPath` already exists and `preserveExisting !== false`, a safety
+ *   copy is written to `<targetPath>.pre-restore.<timestamp>.bak` before replacement.
+ * - After replacement, the restored file is loaded into a fresh `FileRunHistoryStore`
+ *   instance to verify that all runs, outputs, and `txProofs` load cleanly.
+ *
+ * @param {string} backupPath
+ * @param {string} targetPath
+ * @param {object} [options]
+ * @param {boolean} [options.preserveExisting=true]
+ * @returns {Promise<object>} Restore verification report
+ */
+export async function restoreRunHistory(backupPath, targetPath, { preserveExisting = true } = {}) {
+  // Step 1: Validate backup completely before touching targetPath
+  const verifiedBackup = await verifyRunHistoryFile(backupPath)
+
+  await fs.mkdir(path.dirname(targetPath), { recursive: true })
+
+  // Step 2: Preserve existing target file if present
+  let previousBackupPath = null
+  if (preserveExisting) {
+    try {
+      await fs.access(targetPath)
+      const timestamp = new Date().toISOString().replace(/[:.]/g, '-')
+      previousBackupPath = `${targetPath}.pre-restore.${timestamp}.bak`
+      await fs.copyFile(targetPath, previousBackupPath)
+    } catch (err) {
+      if (err.code !== 'ENOENT') {
+        throw err
+      }
+    }
+  }
+
+  // Step 3: Write canonical history payload atomically to targetPath
+  const canonicalPayload = JSON.stringify(
+    {
+      version: CURRENT_SCHEMA_VERSION,
+      runs: verifiedBackup.runs,
+      idempotency: verifiedBackup.idempotency,
+    },
+    null,
+    2
+  )
+  const tempPath = `${targetPath}.${Date.now()}.${crypto.randomBytes(4).toString('hex')}.tmp`
+  try {
+    await fs.writeFile(tempPath, canonicalPayload, 'utf8')
+    await fs.rename(tempPath, targetPath)
+  } catch (err) {
+    await fs.unlink(tempPath).catch(() => {})
+    throw err
+  }
+
+  // Step 4: Verify the restored store loads cleanly via FileRunHistoryStore
+  const verificationStore = new FileRunHistoryStore(
+    targetPath,
+    Math.max(200, verifiedBackup.runCount)
+  )
+  await verificationStore.init()
+  const verifiedTarget = await verifyRunHistoryFile(targetPath)
+
+  return {
+    valid: true,
+    backupPath,
+    targetPath,
+    previousBackupPath,
+    version: verifiedTarget.version,
+    runCount: verifiedTarget.runCount,
+    statusCounts: verifiedTarget.statusCounts,
+    txProofCount: verifiedTarget.txProofCount,
+    outputAvailableCount: verifiedTarget.outputAvailableCount,
+    idempotencyCount: verifiedTarget.idempotencyCount,
+    checksum: verifiedTarget.checksum,
+  }
 }
 
 export async function createRunHistoryStore(config) {
