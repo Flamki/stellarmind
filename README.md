@@ -160,6 +160,41 @@ Open `http://localhost:3001`.
 Because `INTERNAL_BASE_URL` defaults to `http://localhost:$PORT`, local demo setup stays one-command
 simple: `npm run dev`.
 
+### Offline Deterministic Demo Mode (Zero Keys or Network Required)
+
+New contributors and automated test harnesses can run the full dashboard and CLI demo completely
+offline without an Anthropic API key, Stellar testnet wallets, Friendbot, Horizon, or an x402
+facilitator. Offline mode is strictly opt-in (`--offline` flag or `OFFLINE_DEMO_MODE=true`):
+
+```bash
+# Start the full dashboard server in deterministic offline demo mode
+npm run dev:offline
+
+# Or run the end-to-end CLI demo across all 3 offline fixtures
+npm run demo:offline
+```
+
+What offline mode provides:
+
+- **Deterministic planning & agent outputs**: `src/providers/index.js` supplies reproducible plans
+  and agent responses for `research-bot`, `summary-bot`, `analyst-bot`, and `code-bot`.
+- **Three built-in workflow fixtures** (`GET /api/fixtures` or `POST /api/orchestrate` with
+  `{"fixture":"successful"|"partial"|"budget-limited"}`):
+  - `successful`: all 3 planned agents execute within a `0.15 USDC` budget and settle with synthetic
+    `x402` USDC receipts.
+  - `partial`: mixed outcomes — step 1 settles via synthetic `x402` USDC, step 2 rejects on `x402`
+    and settles via synthetic `XLM` fallback, and step 3 hits a simulated transport interruption and
+    remains visibly unresolved (`pendingPaymentCount: 1`, never double-charged).
+  - `budget-limited`: a 4-step plan under a `0.02 USDC` cap executes the first two `0.01 USDC` steps
+    and skips the remaining `0.05 USDC` and `0.03 USDC` steps via the budget guardrail.
+- **Visibly synthetic payment receipts**: every offline receipt uses the `synthetic-offline-tx-`
+  prefix, includes `synthetic: true`, `offlineMode: true`, `receiptMode: "synthetic-stub"`, and
+  `receiptLabel: "SYNTHETIC OFFLINE RECEIPT (NOT AN ON-CHAIN TRANSACTION)"`, and always sets
+  `explorerUrl: null` so synthetic receipts never link to a real Stellar Expert transaction.
+- **Consistent reporting**: `/readyz`, `/api/status`, `/api/wallet/balances`,
+  `/api/wallet/transactions`, SSE events, and orchestration outputs all report `offlineMode`,
+  `executionMode`, and `receiptMode`.
+
 ## API Quick Reference (curl)
 
 With the dev server running (`npm run dev`), copy-paste these local-first examples:
@@ -327,19 +362,21 @@ Storage modes:
 
 ## Available Commands
 
-| Command                   | Purpose                                                 |
-| ------------------------- | ------------------------------------------------------- |
-| `npm run dev`             | Start local server                                      |
-| `npm run demo`            | Run end-to-end demo flow                                |
-| `npm run preflight`       | Validate readiness (x402, wallets, model, payment path) |
-| `npm run setup`           | Generate/fund Stellar testnet wallets                   |
-| `npm run setup:usdc`      | Add USDC trustlines for settlement                      |
-| `npm run lint`            | Run ESLint against the repository                       |
-| `npm run lint:fix`        | Fix ESLint issues automatically                         |
-| `npm run format`          | Format source and docs with Prettier                    |
-| `npm run record:video`    | Capture website-only demo video                         |
-| `npm run voiceover`       | Generate narration track                                |
-| `npm run record:narrated` | Full narrated demo render pipeline                      |
+| Command                   | Purpose                                                          |
+| ------------------------- | ---------------------------------------------------------------- |
+| `npm run dev`             | Start local server (live mode by default)                        |
+| `npm run dev:offline`     | Start local dashboard server in deterministic offline demo mode  |
+| `npm run demo`            | Run end-to-end demo flow (live mode by default)                  |
+| `npm run demo:offline`    | Run deterministic offline CLI demo (successful/partial/budgeted) |
+| `npm run preflight`       | Validate readiness (x402, wallets, model, payment path)          |
+| `npm run setup`           | Generate/fund Stellar testnet wallets                            |
+| `npm run setup:usdc`      | Add USDC trustlines for settlement                               |
+| `npm run lint`            | Run ESLint against the repository                                |
+| `npm run lint:fix`        | Fix ESLint issues automatically                                  |
+| `npm run format`          | Format source and docs with Prettier                             |
+| `npm run record:video`    | Capture website-only demo video                                  |
+| `npm run voiceover`       | Generate narration track                                         |
+| `npm run record:narrated` | Full narrated demo render pipeline                               |
 
 ## Demo Acceptance Checklist
 

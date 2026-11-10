@@ -53,6 +53,17 @@ import {
   XLM_FALLBACK_POLICY,
 } from './settlement.js'
 import { normalizeContent } from './response-normalization.js'
+import {
+  OFFLINE_DEMO_FIXTURES,
+  SYNTHETIC_RECEIPT_LABEL,
+  SYNTHETIC_TX_PREFIX,
+  createOfflineExecutionContext,
+  isOfflineDemoEnabled,
+  isSyntheticReceiptHash,
+  listOfflineDemoFixtures,
+  resolveOfflineFixture,
+  setOfflineDemoMode,
+} from '../providers/index.js'
 
 // const anthropic = ... (imported from services.js)
 
@@ -152,8 +163,11 @@ function summarizeError(err) {
   return (err?.message || 'unknown error').substring(0, 180)
 }
 
-function buildExplorerUrl(txHash) {
-  return txHash ? `${EXPLORER_BASE_URL}${txHash}` : null
+function buildExplorerUrl(txHash, options = {}) {
+  if (!txHash || options.synthetic || options.offlineMode || isSyntheticReceiptHash(txHash)) {
+    return null
+  }
+  return `${EXPLORER_BASE_URL}${txHash}`
 }
 
 async function parseResponseBody(response) {
@@ -228,28 +242,52 @@ async function callAgentViaX402(agent, input, broadcastFn, context = {}) {
             reason,
           })
         } else {
-          const verification = txHash ? 'verified' : 'unverified'
-          // x402 settles the quoted USDC price in USDC.
-          settlement = buildSettlement(quote, {
-            method: 'x402',
-            asset: quote.asset,
-            issuer: quote.issuer,
-            network: quote.network,
-            amount: quote.amount,
-            txHash,
-            explorerUrl: buildExplorerUrl(txHash),
+          const isOfflineMode = Boolean(context.offlineMode)
+          const isSynthetic = Boolean(
+            isOfflineMode || settle?.synthetic || data?.synthetic || isSyntheticReceiptHash(txHash)
+          )
+          const resolvedExplorerUrl = buildExplorerUrl(txHash, {
+            synthetic: isSynthetic,
+            offlineMode: isOfflineMode,
           })
+          const verification = isSynthetic ? 'synthetic-stub' : txHash ? 'verified' : 'unverified'
+          // x402 settles the quoted USDC price in USDC.
+          settlement = {
+            ...buildSettlement(quote, {
+              method: 'x402',
+              asset: quote.asset,
+              issuer: quote.issuer,
+              network: quote.network,
+              amount: quote.amount,
+              txHash,
+              explorerUrl: resolvedExplorerUrl,
+            }),
+            synthetic: isSynthetic,
+            offlineMode: isOfflineMode,
+            receiptMode: isSynthetic ? 'synthetic-stub' : 'on-chain',
+            receiptLabel: isSynthetic ? SYNTHETIC_RECEIPT_LABEL : null,
+          }
           paymentAttempt = confirmPaymentAttempt(paymentAttempt, {
             txHash,
-            explorerUrl: buildExplorerUrl(txHash),
-            proof: txHash ? { source: 'x402-settlement-header', txHash } : null,
+            explorerUrl: resolvedExplorerUrl,
+            proof: txHash
+              ? {
+                  source: isSynthetic ? 'x402-offline-synthetic-stub' : 'x402-settlement-header',
+                  txHash,
+                  synthetic: isSynthetic,
+                  offlineMode: isOfflineMode,
+                  ...(isSynthetic ? { receiptLabel: SYNTHETIC_RECEIPT_LABEL } : {}),
+                }
+              : null,
             settlement,
           })
           broadcastFn?.({
             type: 'x402_payment',
             agent: agent.name,
             agentId: agent.id,
-            flow: '402 -> sign -> settle -> 200',
+            flow: isSynthetic
+              ? 'offline-stub -> synthetic-receipt -> 200'
+              : '402 -> sign -> settle -> 200',
             protocol: 'x402',
             amount: settlement.amount,
             currency: settlement.asset,
@@ -259,11 +297,23 @@ async function callAgentViaX402(agent, input, broadcastFn, context = {}) {
             quotedAmount: quote.amount,
             quotedAsset: quote.asset,
             verification,
+            synthetic: isSynthetic,
+            offlineMode: isOfflineMode,
+            receiptMode: isSynthetic ? 'synthetic-stub' : 'on-chain',
+            receiptLabel: isSynthetic ? SYNTHETIC_RECEIPT_LABEL : null,
             txHash: txHash || null,
-            explorerUrl: buildExplorerUrl(txHash),
+            explorerUrl: resolvedExplorerUrl,
             timestamp: new Date().toISOString(),
           })
         }
+
+        const isOfflineMode = Boolean(context.offlineMode)
+        const isSynthetic = Boolean(
+          isOfflineMode || settle?.synthetic || data?.synthetic || isSyntheticReceiptHash(txHash)
+        )
+        const resolvedExplorerUrl = !settlementFailed
+          ? buildExplorerUrl(txHash, { synthetic: isSynthetic, offlineMode: isOfflineMode })
+          : null
 
         return {
           result: data.result || JSON.stringify(data),
@@ -271,7 +321,11 @@ async function callAgentViaX402(agent, input, broadcastFn, context = {}) {
           paymentSuccess: !settlementFailed,
           paidVia: !settlementFailed ? 'x402' : 'none',
           txHash: !settlementFailed ? txHash || null : null,
-          explorerUrl: !settlementFailed ? buildExplorerUrl(txHash) : null,
+          explorerUrl: resolvedExplorerUrl,
+          synthetic: !settlementFailed && isSynthetic,
+          offlineMode: isOfflineMode,
+          receiptMode: isSynthetic ? 'synthetic-stub' : 'on-chain',
+          receiptLabel: !settlementFailed && isSynthetic ? SYNTHETIC_RECEIPT_LABEL : null,
           warning:
             !settlementFailed && !txHash
               ? 'x402 settlement completed without transaction hash header'
@@ -468,27 +522,55 @@ async function callAgentViaX402(agent, input, broadcastFn, context = {}) {
   }
 
   const txHash = paymentResult.txHash || null
+  const isOfflineMode = Boolean(context.offlineMode)
+  const isSyntheticFallback = Boolean(
+    isOfflineMode || paymentResult.synthetic || isSyntheticReceiptHash(txHash)
+  )
+  const fallbackExplorerUrl = isSyntheticFallback
+    ? null
+    : paymentResult.explorerUrl || buildExplorerUrl(txHash)
   // A successful fallback settles the *same* logical charge, so it resolves
   // the original attempt (with its proof) instead of leaving a paid call
   // looking failed in run history. It settles in native XLM, so the recorded
   // settlement names XLM — not the registry's USDC quote (#130).
   if (paymentResult.success) {
-    settlement = buildSettlement(quote, {
-      method: 'stellar-xlm-direct',
-      asset: XLM_FALLBACK_POLICY.asset,
-      issuer: XLM_FALLBACK_POLICY.issuer,
-      network: quote.network,
-      amount: quote.amount,
-      txHash,
-      explorerUrl: paymentResult.explorerUrl || buildExplorerUrl(txHash),
-      policy: XLM_FALLBACK_POLICY.id,
-    })
+    settlement = {
+      ...buildSettlement(quote, {
+        method: 'stellar-xlm-direct',
+        asset: XLM_FALLBACK_POLICY.asset,
+        issuer: XLM_FALLBACK_POLICY.issuer,
+        network: quote.network,
+        amount: quote.amount,
+        txHash,
+        explorerUrl: fallbackExplorerUrl,
+        policy: XLM_FALLBACK_POLICY.id,
+      }),
+      synthetic: isSyntheticFallback,
+      offlineMode: isOfflineMode,
+      receiptMode: isSyntheticFallback ? 'synthetic-stub' : 'on-chain',
+      receiptLabel: isSyntheticFallback ? SYNTHETIC_RECEIPT_LABEL : null,
+    }
     paymentAttempt = confirmPaymentAttempt(paymentAttempt, {
       txHash,
-      explorerUrl: paymentResult.explorerUrl || buildExplorerUrl(txHash),
+      explorerUrl: fallbackExplorerUrl,
       proof: x402FailureReason
-        ? { source: 'stellar-xlm-fallback', settledAfter: paymentAttempt.failureReason }
-        : null,
+        ? {
+            source: isSyntheticFallback
+              ? 'stellar-xlm-offline-synthetic-stub'
+              : 'stellar-xlm-fallback',
+            settledAfter: paymentAttempt.failureReason,
+            synthetic: isSyntheticFallback,
+            offlineMode: isOfflineMode,
+          }
+        : isSyntheticFallback
+          ? {
+              source: 'stellar-xlm-offline-synthetic-stub',
+              txHash,
+              synthetic: true,
+              offlineMode: isOfflineMode,
+              receiptLabel: SYNTHETIC_RECEIPT_LABEL,
+            }
+          : null,
       settlement,
     })
   }
@@ -504,6 +586,17 @@ async function callAgentViaX402(agent, input, broadcastFn, context = {}) {
     : reconciledX402Settlement
       ? paymentAttempt.txHash
       : null
+  const isSyntheticSettled = Boolean(
+    settled &&
+    (isOfflineMode ||
+      paymentResult.synthetic ||
+      settlement?.synthetic ||
+      isSyntheticReceiptHash(settledTxHash))
+  )
+  const finalExplorerUrl = isSyntheticSettled
+    ? null
+    : paymentResult.explorerUrl ||
+      buildExplorerUrl(settledTxHash, { synthetic: isSyntheticSettled, offlineMode: isOfflineMode })
   // A reconciliation can establish that an earlier x402 charge did settle
   // even though its response was lost. Rebuild that settlement so the run
   // still reports the USDC asset and amount it was charged in.
@@ -532,7 +625,11 @@ async function callAgentViaX402(agent, input, broadcastFn, context = {}) {
     paymentSuccess: settled,
     paidVia: settled ? (paymentResult.success ? 'stellar-xlm-direct' : 'x402') : 'none',
     txHash: settledTxHash,
-    explorerUrl: paymentResult.explorerUrl || buildExplorerUrl(settledTxHash),
+    explorerUrl: finalExplorerUrl,
+    synthetic: isSyntheticSettled,
+    offlineMode: isOfflineMode,
+    receiptMode: isSyntheticSettled ? 'synthetic-stub' : 'on-chain',
+    receiptLabel: isSyntheticSettled ? SYNTHETIC_RECEIPT_LABEL : null,
     usage: capturedUsage || unavailableUsage(agent.model || null, 'no_usage_captured'),
     responseMeta: capturedResponseMeta,
     paymentAttempt,
@@ -617,6 +714,23 @@ export async function orchestrate(task, budget, broadcastFn, context = {}) {
     throw abortErr
   }
 
+  const isOfflineMode = Boolean(context.offlineMode ?? isOfflineDemoEnabled())
+  if (isOfflineMode && !context._offlineComposed) {
+    context = createOfflineExecutionContext(task, budget, {
+      ...context,
+      network: config.network,
+      issuer: config.networkProfile?.usdc?.issuer,
+    })
+  }
+  const executionMode = isOfflineMode ? 'offline-demo' : 'live'
+  const receiptMode = isOfflineMode ? 'synthetic-stub' : 'on-chain'
+  const effectiveX402Configured = isOfflineMode ? true : !!x402Fetch
+  const effectivePaymentFlow = isOfflineMode
+    ? 'x402-offline-synthetic-stub'
+    : x402Fetch
+      ? 'x402-http402'
+      : 'stellar-xlm-fallback'
+
   const startTime = Date.now()
   const results = []
   const payments = []
@@ -635,11 +749,15 @@ export async function orchestrate(task, budget, broadcastFn, context = {}) {
     type: 'orchestrator_start',
     task,
     budget,
-    x402Configured: !!x402Fetch,
-    x402InitError,
-    x402WalletReady,
-    x402WalletHint,
-    paymentFlow: x402Fetch ? 'x402-http402' : 'stellar-xlm-fallback',
+    offlineMode: isOfflineMode,
+    executionMode,
+    receiptMode,
+    scenario: context.scenario || null,
+    x402Configured: effectiveX402Configured,
+    x402InitError: isOfflineMode ? null : x402InitError,
+    x402WalletReady: isOfflineMode ? true : x402WalletReady,
+    x402WalletHint: isOfflineMode ? null : x402WalletHint,
+    paymentFlow: effectivePaymentFlow,
     timestamp: new Date().toISOString(),
   })
 
@@ -782,6 +900,10 @@ Respond ONLY with valid JSON (no markdown, no code fences):
     type: 'orchestrator_plan',
     plan: plan.plan,
     subtaskCount: plan.subtasks?.length || 0,
+    offlineMode: isOfflineMode,
+    executionMode,
+    receiptMode,
+    scenario: context.scenario || null,
     timestamp: new Date().toISOString(),
   })
 
@@ -803,9 +925,17 @@ Respond ONLY with valid JSON (no markdown, no code fences):
     if (exceedsBudget(totalSpent, cost, exactBudget)) {
       broadcastFn?.({
         ...buildBudgetLimitEvent(agent, exactBudget, totalSpent),
+        offlineMode: isOfflineMode,
+        executionMode,
+        receiptMode,
         timestamp: new Date().toISOString(),
       })
-      results.push(buildSkipResult(agent, exactBudget, totalSpent))
+      results.push({
+        ...buildSkipResult(agent, exactBudget, totalSpent),
+        offlineMode: isOfflineMode,
+        executionMode,
+        receiptMode,
+      })
       continue
     }
 
@@ -830,7 +960,10 @@ Respond ONLY with valid JSON (no markdown, no code fences):
       cost: agent.price,
       currency: agent.currency,
       quoted: true,
-      paymentFlow: x402Fetch ? 'x402-http402' : 'stellar-xlm-fallback',
+      offlineMode: isOfflineMode,
+      executionMode,
+      receiptMode,
+      paymentFlow: effectivePaymentFlow,
       timestamp: new Date().toISOString(),
     })
 
@@ -915,6 +1048,11 @@ Respond ONLY with valid JSON (no markdown, no code fences):
       paymentSuccess: agentResponse.paymentSuccess,
       txHash: agentResponse.txHash || null,
       explorerUrl: agentResponse.explorerUrl || null,
+      synthetic: Boolean(agentResponse.synthetic),
+      offlineMode: isOfflineMode,
+      executionMode,
+      receiptMode: agentResponse.receiptMode || receiptMode,
+      receiptLabel: agentResponse.receiptLabel || null,
       usage: stepUsageEntry,
       // Content-block normalization metadata (issue #150) - null for x402
       // remote calls, where no raw Anthropic response exists to normalize.
@@ -946,6 +1084,11 @@ Respond ONLY with valid JSON (no markdown, no code fences):
       paidVia: agentResponse.paidVia,
       txHash: agentResponse.txHash || null,
       explorerUrl: agentResponse.explorerUrl || null,
+      synthetic: Boolean(agentResponse.synthetic),
+      offlineMode: isOfflineMode,
+      executionMode,
+      receiptMode: agentResponse.receiptMode || receiptMode,
+      receiptLabel: agentResponse.receiptLabel || null,
       // The step's payment attempt, persisted by the route as soon as it
       // is observed so it survives a crash before completeRun (#131).
       paymentAttempt: agentResponse.paymentAttempt || null,
@@ -958,6 +1101,8 @@ Respond ONLY with valid JSON (no markdown, no code fences):
         agentId: agent.id,
         paymentMethod: agentResponse.paidVia,
         txHash: agentResponse.txHash || null,
+        offlineMode: isOfflineMode,
+        synthetic: Boolean(agentResponse.synthetic),
       })
       broadcastFn?.({
         type: 'payment',
@@ -975,6 +1120,11 @@ Respond ONLY with valid JSON (no markdown, no code fences):
         settlementPolicy: agentResponse.settlement?.policy || null,
         txHash: agentResponse.txHash,
         explorerUrl: agentResponse.explorerUrl,
+        synthetic: Boolean(agentResponse.synthetic),
+        offlineMode: isOfflineMode,
+        executionMode,
+        receiptMode: agentResponse.receiptMode || receiptMode,
+        receiptLabel: agentResponse.receiptLabel || null,
         timestamp: new Date().toISOString(),
       })
     }
@@ -1000,6 +1150,10 @@ Respond ONLY with valid JSON (no markdown, no code fences):
 
   broadcastFn?.({
     type: 'orchestrator_complete',
+    offlineMode: isOfflineMode,
+    executionMode,
+    receiptMode,
+    scenario: context.scenario || null,
     // `totalSpent` is the quoted/reserved amount the budget guardrail tracked.
     // Settled totals are reported separately, per asset (#130).
     totalSpent: quotedTotal,
@@ -1017,8 +1171,8 @@ Respond ONLY with valid JSON (no markdown, no code fences):
     x402PaymentCount,
     xlmFallbackCount,
     unpaidCount,
-    x402WalletReady,
-    x402WalletHint,
+    x402WalletReady: isOfflineMode ? true : x402WalletReady,
+    x402WalletHint: isOfflineMode ? null : x402WalletHint,
     usageSummary,
     paymentAttemptSummary,
     pendingPaymentCount,
@@ -1028,6 +1182,10 @@ Respond ONLY with valid JSON (no markdown, no code fences):
   return {
     task,
     plan: plan.plan,
+    offlineMode: isOfflineMode,
+    executionMode,
+    receiptMode,
+    scenario: context.scenario || null,
     budget: typeof budget === 'number' ? budget : exactBudget.toNumber(),
     budgetExact: exactBudget.toJSON(),
     // Quoted/reserved cost: the sum of the prices the budget guardrail admitted
@@ -1050,9 +1208,9 @@ Respond ONLY with valid JSON (no markdown, no code fences):
     x402PaymentCount,
     xlmFallbackCount,
     unpaidCount,
-    x402Configured: !!x402Fetch,
-    x402WalletReady,
-    x402WalletHint,
+    x402Configured: effectiveX402Configured,
+    x402WalletReady: isOfflineMode ? true : x402WalletReady,
+    x402WalletHint: isOfflineMode ? null : x402WalletHint,
     results,
     payments: successfulPayments,
     txCount: successfulTxs.length,
@@ -1080,6 +1238,17 @@ export async function previewOrchestration(task, budget, broadcastFn, context = 
     throw abortErr
   }
 
+  const isOfflineMode = Boolean(context.offlineMode ?? isOfflineDemoEnabled())
+  if (isOfflineMode && !context._offlineComposed) {
+    context = createOfflineExecutionContext(task, budget, {
+      ...context,
+      network: config.network,
+      issuer: config.networkProfile?.usdc?.issuer,
+    })
+  }
+  const executionMode = isOfflineMode ? 'offline-demo' : 'live'
+  const receiptMode = isOfflineMode ? 'synthetic-stub' : 'on-chain'
+
   const exactBudget = AssetAmount.from(budget, 'USDC')
   let totalQuote = AssetAmount.zero('USDC')
 
@@ -1087,7 +1256,10 @@ export async function previewOrchestration(task, budget, broadcastFn, context = 
     type: 'orchestrator_preview_start',
     task,
     budget,
-    x402Configured: !!x402Fetch,
+    offlineMode: isOfflineMode,
+    executionMode,
+    receiptMode,
+    x402Configured: isOfflineMode ? true : !!x402Fetch,
     timestamp: new Date().toISOString(),
   })
 
@@ -1240,6 +1412,10 @@ Respond ONLY with valid JSON (no markdown, no code fences):
   const planRecord = {
     planId,
     task,
+    offlineMode: isOfflineMode,
+    executionMode,
+    receiptMode,
+    scenario: context.scenario || null,
     budget: typeof budget === 'number' ? budget : exactBudget.toNumber(),
     budgetExact: exactBudget.toJSON(),
     plan: plan.plan,
@@ -1257,6 +1433,9 @@ Respond ONLY with valid JSON (no markdown, no code fences):
   broadcastFn?.({
     type: 'orchestrator_preview_complete',
     planId,
+    offlineMode: isOfflineMode,
+    executionMode,
+    receiptMode,
     totalQuote: planRecord.totalQuote,
     stepCount: steps.length,
     expiresAt,
@@ -1266,6 +1445,10 @@ Respond ONLY with valid JSON (no markdown, no code fences):
   return {
     planId,
     task,
+    offlineMode: isOfflineMode,
+    executionMode,
+    receiptMode,
+    scenario: context.scenario || null,
     budget: planRecord.budget,
     budgetExact: planRecord.budgetExact,
     plan: plan.plan,
@@ -1277,9 +1460,9 @@ Respond ONLY with valid JSON (no markdown, no code fences):
       entries: [planningUsageEntry],
       summary: summarizeUsageByPhase([planningUsageEntry]),
     },
-    x402Configured: !!x402Fetch,
-    x402WalletReady,
-    x402WalletHint,
+    x402Configured: isOfflineMode ? true : !!x402Fetch,
+    x402WalletReady: isOfflineMode ? true : x402WalletReady,
+    x402WalletHint: isOfflineMode ? null : x402WalletHint,
   }
 }
 
@@ -1328,9 +1511,23 @@ export async function executePlan(planId, broadcastFn, context = {}) {
 
   return orchestrate(planRecord.task, planRecord.budget, broadcastFn, {
     ...context,
+    offlineMode: context.offlineMode ?? planRecord.offlineMode,
+    scenario: context.scenario ?? planRecord.scenario,
     plan: {
       plan: planRecord.plan,
       subtasks: planRecord.subtasks,
     },
   })
+}
+
+export {
+  OFFLINE_DEMO_FIXTURES,
+  SYNTHETIC_RECEIPT_LABEL,
+  SYNTHETIC_TX_PREFIX,
+  createOfflineExecutionContext,
+  isOfflineDemoEnabled,
+  isSyntheticReceiptHash,
+  listOfflineDemoFixtures,
+  resolveOfflineFixture,
+  setOfflineDemoMode,
 }
