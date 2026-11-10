@@ -233,7 +233,13 @@ This project uses pre-commit hooks to catch style and security issues before the
 
 ### Setup
 
-After cloning, hooks are installed automatically via `npm install`.
+After cloning, hooks are installed automatically via `npm install` (or `npm ci`) through the
+`prepare` lifecycle script in `package.json`.
+
+In production and container builds (`npm ci --omit=dev`, `NODE_ENV=production`, or `HUSKY=0`), the
+`prepare` script skips Husky installation cleanly when `devDependencies` or `.git` are absent. This
+avoids passing `--ignore-scripts`, ensuring required production dependency lifecycle scripts still
+run while omitting contributor hooks and development tooling from runtime images.
 
 ### Bypassing hooks (emergency use only)
 

@@ -317,6 +317,18 @@ networks:
 
 ## Security
 
+### Production Dependency & Lifecycle Strategy
+
+The multi-stage `Dockerfile` installs only runtime `dependencies` via `npm ci --omit=dev` with
+`NODE_ENV=production` and `HUSKY=0`:
+
+- **No contributor hooks or `.git` dependency**: `.git` and `.husky` are excluded by `.dockerignore`
+  and never copied into the `builder` or `runtime` stages.
+- **Targeted `prepare` lifecycle guard**: Instead of passing `--ignore-scripts` (which would
+  indiscriminately disable legitimate dependency `postinstall` or build steps), the root `prepare`
+  script checks `NODE_ENV !== 'production'` and `HUSKY !== '0'` and gracefully ignores
+  `ERR_MODULE_NOT_FOUND` when `husky` is omitted alongside other `devDependencies`.
+
 ### Non-Root User
 
 The container runs as the `stellarmind` user (UID 1001, GID 1001), not root.

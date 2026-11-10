@@ -5,9 +5,15 @@ FROM node:20-alpine AS builder
 
 WORKDIR /app
 
-# Install dependencies
+# Install production dependencies only.
+# HUSKY=0 and NODE_ENV=production skip contributor Git hook setup during image
+# builds without passing --ignore-scripts, so legitimate dependency lifecycle
+# scripts still execute while devDependencies (including husky) are omitted.
+ENV NODE_ENV=production \
+    HUSKY=0
+
 COPY package*.json ./
-RUN npm ci --only=production
+RUN npm ci --omit=dev
 
 # Copy source
 COPY src/ ./src/
@@ -16,6 +22,9 @@ COPY public/ ./public/
 FROM node:20-alpine AS runtime
 
 WORKDIR /app
+
+ENV NODE_ENV=production \
+    HUSKY=0
 
 # Create non-root user
 RUN addgroup -g 1001 stellarmind && \
