@@ -332,6 +332,7 @@ Storage modes:
 | `npm run dev`             | Start local server                                      |
 | `npm run demo`            | Run end-to-end demo flow                                |
 | `npm run preflight`       | Validate readiness (x402, wallets, model, payment path) |
+| `npm run test:eval`       | Run versioned offline agent output quality evaluation   |
 | `npm run setup`           | Generate/fund Stellar testnet wallets                   |
 | `npm run setup:usdc`      | Add USDC trustlines for settlement                      |
 | `npm run lint`            | Run ESLint against the repository                       |

@@ -8,6 +8,7 @@ import {
   runAnalysis,
   runCode,
   createAnthropicMessage,
+  AGENT_PROMPT_REVISIONS,
 } from './services.js'
 import { getBalance, sendPayment } from '../stellar/wallet.js'
 import { logger } from '../logger.js'
@@ -608,7 +609,18 @@ export function parsePlanResponse(planResponse) {
   return parsed
 }
 
-const PLANNING_MODEL = 'claude-haiku-4-5-20251001'
+export const PLANNING_MODEL = 'claude-haiku-4-5-20251001'
+export const PLANNING_PROMPT_REVISION = 'planning-prompt-v1.0.0'
+
+export function getPlanningRevisionMetadata() {
+  return {
+    phase: 'planning',
+    agentId: 'orchestrator-planner',
+    promptRevision: PLANNING_PROMPT_REVISION,
+    modelRevision: PLANNING_MODEL,
+    maxTokens: 400,
+  }
+}
 
 export async function orchestrate(task, budget, broadcastFn, context = {}) {
   if (context.signal?.aborted) {
@@ -893,6 +905,8 @@ Respond ONLY with valid JSON (no markdown, no code fences):
       stepId: subtask.stepId,
       agentName: agent.name,
       model: agent.model,
+      promptRevision: AGENT_PROMPT_REVISIONS[agent.id] || null,
+      modelRevision: agent.model,
       input: subtask.input,
       output: agentResponse.result,
       // `cost`/`currency` remain the quoted price for compatibility. The
@@ -1334,3 +1348,19 @@ export async function executePlan(planId, broadcastFn, context = {}) {
     },
   })
 }
+
+export {
+  DELIBERATELY_INCOMPLETE_FIXTURES,
+  EVALUATION_BASELINE_SUMMARY,
+  EVALUATION_SCHEMA_VERSION,
+  EVALUATION_SUITE_VERSION,
+  MODEL_REVISIONS,
+  OFFLINE_EVALUATION_SET,
+  PROMPT_REVISIONS,
+  compareWithBaseline,
+  evaluateOutputQualityCase,
+  formatQualityEvaluationReport,
+  getEvaluationRevisionManifest,
+  runLiveQualityEvaluation,
+  runOfflineQualityEvaluation,
+} from './quality-eval.js'

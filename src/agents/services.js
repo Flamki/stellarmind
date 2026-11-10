@@ -23,6 +23,47 @@ export const MODEL_LABELS = {
   code: AGENT_MODELS.code,
 }
 
+export const AGENT_PROMPT_REVISIONS = Object.freeze({
+  'research-bot': 'research-prompt-v1.0.0',
+  'summary-bot': 'summary-prompt-v1.0.0',
+  'analyst-bot': 'analysis-prompt-v1.0.0',
+  'code-bot': 'code-prompt-v1.0.0',
+})
+
+export function getAgentRevisionMetadata(agentId) {
+  const map = {
+    'research-bot': {
+      agentId: 'research-bot',
+      promptRevision: AGENT_PROMPT_REVISIONS['research-bot'],
+      modelRevision: AGENT_MODELS.research,
+      fallbackModelRevision: null,
+      maxTokens: 512,
+    },
+    'summary-bot': {
+      agentId: 'summary-bot',
+      promptRevision: AGENT_PROMPT_REVISIONS['summary-bot'],
+      modelRevision: AGENT_MODELS.summary,
+      fallbackModelRevision: null,
+      maxTokens: 256,
+    },
+    'analyst-bot': {
+      agentId: 'analyst-bot',
+      promptRevision: AGENT_PROMPT_REVISIONS['analyst-bot'],
+      modelRevision: AGENT_MODELS.analysisPrimary,
+      fallbackModelRevision: AGENT_MODELS.analysisFallback,
+      maxTokens: 800,
+    },
+    'code-bot': {
+      agentId: 'code-bot',
+      promptRevision: AGENT_PROMPT_REVISIONS['code-bot'],
+      modelRevision: AGENT_MODELS.code,
+      fallbackModelRevision: null,
+      maxTokens: 600,
+    },
+  }
+  return map[agentId] || null
+}
+
 /**
  * Update the Anthropic API key at runtime.
  * Allows users to plug in their own key without restarting the server.
@@ -132,7 +173,7 @@ export async function createAnthropicMessage(payload, options = {}) {
  * These demonstrate the agent architecture even without live AI.
  * In production, every call would use real Claude API.
  */
-const FALLBACKS = {
+export const FALLBACKS = {
   research: (topic) => `[Research Agent — Powered by Claude Haiku]
 
 Research findings on "${topic}":
