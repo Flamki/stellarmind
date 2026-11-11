@@ -68,7 +68,7 @@ const isMainModule =
 
 if (isMainModule) {
   const PORT = config.port
-  app.listen(PORT, () => {
+  const server = app.listen(PORT, () => {
     console.log(`
 ╔══════════════════════════════════════════════════╗
 ║         🧠 StellarMind — AI Agent Marketplace     ║
@@ -85,6 +85,17 @@ if (isMainModule) {
 ╚══════════════════════════════════════════════════╝
   `)
   })
+
+  const gracefulShutdown = async () => {
+    try {
+      await close()
+      await runHistoryStore.flush()
+    } finally {
+      server.close(() => process.exit(0))
+    }
+  }
+  process.once('SIGTERM', gracefulShutdown)
+  process.once('SIGINT', gracefulShutdown)
 }
 
 export { app, admissionQueue }

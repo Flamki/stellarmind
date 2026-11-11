@@ -121,9 +121,48 @@ export class InMemoryRunHistoryStore {
     this.maxRuns = maxRuns
     this.runs = []
     this.idempotencyMap = new Map()
+    this._pendingRunOps = new Map()
   }
 
   async init() {}
+
+  _trackRunOp(runId, promise) {
+    if (!runId || !promise || typeof promise.finally !== 'function') return promise
+    let set = this._pendingRunOps.get(runId)
+    if (!set) {
+      set = new Set()
+      this._pendingRunOps.set(runId, set)
+    }
+    const tracked = promise
+      .finally(() => {
+        set.delete(tracked)
+        if (set.size === 0) {
+          this._pendingRunOps.delete(runId)
+        }
+      })
+      .catch(() => {})
+    set.add(tracked)
+    return promise
+  }
+
+  /**
+   * Drains all pending event and payment-attempt operations for a specific run
+   * so terminal completion/failure is always applied and persisted after all
+   * earlier accepted events (Issue #135).
+   *
+   * @param {string} runId
+   */
+  async drainRun(runId) {
+    while (this._pendingRunOps.has(runId)) {
+      const current = Array.from(this._pendingRunOps.get(runId) || [])
+      if (current.length === 0) break
+      await Promise.allSettled(current)
+    }
+  }
+
+  async drainRunEvents(runId) {
+    return this.drainRun(runId)
+  }
 
   async createRun({ task, budget, source, idempotencyKey, idempotencyFingerprint }) {
     const now = new Date().toISOString()
@@ -244,6 +283,7 @@ export class InMemoryRunHistoryStore {
   }
 
   async completeRun(runId, result) {
+    await this.drainRun(runId)
     const run = this.runs.find((entry) => entry.id === runId)
     if (!run) return
 
@@ -322,6 +362,7 @@ export class InMemoryRunHistoryStore {
   }
 
   async failRun(runId, err) {
+    await this.drainRun(runId)
     const run = this.runs.find((entry) => entry.id === runId)
     if (!run) return
     run.status = 'failed'
@@ -389,15 +430,24 @@ export class InMemoryRunHistoryStore {
   }
 
   async flush() {
-    return Promise.resolve()
+    for (const runId of Array.from(this._pendingRunOps.keys())) {
+      await this.drainRun(runId)
+    }
+  }
+
+  async close() {
+    await this.flush()
   }
 }
 
 export class FileRunHistoryStore extends InMemoryRunHistoryStore {
-  constructor(filePath, maxRuns = 200) {
+  constructor(filePath, maxRuns = 200, options = {}) {
     super(maxRuns)
     this.filePath = filePath
     this._writeQueue = Promise.resolve()
+    this._writeSeq = 0
+    this._writeFileFn = options.writeFileFn || ((p, data, enc) => fs.writeFile(p, data, enc))
+    this._renameFn = options.renameFn || ((src, dest) => fs.rename(src, dest))
   }
 
   async init() {
@@ -571,10 +621,11 @@ export class FileRunHistoryStore extends InMemoryRunHistoryStore {
         null,
         2
       )
-      const tempPath = `${this.filePath}.${Date.now()}.${crypto.randomBytes(4).toString('hex')}.tmp`
+      const seq = ++this._writeSeq
+      const tempPath = `${this.filePath}.${process.pid}.${Date.now()}.${seq}.${crypto.randomBytes(6).toString('hex')}.tmp`
       try {
-        await fs.writeFile(tempPath, payload, 'utf8')
-        await fs.rename(tempPath, this.filePath)
+        await this._writeFileFn(tempPath, payload, 'utf8')
+        await this._renameFn(tempPath, this.filePath)
       } catch (err) {
         try {
           await fs.unlink(tempPath).catch(() => {})
@@ -583,12 +634,20 @@ export class FileRunHistoryStore extends InMemoryRunHistoryStore {
       }
     }
 
-    this._writeQueue = this._writeQueue.catch(() => {}).then(writeOp)
-    return this._writeQueue
+    // Chain writeOp after the previous write settles so a failed write is
+    // surfaced to its caller via `opPromise` without stalling subsequent writes.
+    const opPromise = this._writeQueue.then(writeOp, writeOp)
+    this._writeQueue = opPromise.catch(() => {})
+    return opPromise
   }
 
   async flush() {
-    return this._writeQueue
+    await super.flush()
+    await this._writeQueue
+  }
+
+  async close() {
+    await this.flush()
   }
 
   async createRun(payload) {
@@ -598,14 +657,20 @@ export class FileRunHistoryStore extends InMemoryRunHistoryStore {
   }
 
   async appendEvent(runId, event) {
-    await super.appendEvent(runId, event)
-    await this.persist()
+    const op = (async () => {
+      await super.appendEvent(runId, event)
+      await this.persist()
+    })()
+    return this._trackRunOp(runId, op)
   }
 
   async recordPaymentAttempt(runId, attempt) {
-    const result = await super.recordPaymentAttempt(runId, attempt)
-    await this.persist()
-    return result
+    const op = (async () => {
+      const result = await super.recordPaymentAttempt(runId, attempt)
+      await this.persist()
+      return result
+    })()
+    return this._trackRunOp(runId, op)
   }
 
   async reconcilePendingPayments(probe, options) {
@@ -615,11 +680,13 @@ export class FileRunHistoryStore extends InMemoryRunHistoryStore {
   }
 
   async completeRun(runId, result) {
+    await this.drainRun(runId)
     await super.completeRun(runId, result)
     await this.persist()
   }
 
   async failRun(runId, err) {
+    await this.drainRun(runId)
     await super.failRun(runId, err)
     await this.persist()
   }
