@@ -38,6 +38,7 @@ testing, developing, or integrating with the marketplace.
   - [`GET /api/orchestrate`](#get-apiorchestrate)
 - [Run History](#run-history)
   - [`GET /api/runs`](#get-apiruns)
+  - [`GET /api/runs/:id`](#get-apirunsid)
 - [Wallet](#wallet)
   - [`GET /api/wallet/balances`](#get-apiwalletbalances)
   - [`GET /api/wallet/transactions`](#get-apiwallettransactions)
@@ -944,7 +945,9 @@ Retry-After: 30
 
 ### `GET /api/runs`
 
-List recent orchestration runs with their task, budget, spend, and audit trail.
+List orchestration runs as lightweight, cursor-paginated summaries. Each item carries the task,
+status, timestamps, spend totals and an event count, plus a `runUrl` for the full record; events,
+output, plans and payment proofs are **not** included (use [`GET /api/runs/:id`](#get-apirunsid)).
 
 **Note:** The underlying run-history file uses schema versioning (current version 1). Legacy
 unversioned files are automatically migrated on startup. A missing file is a first startup (fresh
@@ -953,10 +956,30 @@ suffix before a fresh store is started. Permission/I-O errors reading the file, 
 (newer-than-supported) schema versions, fail startup with an actionable error and leave the file
 untouched instead of being treated as corruption.
 
+**Query parameters** (all optional):
+
+| Parameter     | Description                                                                                                                        |
+| ------------- | ---------------------------------------------------------------------------------------------------------------------------------- |
+| `limit`       | Page size, 1–100 (default 20). Larger values are clamped; the applied value is returned as `limit`.                                |
+| `cursor`      | The `nextCursor` from the previous page. Opaque; valid across restarts.                                                            |
+| `status`      | `running`, `completed`, `failed` or `interrupted`. Repeat or comma-separate to match any of several (`status=failed,interrupted`). |
+| `createdFrom` | Inclusive lower bound on `createdAt`: a UTC date (`2026-10-01`, start of day) or a date-time with a `Z`/`±hh:mm` offset.           |
+| `createdTo`   | Inclusive upper bound on `createdAt`: a UTC date (`2026-10-31`, through 23:59:59.999) or a date-time with a `Z`/`±hh:mm` offset.   |
+
+**Ordering and pagination:** runs are ordered by `createdAt` descending with `id` descending as the
+tie-breaker, so the order is fixed even for runs created in the same millisecond. A cursor marks the
+last run returned rather than an offset, so runs created while you are paging never cause an older
+run to be returned twice. `nextCursor` is `null` and `hasMore` is `false` on the last page. A cursor
+is bound to the filters it was issued for; to change filters, start again without a cursor.
+
 **Request:**
 
 ```bash
-curl -s "http://localhost:3001/api/runs?limit=5" | jq
+# First page of failed or interrupted runs in October 2026
+curl -s "http://localhost:3001/api/runs?limit=2&status=failed,interrupted&createdFrom=2026-10-01&createdTo=2026-10-31" | jq
+
+# Next page: pass nextCursor back with the same filters
+curl -s "http://localhost:3001/api/runs?limit=2&status=failed,interrupted&createdFrom=2026-10-01&createdTo=2026-10-31&cursor=<nextCursor>" | jq
 ```
 
 **Response `200 OK`:**
@@ -966,34 +989,116 @@ curl -s "http://localhost:3001/api/runs?limit=5" | jq
   "storage": "file",
   "file": "./data/run-history.json",
   "count": 2,
+  "limit": 2,
+  "order": "createdAt:desc,id:desc",
+  "filters": {
+    "status": ["failed", "interrupted"],
+    "createdFrom": "2026-10-01T00:00:00.000Z",
+    "createdTo": "2026-10-31T23:59:59.999Z"
+  },
+  "hasMore": true,
+  "nextCursor": "eyJ2IjoxLCJjIjoxNzkzMjc3MDAwMDAwLCJpIjoicnVuXzE3OTMyNzcwMDAwMDBfZGVmNTY3OGEiLCJmIjoiOTk2ZWFmN2E0M2I2In0",
   "runs": [
     {
-      "id": "run_1722345600000_abc123",
+      "id": "run_1793361600000_abc1234d",
+      "runId": "run_1793361600000_abc1234d",
       "task": "Explain why x402 on Stellar matters for AI agents.",
       "budget": 0.15,
-      "totalSpent": "0.1000",
-      "status": "completed",
-      "agentCount": 4,
-      "source": "POST /api/orchestrate",
-      "createdAt": "2026-07-30T12:00:00.000Z",
-      "completedAt": "2026-07-30T12:00:12.453Z",
-      "plan": "Multi-agent workflow: research-bot → summary-bot → analyst-bot → code-bot",
-      "events": []
+      "source": "api",
+      "status": "failed",
+      "createdAt": "2026-10-30T12:00:00.000Z",
+      "updatedAt": "2026-10-30T12:00:05.120Z",
+      "completedAt": "2026-10-30T12:00:05.120Z",
+      "outputAvailable": false,
+      "error": { "code": "EXECUTION_FAILED", "message": "Provider timeout" },
+      "interruptedAt": null,
+      "interruptedReason": null,
+      "totals": {
+        "totalSpent": null,
+        "quotedTotal": null,
+        "settledSummary": null,
+        "txCount": null,
+        "elapsed": null
+      },
+      "eventCount": 7,
+      "runUrl": "/api/runs/run_1793361600000_abc1234d"
     },
     {
-      "id": "run_1722345600000_def456",
+      "id": "run_1793277000000_def5678a",
+      "runId": "run_1793277000000_def5678a",
       "task": "Summarize the benefits of x402",
       "budget": 0.1,
-      "totalSpent": "0.0200",
-      "status": "completed",
-      "agentCount": 2,
-      "source": "GET /api/orchestrate",
-      "createdAt": "2026-07-30T11:55:00.000Z",
-      "completedAt": "2026-07-30T11:55:08.210Z",
-      "plan": "Multi-agent workflow: research-bot → summary-bot",
-      "events": []
+      "source": "api",
+      "status": "interrupted",
+      "createdAt": "2026-10-29T12:30:00.000Z",
+      "updatedAt": "2026-10-29T12:31:10.000Z",
+      "completedAt": null,
+      "outputAvailable": false,
+      "error": null,
+      "interruptedAt": "2026-10-29T12:31:10.000Z",
+      "interruptedReason": "server_restart",
+      "totals": {
+        "totalSpent": null,
+        "quotedTotal": null,
+        "settledSummary": null,
+        "txCount": null,
+        "elapsed": null
+      },
+      "eventCount": 3,
+      "runUrl": "/api/runs/run_1793277000000_def5678a"
     }
   ]
+}
+```
+
+**Response `400 Bad Request`** (every problem is listed, each with a machine-readable `code`):
+
+```json
+{
+  "code": "INVALID_INPUT",
+  "message": "Invalid run list query parameters",
+  "requestId": "7b51851b-c464-4eba-9f03-6baca9d900b4",
+  "details": [
+    {
+      "field": "status",
+      "code": "INVALID_STATUS",
+      "reason": "Unknown status. Expected one or more of: running, completed, failed, interrupted",
+      "received": "done"
+    },
+    {
+      "field": "cursor",
+      "code": "INVALID_CURSOR",
+      "reason": "Cursor is not a valid token",
+      "received": "abc"
+    }
+  ]
+}
+```
+
+Detail codes: `INVALID_CURSOR`, `CURSOR_FILTER_MISMATCH`, `INVALID_LIMIT`, `INVALID_STATUS`,
+`INVALID_DATE`, `INVALID_DATE_RANGE`, `DUPLICATE_PARAMETER`, `INVALID_VALUE`.
+
+### `GET /api/runs/:id`
+
+Retrieve one run's full record: audit `events`, `plan`, `output`, `txProofs`, payment attempts and
+usage. This is the detail counterpart to the list summaries above (each summary's `runUrl` points
+here).
+
+**Request:**
+
+```bash
+curl -s "http://localhost:3001/api/runs/run_1793361600000_abc1234d" | jq
+```
+
+**Response `200 OK`:** the complete run record (see `RunDetail` in `docs/openapi.yaml`).
+
+**Response `404 Not Found`:**
+
+```json
+{
+  "code": "RUN_NOT_FOUND",
+  "message": "Run 'run_unknown' not found",
+  "requestId": "0b6f5c1e-7a52-4c4f-9b0e-2f2f6f9f3d11"
 }
 ```
 
