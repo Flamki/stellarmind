@@ -4,6 +4,7 @@ import { logger } from '../logger.js'
 import { config } from '../config.js'
 import { OrchestrationAdmissionQueue } from '../agents/orchestration-queue.js'
 import { previewOrchestration, executePlan, activePlansStore } from '../agents/orchestrator.js'
+import { buildRunReportPayload, generateRunReportMarkdown } from '../reports/runReportGenerator.js'
 
 export function registerOrchestrationRoutes(app, deps = {}) {
   const {
@@ -571,6 +572,34 @@ export function registerOrchestrationRoutes(app, deps = {}) {
         return next(err)
       }
       res.json(run)
+    } catch (err) {
+      next(err)
+    }
+  })
+
+  app.get('/api/runs/:id/export', async (req, res, next) => {
+    try {
+      const run = await runHistoryStore.getRun(req.params.id)
+      if (!run) {
+        const err = new Error(`Run '${req.params.id}' not found`)
+        err.status = 404
+        err.code = 'RUN_NOT_FOUND'
+        return next(err)
+      }
+
+      const payload = buildRunReportPayload(run)
+      const format = String(req.query.format || 'json').toLowerCase()
+
+      if (format === 'markdown' || format === 'md') {
+        const markdown = generateRunReportMarkdown(payload)
+        res.setHeader('Content-Type', 'text/markdown; charset=utf-8')
+        res.setHeader('Content-Disposition', `attachment; filename="${run.id}-report.md"`)
+        return res.send(markdown)
+      }
+
+      res.setHeader('Content-Type', 'application/json; charset=utf-8')
+      res.setHeader('Content-Disposition', `attachment; filename="${run.id}-report.json"`)
+      return res.json(payload)
     } catch (err) {
       next(err)
     }

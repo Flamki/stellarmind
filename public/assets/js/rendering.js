@@ -314,4 +314,14 @@ function renderRunDetail(run) {
   } else {
     planSection.style.display = 'none'
   }
+
+  // Bind Export Buttons (#167)
+  const exportJson = document.getElementById('detail-export-json')
+  const exportMd = document.getElementById('detail-export-markdown')
+  if (exportJson && exportMd && run?.id) {
+    exportJson.href = `/api/runs/${encodeURIComponent(run.id)}/export?format=json`
+    exportJson.download = `${run.id}-report.json`
+    exportMd.href = `/api/runs/${encodeURIComponent(run.id)}/export?format=markdown`
+    exportMd.download = `${run.id}-report.md`
+  }
 }
