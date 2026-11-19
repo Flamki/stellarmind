@@ -111,17 +111,23 @@ async function runAllTests() {
 
       let agentCalls = 0
 
-      const preview = await previewOrchestration('Analyze quantum computing', 0.10, () => {}, {
+      const preview = await previewOrchestration('Analyze quantum computing', 0.1, () => {}, {
         plan: stubPlan,
         serviceMap: {
-          'research-bot': async () => { agentCalls++; return 'research' },
-          'summary-bot': async () => { agentCalls++; return 'summary' },
+          'research-bot': async () => {
+            agentCalls++
+            return 'research'
+          },
+          'summary-bot': async () => {
+            agentCalls++
+            return 'summary'
+          },
         },
       })
 
       assert.strictEqual(typeof preview.planId, 'string')
       assert.strictEqual(preview.task, 'Analyze quantum computing')
-      assert.strictEqual(preview.budget, 0.10)
+      assert.strictEqual(preview.budget, 0.1)
       assert.strictEqual(preview.plan, 'Test preview workflow')
       assert.strictEqual(Array.isArray(preview.steps), true)
       assert.strictEqual(preview.steps.length, 2)
@@ -136,12 +142,10 @@ async function runAllTests() {
     test('execution validates stored plan and executes successfully', async () => {
       const stubPlan = {
         plan: 'Execution workflow',
-        subtasks: [
-          { agentId: 'research-bot', input: 'Research', cost: '0.01' },
-        ],
+        subtasks: [{ agentId: 'research-bot', input: 'Research', cost: '0.01' }],
       }
 
-      const preview = await previewOrchestration('Test execution task', 0.10, () => {}, {
+      const preview = await previewOrchestration('Test execution task', 0.1, () => {}, {
         plan: stubPlan,
       })
 
@@ -154,18 +158,20 @@ async function runAllTests() {
       })
 
       assert.strictEqual(result.task, 'Test execution task')
-      assert.strictEqual(activePlansStore.has(preview.planId), false, 'Plan removed after execution')
+      assert.strictEqual(
+        activePlansStore.has(preview.planId),
+        false,
+        'Plan removed after execution'
+      )
     }),
 
     test('expired quote returns explicit QUOTE_EXPIRED error', async () => {
       const stubPlan = {
         plan: 'Expired plan',
-        subtasks: [
-          { agentId: 'research-bot', input: 'Research', cost: '0.01' },
-        ],
+        subtasks: [{ agentId: 'research-bot', input: 'Research', cost: '0.01' }],
       }
 
-      const preview = await previewOrchestration('Expired task', 0.10, () => {}, {
+      const preview = await previewOrchestration('Expired task', 0.1, () => {}, {
         plan: stubPlan,
       })
 
@@ -187,12 +193,10 @@ async function runAllTests() {
     test('changed pricing returns explicit QUOTE_CHANGED error', async () => {
       const stubPlan = {
         plan: 'Changed price plan',
-        subtasks: [
-          { agentId: 'research-bot', input: 'Research', cost: '0.01' },
-        ],
+        subtasks: [{ agentId: 'research-bot', input: 'Research', cost: '0.01' }],
       }
 
-      const preview = await previewOrchestration('Price change task', 0.10, () => {}, {
+      const preview = await previewOrchestration('Price change task', 0.1, () => {}, {
         plan: stubPlan,
       })
 
@@ -233,7 +237,7 @@ async function runAllTests() {
       try {
         const previewRes = await post(baseUrl, '/api/orchestrate/preview', {
           task: 'HTTP test task',
-          budget: 0.10,
+          budget: 0.1,
         })
         assert.strictEqual(previewRes.status, 200)
         assert.strictEqual(typeof previewRes.data.planId, 'string')

@@ -44,7 +44,8 @@ User → Orchestrator (Claude plans tasks)
 
 1. Add the agent definition in `src/agents/registry.js`
 2. Add the service function in `src/agents/services.js`
-3. Add the premium endpoint in `src/server.js` (both middleware config and route handler)
+3. Add the premium endpoint to `src/routes/premium-routes.js` (the sole owner of premium handlers)
+   and its price to `src/pricing.config.js`; `src/app.js` only registers the route module
 4. Map the agent ID to its endpoint in `src/agents/orchestrator.js`
 
 ### Running Tests

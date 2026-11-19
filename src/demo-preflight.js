@@ -3,9 +3,7 @@ import { config } from './config.js'
 import { getBalance } from './stellar/wallet.js'
 import { AGENT_MODELS } from './agents/services.js'
 
-const HORIZON_BASE_URL = config.network.includes('testnet')
-  ? 'https://horizon-testnet.stellar.org'
-  : 'https://horizon.stellar.org'
+const HORIZON_BASE_URL = config.networkProfile.horizonUrl
 
 const SERVER_BASE_URL = config.internalBaseUrl
 
@@ -97,10 +95,12 @@ async function main() {
     ok(`Orchestrator USDC trustline present (balance: ${orchestratorUSDC.balance})`)
     const usdcAmount = Number.parseFloat(orchestratorUSDC.balance || '0')
     if (!Number.isFinite(usdcAmount) || usdcAmount <= 0) {
-      failures.push(
-        'Orchestrator USDC balance is 0. Fund testnet USDC from https://faucet.circle.com'
-      )
-      fail('Orchestrator USDC balance is 0. Fund testnet USDC from https://faucet.circle.com')
+      const faucet = config.networkProfile.funding.faucetUrl
+      const message = faucet
+        ? `Orchestrator USDC balance is 0. Fund ${config.networkProfile.label} USDC from ${faucet}`
+        : 'Orchestrator USDC balance is 0. Fund the orchestrator wallet with USDC'
+      failures.push(message)
+      fail(message)
     } else {
       ok('Orchestrator has spendable USDC for real x402 settlement')
     }

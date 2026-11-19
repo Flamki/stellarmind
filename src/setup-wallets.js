@@ -1,6 +1,7 @@
 /**
  * StellarMind — Wallet Setup Script
- * Generates 3 Stellar testnet keypairs and funds them via Friendbot
+ * Generates 3 Stellar keypairs on the validated network profile and funds them
+ * via Friendbot (testnet only)
  * Run: npm run setup
  * Optional: node src/setup-wallets.js --show-secrets
  */
@@ -9,9 +10,20 @@ import { Keypair } from '@stellar/stellar-sdk'
 import fs from 'fs'
 import path from 'path'
 import { fileURLToPath } from 'node:url'
+import { resolveNetworkProfile, getFriendbotUrl, explorerAccountUrl } from './stellar/network.js'
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
 const SHOW_FULL_SECRETS = process.argv.includes('--show-secrets')
+
+// Setup targets one validated profile. Friendbot is testnet-only, so selecting
+// another network makes this script fail before it can fund anything.
+const profile = resolveNetworkProfile({
+  network: process.env.NETWORK,
+  horizonUrl: process.env.STELLAR_HORIZON_URL,
+  rpcUrl: process.env.STELLAR_RPC_URL,
+  explorerUrl: process.env.STELLAR_EXPLORER_URL,
+})
+const FRIENDBOT_URL = getFriendbotUrl(profile)
 
 function maskSecret(secret) {
   if (!secret || secret.length < 10) return '***'
@@ -21,7 +33,7 @@ function maskSecret(secret) {
 async function fundWithFriendbot(publicKey, label) {
   try {
     console.log(`  Funding ${label} (${publicKey.slice(0, 8)}...)...`)
-    const res = await fetch(`https://friendbot.stellar.org?addr=${publicKey}`)
+    const res = await fetch(`${FRIENDBOT_URL}?addr=${publicKey}`)
     if (res.ok) {
       console.log(`  ✅ ${label} funded with 10,000 XLM`)
       return true
@@ -100,9 +112,9 @@ BUYER_STELLAR_SECRET=${buyer.secret()}
 ANTHROPIC_API_KEY=
 
 # Network config
-NETWORK=stellar:testnet
+NETWORK=${profile.network}
 FACILITATOR_URL=https://www.x402.org/facilitator
-STELLAR_RPC_URL=https://soroban-testnet.stellar.org
+STELLAR_RPC_URL=${profile.rpcUrl}
 
 # Server
 PORT=3001
@@ -142,9 +154,9 @@ PORT=3001
 ╚══════════════════════════════════════════════════╝
 
   Verify wallets on Stellar Expert:
-  https://stellar.expert/explorer/testnet/account/${server.publicKey()}
-  https://stellar.expert/explorer/testnet/account/${orchestrator.publicKey()}
-  https://stellar.expert/explorer/testnet/account/${buyer.publicKey()}
+  ${explorerAccountUrl(profile, server.publicKey())}
+  ${explorerAccountUrl(profile, orchestrator.publicKey())}
+  ${explorerAccountUrl(profile, buyer.publicKey())}
   `)
 }
 

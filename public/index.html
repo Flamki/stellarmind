@@ -1344,6 +1344,9 @@
           <span class="i">🔗</span> Transactions
           <span class="cnt" id="tx-cnt">—</span>
         </div>
+        <div class="sb-item" onclick="showPage('history')" data-page="history">
+          <span class="i">📝</span> Run History
+        </div>
 
         <div class="sb-label">Agents</div>
       </nav>
@@ -1713,6 +1716,318 @@
             </div>
           </div>
         </div>
+
+        <!-- ═══ PAGE: HISTORY ═══ -->
+        <div class="page" id="page-history">
+          <div class="card">
+            <div class="card-h">
+              <h2>📝 Run History</h2>
+              <span class="tag" id="history-meta">Loading...</span>
+            </div>
+            <div class="card-b">
+              <div
+                style="
+                  display: flex;
+                  gap: 12px;
+                  margin-bottom: 16px;
+                  flex-wrap: wrap;
+                  align-items: center;
+                "
+              >
+                <select
+                  id="history-status-filter"
+                  onchange="loadHistoryPage()"
+                  style="
+                    padding: 6px 10px;
+                    background: var(--bg-input);
+                    border: 1px solid var(--border);
+                    border-radius: var(--radius-sm);
+                    color: var(--text-primary);
+                    font-size: 12px;
+                  "
+                  aria-label="Filter by status"
+                >
+                  <option value="">All statuses</option>
+                  <option value="completed">Completed</option>
+                  <option value="running">Running</option>
+                  <option value="interrupted">Interrupted</option>
+                  <option value="failed">Failed</option>
+                  <option value="partial">Partial</option>
+                </select>
+                <select
+                  id="history-limit"
+                  onchange="loadHistoryPage()"
+                  style="
+                    padding: 6px 10px;
+                    background: var(--bg-input);
+                    border: 1px solid var(--border);
+                    border-radius: var(--radius-sm);
+                    color: var(--text-primary);
+                    font-size: 12px;
+                  "
+                  aria-label="Items per page"
+                >
+                  <option value="10">10 per page</option>
+                  <option value="20" selected>20 per page</option>
+                  <option value="50">50 per page</option>
+                </select>
+                <button
+                  class="btn"
+                  onclick="loadHistoryPage()"
+                  style="padding: 6px 12px; font-size: 12px"
+                  aria-label="Refresh history"
+                >
+                  Refresh
+                </button>
+              </div>
+              <div
+                id="history-loading"
+                style="text-align: center; padding: 32px; color: var(--text-muted)"
+              >
+                Loading run history...
+              </div>
+              <div
+                id="history-empty"
+                style="text-align: center; padding: 32px; color: var(--text-muted); display: none"
+              >
+                <div class="es-icon">📝</div>
+                <p>No runs found. Run the orchestrator to create your first run.</p>
+              </div>
+              <div id="history-list"></div>
+              <div style="display: flex; justify-content: space-between; margin-top: 16px">
+                <button
+                  class="btn"
+                  id="history-prev"
+                  disabled
+                  style="padding: 6px 12px; font-size: 12px"
+                  aria-label="Previous page"
+                >
+                  Previous
+                </button>
+                <button
+                  class="btn"
+                  id="history-next"
+                  disabled
+                  style="padding: 6px 12px; font-size: 12px"
+                  aria-label="Next page"
+                >
+                  Next
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- ═══ HISTORY DETAIL MODAL ═══ -->
+        <div
+          id="history-detail-modal"
+          role="dialog"
+          aria-modal="true"
+          tabindex="-1"
+          style="
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: rgba(0, 0, 0, 0.8);
+            z-index: 200;
+            align-items: center;
+            justify-content: center;
+            padding: 20px;
+          "
+        >
+          <div
+            role="document"
+            style="
+              background: var(--bg-card);
+              border: 1px solid var(--border);
+              border-radius: var(--radius);
+              max-width: 900px;
+              width: 100%;
+              max-height: 90vh;
+              overflow-y: auto;
+              box-shadow: 0 20px 60px rgba(0, 0, 0, 0.5);
+            "
+          >
+            <div
+              style="
+                padding: 20px;
+                border-bottom: 1px solid var(--border);
+                display: flex;
+                justify-content: space-between;
+                align-items: center;
+              "
+            >
+              <h2 style="margin: 0; font-size: 18px">Run Details</h2>
+              <button
+                onclick="closeRunDetail()"
+                class="btn"
+                style="padding: 6px 12px; font-size: 12px"
+                aria-label="Close details"
+              >
+                ✕ Close
+              </button>
+            </div>
+            <div style="padding: 20px">
+              <div id="history-detail-loading" style="text-align: center; padding: 40px">
+                Loading...
+              </div>
+              <div id="history-detail-error" style="display: none; padding: 20px"></div>
+              <div id="history-detail-content" style="display: none">
+                <div style="margin-bottom: 16px">
+                  <div
+                    style="
+                      display: flex;
+                      justify-content: space-between;
+                      align-items: start;
+                      margin-bottom: 8px;
+                      flex-wrap: wrap;
+                      gap: 8px;
+                    "
+                  >
+                    <div id="detail-run-id" style="font-size: 14px"></div>
+                    <span id="detail-status" class="history-status"></span>
+                  </div>
+                  <div
+                    id="detail-task"
+                    style="
+                      font-size: 14px;
+                      line-height: 1.6;
+                      color: var(--text-primary);
+                      white-space: pre-wrap;
+                      margin-bottom: 12px;
+                    "
+                  ></div>
+                </div>
+                <div
+                  style="
+                    display: grid;
+                    grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+                    gap: 12px;
+                    margin-bottom: 20px;
+                  "
+                >
+                  <div
+                    class="detail-card"
+                    style="
+                      background: var(--bg-card-alt);
+                      padding: 12px;
+                      border-radius: var(--radius-sm);
+                      border: 1px solid var(--border);
+                    "
+                  >
+                    <div style="font-size: 11px; color: var(--text-muted)">Created</div>
+                    <div style="font-size: 13px; margin-top: 4px" id="detail-created">—</div>
+                  </div>
+                  <div
+                    class="detail-card"
+                    style="
+                      background: var(--bg-card-alt);
+                      padding: 12px;
+                      border-radius: var(--radius-sm);
+                      border: 1px solid var(--border);
+                    "
+                  >
+                    <div style="font-size: 11px; color: var(--text-muted)">Completed</div>
+                    <div style="font-size: 13px; margin-top: 4px" id="detail-completed">—</div>
+                  </div>
+                  <div
+                    class="detail-card"
+                    style="
+                      background: var(--bg-card-alt);
+                      padding: 12px;
+                      border-radius: var(--radius-sm);
+                      border: 1px solid var(--border);
+                    "
+                  >
+                    <div style="font-size: 11px; color: var(--text-muted)">Updated</div>
+                    <div style="font-size: 13px; margin-top: 4px" id="detail-updated">—</div>
+                  </div>
+                  <div
+                    class="detail-card"
+                    style="
+                      background: var(--bg-card-alt);
+                      padding: 12px;
+                      border-radius: var(--border);
+                      border-radius: var(--radius-sm);
+                      border: 1px solid var(--border);
+                    "
+                  >
+                    <div style="font-size: 11px; color: var(--text-muted)">Quoted / Budget</div>
+                    <div style="font-size: 13px; margin-top: 4px">
+                      <span id="detail-spent">0</span> / <span id="detail-budget">—</span>
+                    </div>
+                  </div>
+                </div>
+                <div
+                  id="detail-interrupted-section"
+                  style="
+                    display: none;
+                    margin-bottom: 20px;
+                    background: var(--bg-card-alt);
+                    padding: 12px;
+                    border-radius: var(--radius-sm);
+                    border-left: 3px solid var(--amber);
+                  "
+                >
+                  <div style="font-size: 12px; font-weight: 600; margin-bottom: 8px">
+                    Interrupted
+                  </div>
+                  <div style="font-size: 12px; color: var(--text-secondary)">
+                    At: <span id="detail-interrupted">—</span>
+                  </div>
+                  <div style="font-size: 12px; color: var(--text-secondary)">
+                    Reason: <span id="detail-interrupted-reason">—</span>
+                  </div>
+                </div>
+                <div
+                  id="detail-error-section"
+                  style="
+                    display: none;
+                    margin-bottom: 20px;
+                    background: var(--bg-card-alt);
+                    padding: 12px;
+                    border-radius: var(--radius-sm);
+                    border-left: 3px solid var(--red);
+                  "
+                >
+                  <div style="font-size: 12px; font-weight: 600; margin-bottom: 8px">Error</div>
+                  <pre
+                    style="font-size: 11px; white-space: pre-wrap; color: var(--text-secondary)"
+                    id="detail-error-message"
+                  ></pre>
+                </div>
+                <div id="detail-plan-section" style="display: none; margin-bottom: 20px">
+                  <h3 style="font-size: 14px; margin-bottom: 8px">Plan</h3>
+                  <pre
+                    style="
+                      background: var(--bg-card-alt);
+                      padding: 12px;
+                      border-radius: var(--radius-sm);
+                      font-size: 12px;
+                      white-space: pre-wrap;
+                      max-height: 200px;
+                      overflow-y: auto;
+                    "
+                    id="detail-plan"
+                  ></pre>
+                </div>
+                <div id="detail-payment-section" style="display: none; margin-bottom: 20px">
+                  <h3 style="font-size: 14px; margin-bottom: 8px">
+                    Payment Details (Actual Payments)
+                  </h3>
+                  <div id="detail-payments"></div>
+                </div>
+                <div id="detail-output-section" style="margin-bottom: 20px">
+                  <h3 style="font-size: 14px; margin-bottom: 8px">Per-Step Output</h3>
+                  <div id="detail-outputs"></div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
       </div>
     </div>
 
@@ -1725,6 +2040,7 @@
         agents: 'Agent Registry',
         status: 'API Status',
         transactions: 'Transactions',
+        history: 'Run History',
       }
 
       function setResultTag(text, tone = '') {
@@ -1854,7 +2170,7 @@
             break
           case 'x402_payment':
             appendResultLog(
-              `x402 payment settled for ${ev.agent || 'agent'} (${ev.amount || '?'} ${ev.currency || ''})`
+              `x402 payment settled for ${ev.agent || 'agent'} (${ev.amount || '?'} ${ev.asset || ev.currency || ''})`
             )
             break
           case 'x402_retry':
@@ -2202,7 +2518,7 @@
             ic = '\u{1F510}'
             cl = 'x4'
             lb = `x402: ${ev.agent}`
-            sb = `${ev.amount} ${ev.currency} via x402${ev.verification === 'unverified' ? ' (header pending)' : ''}`
+            sb = `${ev.amount} ${ev.asset || ev.currency} via x402${ev.verification === 'unverified' ? ' (header pending)' : ''}`
             break
           case 'x402_retry':
             ic = '\u{1F501}'
@@ -2220,7 +2536,8 @@
             ic = '\u{1F4B8}'
             cl = 'pay'
             lb = `${ev.from} -> ${ev.to}`
-            sb = `${ev.amount} ${ev.currency} | ${ev.method || 'stellar'}`
+            // The settled asset/amount, not the quoted price.
+            sb = `${ev.amount} ${ev.asset || ev.currency} | ${ev.method || 'stellar'}`
             break
           case 'budget_limit':
             ic = '\u{1F6D1}'
@@ -2231,8 +2548,8 @@
           case 'orchestrator_complete':
             ic = '\u{1F3C1}'
             cl = 'ok'
-            lb = `Done - ${ev.totalSpent} USDC`
-            sb = `${ev.agentsUsed} agents | ${ev.elapsed}`
+            lb = `Done - quoted ${ev.quotedTotal || ev.totalSpent} USDC`
+            sb = `Settled: ${ev.settledSummary || 'none'} | ${ev.agentsUsed} agents | ${ev.elapsed}`
             break
           case 'error':
             ic = '\u26A0\uFE0F'
@@ -2316,6 +2633,23 @@
         return out.trim()
       }
 
+      // Per-asset settled totals (issue #130): different assets are shown
+      // separately and never added together.
+      function formatAssetTotals(totals) {
+        if (!Array.isArray(totals) || totals.length === 0) return 'none'
+        return totals.map((total) => `${total.amount} ${total.asset}`).join(' + ')
+      }
+
+      function formatSettlementLabel(item) {
+        if (item && item.settlement && item.settlement.success) {
+          return `${item.settlement.amount} ${item.settlement.asset}`
+        }
+        if (item && item.settledAsset && item.settledAmount) {
+          return `${item.settledAmount} ${item.settledAsset}`
+        }
+        return 'unsettled'
+      }
+
       function showResult(r) {
         const p = document.getElementById('result-panel')
         const out = document.getElementById('result-out')
@@ -2338,7 +2672,7 @@
         for (const x of r.results || []) {
           details += x.skipped
             ? `\n[SKIPPED] ${x.agentId}: ${x.reason}\n`
-            : `\n--- ${x.agentName} (${x.cost} ${x.currency}) ---\n${x.output}\n`
+            : `\n--- ${x.agentName} (quoted ${x.cost} ${x.currency}; settled ${formatSettlementLabel(x)}) ---\n${x.output}\n`
         }
 
         out.textContent = `FINAL ANSWER\n${finalAnswer}\n\nAGENT DETAILS${details}`
@@ -2350,7 +2684,8 @@
           .join(' ')
         ch.innerHTML = `
         <div class="chip">Agents: <span class="v">${r.agentsUsed || 0}</span></div>
-        <div class="chip">Spent: <span class="v">${r.totalSpent || '0'} USDC</span></div>
+        <div class="chip">Quoted: <span class="v">${r.quotedTotal || r.totalSpent || '0'} USDC</span></div>
+        <div class="chip">Settled: <span class="v">${formatAssetTotals(r.settledTotals)}</span></div>
         <div class="chip">TXs: <span class="v">${r.txCount || 0}</span></div>
         <div class="chip">Protocol: <span class="v">${r.paymentProtocol || 'stellar'}</span></div>
         <div class="chip">Time: <span class="v">${r.elapsed || '-'}</span></div>
@@ -2365,7 +2700,7 @@
             activeRun.planned || 0,
             Number(r.agentsUsed || 0) + Number(r.agentsSkipped || 0)
           )
-          activeRun.spent = Number.parseFloat(r.totalSpent || activeRun.spent || 0)
+          activeRun.spent = Number.parseFloat(r.quotedTotal || r.totalSpent || activeRun.spent || 0)
         }
         renderLiveChips(activeRun)
         pushLiveLine('Final answer generated')

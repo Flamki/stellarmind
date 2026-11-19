@@ -44,6 +44,14 @@ import {
   recordUsageEntry,
   summarizeUsageByPhase,
 } from './usage.js'
+import {
+  buildQuote,
+  buildSettlement,
+  formatSettledTotals,
+  summarizeSettledTotals,
+  SETTLEMENT_CONVERSION_POLICY,
+  XLM_FALLBACK_POLICY,
+} from './settlement.js'
 import { normalizeContent } from './response-normalization.js'
 
 // const anthropic = ... (imported from services.js)
@@ -62,8 +70,7 @@ const PREMIUM_ENDPOINT_MAP = {
   'code-bot': (input) => `/api/premium/code?prompt=${encodeURIComponent(input)}`,
 }
 
-const EXPLORER_NETWORK_SEGMENT = config.network.includes('testnet') ? 'testnet' : 'public'
-const EXPLORER_BASE_URL = `https://stellar.expert/explorer/${EXPLORER_NETWORK_SEGMENT}/tx/`
+const EXPLORER_BASE_URL = `${config.networkProfile.explorerBaseUrl}/tx/`
 
 let x402Fetch = null
 let x402InitError = null
@@ -115,7 +122,10 @@ async function checkX402WalletReadiness() {
 
     if (!Number.isFinite(usdcAmount) || usdcAmount <= 0) {
       x402WalletReady = false
-      x402WalletHint = 'USDC balance is 0. Fund testnet USDC via https://faucet.circle.com'
+      const faucet = config.networkProfile.funding.faucetUrl
+      x402WalletHint = faucet
+        ? `USDC balance is 0. Fund ${config.networkProfile.label} USDC via ${faucet}`
+        : 'USDC balance is 0. Fund the orchestrator wallet with USDC to enable x402 payments.'
       logger.warn('x402_wallet_not_ready', { reason: x402WalletHint })
       return
     }
@@ -161,6 +171,13 @@ async function parseResponseBody(response) {
 async function callAgentViaX402(agent, input, broadcastFn, context = {}) {
   const baseUrl = config.internalBaseUrl
   const endpointFn = PREMIUM_ENDPOINT_MAP[agent.id]
+  // The quote is the marketplace price for this call. It is reported
+  // separately from the settlement, which may be in another asset (#130).
+  const quote = buildQuote(agent, config.networkProfile)
+  // Both payment paths can be stubbed through the orchestration context so the
+  // x402-only, XLM-only, mixed, and unpaid scenarios are exercised without
+  // network access (#130).
+  const activeX402Fetch = context.x402Fetch !== undefined ? context.x402Fetch : x402Fetch
 
   // One persisted attempt per (run, step) — see payment-attempts.js. The id
   // is derived from the run and step, so a reconciliation after a restart
@@ -169,16 +186,18 @@ async function callAgentViaX402(agent, input, broadcastFn, context = {}) {
     runId: context.runId || context.correlationId || 'local',
     stepId: agent.id,
     agentId: agent.id,
-    amount: agent.price,
-    currency: agent.currency,
+    amount: quote.amount,
+    currency: quote.asset,
   })
+  // No settlement exists until a payment path actually confirms one.
+  let settlement = null
   // The direct-payment path is a *fallback settlement* for the same logical
   // charge, so it is only permitted once that charge is known to have
   // failed terminally. With no x402 attempt there is nothing to reconcile.
-  let fallbackPermitted = !(x402Fetch && endpointFn)
+  let fallbackPermitted = !(activeX402Fetch && endpointFn)
   let x402FailureReason = null
 
-  if (x402Fetch && endpointFn) {
+  if (activeX402Fetch && endpointFn) {
     try {
       const url = `${baseUrl}${endpointFn(input)}`
       logger.info('x402_request_start', {
@@ -188,7 +207,7 @@ async function callAgentViaX402(agent, input, broadcastFn, context = {}) {
         endpoint: url,
       })
 
-      const response = await x402Fetch(url)
+      const response = await activeX402Fetch(url)
       const data = await parseResponseBody(response)
 
       if (response.ok) {
@@ -210,10 +229,21 @@ async function callAgentViaX402(agent, input, broadcastFn, context = {}) {
           })
         } else {
           const verification = txHash ? 'verified' : 'unverified'
+          // x402 settles the quoted USDC price in USDC.
+          settlement = buildSettlement(quote, {
+            method: 'x402',
+            asset: quote.asset,
+            issuer: quote.issuer,
+            network: quote.network,
+            amount: quote.amount,
+            txHash,
+            explorerUrl: buildExplorerUrl(txHash),
+          })
           paymentAttempt = confirmPaymentAttempt(paymentAttempt, {
             txHash,
             explorerUrl: buildExplorerUrl(txHash),
             proof: txHash ? { source: 'x402-settlement-header', txHash } : null,
+            settlement,
           })
           broadcastFn?.({
             type: 'x402_payment',
@@ -221,8 +251,13 @@ async function callAgentViaX402(agent, input, broadcastFn, context = {}) {
             agentId: agent.id,
             flow: '402 -> sign -> settle -> 200',
             protocol: 'x402',
-            amount: agent.price,
-            currency: agent.currency,
+            amount: settlement.amount,
+            currency: settlement.asset,
+            asset: settlement.asset,
+            issuer: settlement.issuer,
+            network: settlement.network,
+            quotedAmount: quote.amount,
+            quotedAsset: quote.asset,
             verification,
             txHash: txHash || null,
             explorerUrl: buildExplorerUrl(txHash),
@@ -252,6 +287,18 @@ async function callAgentViaX402(agent, input, broadcastFn, context = {}) {
           // persist it and the run summary can report it (#131).
           paymentAttempt,
           paymentReconciliationRequired: false,
+          quote,
+          settlement,
+          quotedAmount: quote.amount,
+          quotedAsset: quote.asset,
+          quotedIssuer: quote.issuer,
+          quotedNetwork: quote.network,
+          quotedAmountExact: quote.amountExact,
+          settledAmount: settlement ? settlement.amount : null,
+          settledAsset: settlement ? settlement.asset : null,
+          settledIssuer: settlement ? settlement.issuer : null,
+          settledNetwork: settlement ? settlement.network : null,
+          settledAmountExact: settlement ? settlement.amountExact : null,
         }
       }
 
@@ -391,15 +438,23 @@ async function callAgentViaX402(agent, input, broadcastFn, context = {}) {
   }
 
   let paymentResult = { success: false, txHash: null }
+  const directPayment =
+    typeof context.sendPayment === 'function'
+      ? context.sendPayment
+      : config.orchestratorSecret && config.serverAddress
+        ? sendPayment
+        : null
   // Direct payment is the fallback settlement, so it only runs when the
   // x402 attempt is a documented terminal failure (or when there was no
   // x402 attempt at all) — never while its outcome is unknown.
-  if (fallbackPermitted && config.orchestratorSecret && config.serverAddress) {
+  if (fallbackPermitted && directPayment) {
     try {
-      paymentResult = await sendPayment(
+      // Pass the exact quoted decimal string. Re-formatting it with
+      // parseFloat(...).toFixed(2) would silently round a precise amount.
+      paymentResult = await directPayment(
         config.orchestratorSecret,
         config.serverAddress,
-        parseFloat(agent.price).toFixed(2),
+        quote.amount,
         `pay:${agent.id}`
       )
     } catch (err) {
@@ -415,14 +470,26 @@ async function callAgentViaX402(agent, input, broadcastFn, context = {}) {
   const txHash = paymentResult.txHash || null
   // A successful fallback settles the *same* logical charge, so it resolves
   // the original attempt (with its proof) instead of leaving a paid call
-  // looking failed in run history.
+  // looking failed in run history. It settles in native XLM, so the recorded
+  // settlement names XLM — not the registry's USDC quote (#130).
   if (paymentResult.success) {
+    settlement = buildSettlement(quote, {
+      method: 'stellar-xlm-direct',
+      asset: XLM_FALLBACK_POLICY.asset,
+      issuer: XLM_FALLBACK_POLICY.issuer,
+      network: quote.network,
+      amount: quote.amount,
+      txHash,
+      explorerUrl: paymentResult.explorerUrl || buildExplorerUrl(txHash),
+      policy: XLM_FALLBACK_POLICY.id,
+    })
     paymentAttempt = confirmPaymentAttempt(paymentAttempt, {
       txHash,
       explorerUrl: paymentResult.explorerUrl || buildExplorerUrl(txHash),
       proof: x402FailureReason
         ? { source: 'stellar-xlm-fallback', settledAfter: paymentAttempt.failureReason }
         : null,
+      settlement,
     })
   }
 
@@ -437,6 +504,28 @@ async function callAgentViaX402(agent, input, broadcastFn, context = {}) {
     : reconciledX402Settlement
       ? paymentAttempt.txHash
       : null
+  // A reconciliation can establish that an earlier x402 charge did settle
+  // even though its response was lost. Rebuild that settlement so the run
+  // still reports the USDC asset and amount it was charged in.
+  if (reconciledX402Settlement && !settlement) {
+    settlement = buildSettlement(quote, {
+      method: 'x402',
+      asset: quote.asset,
+      issuer: quote.issuer,
+      network: quote.network,
+      amount: quote.amount,
+      txHash: paymentAttempt.txHash,
+      explorerUrl: paymentAttempt.explorerUrl || buildExplorerUrl(paymentAttempt.txHash),
+    })
+    // Reconciliation confirmed the attempt before this settlement record
+    // existed. Attach it to the same attempt so the persisted record names the
+    // asset and amount that settled, without creating a second charge.
+    paymentAttempt = confirmPaymentAttempt(paymentAttempt, {
+      txHash: paymentAttempt.txHash,
+      explorerUrl: paymentAttempt.explorerUrl,
+      settlement,
+    })
+  }
   return {
     result,
     paymentMethod: settled ? (paymentResult.success ? 'stellar-xlm' : 'x402') : 'none',
@@ -448,6 +537,19 @@ async function callAgentViaX402(agent, input, broadcastFn, context = {}) {
     responseMeta: capturedResponseMeta,
     paymentAttempt,
     paymentReconciliationRequired,
+    // Quote vs settlement, kept explicitly separate (#130).
+    quote,
+    settlement: settled ? settlement : null,
+    quotedAmount: quote.amount,
+    quotedAsset: quote.asset,
+    quotedIssuer: quote.issuer,
+    quotedNetwork: quote.network,
+    quotedAmountExact: quote.amountExact,
+    settledAmount: settled && settlement ? settlement.amount : null,
+    settledAsset: settled && settlement ? settlement.asset : null,
+    settledIssuer: settled && settlement ? settlement.issuer : null,
+    settledNetwork: settled && settlement ? settlement.network : null,
+    settledAmountExact: settled && settlement ? settlement.amountExact : null,
     warning: paymentReconciliationRequired
       ? 'x402 settlement outcome is unresolved; no fallback settlement was attempted'
       : undefined,
@@ -722,7 +824,12 @@ Respond ONLY with valid JSON (no markdown, no code fences):
       agent: agent.name,
       agentId: agent.id,
       input: activeInput.substring(0, 100) + (activeInput.length > 100 ? '...' : ''),
+      // `cost` is the quote the run reserved for this step, in the registry's
+      // currency. The settled asset/amount are reported on agent_response and
+      // payment events once the payment path confirms them (#130).
       cost: agent.price,
+      currency: agent.currency,
+      quoted: true,
       paymentFlow: x402Fetch ? 'x402-http402' : 'stellar-xlm-fallback',
       timestamp: new Date().toISOString(),
     })
@@ -788,8 +895,22 @@ Respond ONLY with valid JSON (no markdown, no code fences):
       model: agent.model,
       input: subtask.input,
       output: agentResponse.result,
+      // `cost`/`currency` remain the quoted price for compatibility. The
+      // settled values below report what was actually transferred (#130).
       cost: agent.price,
       currency: agent.currency,
+      quote: agentResponse.quote || null,
+      quotedAmount: agentResponse.quotedAmount ?? agent.price,
+      quotedAsset: agentResponse.quotedAsset ?? agent.currency,
+      quotedIssuer: agentResponse.quotedIssuer ?? null,
+      quotedNetwork: agentResponse.quotedNetwork ?? null,
+      quotedAmountExact: agentResponse.quotedAmountExact || null,
+      settlement: agentResponse.settlement || null,
+      settledAmount: agentResponse.settledAmount ?? null,
+      settledAsset: agentResponse.settledAsset ?? null,
+      settledIssuer: agentResponse.settledIssuer ?? null,
+      settledNetwork: agentResponse.settledNetwork ?? null,
+      settledAmountExact: agentResponse.settledAmountExact || null,
       paidVia: agentResponse.paidVia,
       paymentSuccess: agentResponse.paymentSuccess,
       txHash: agentResponse.txHash || null,
@@ -814,6 +935,14 @@ Respond ONLY with valid JSON (no markdown, no code fences):
       resultPreview:
         typeof agentResponse.result === 'string' ? agentResponse.result.substring(0, 150) : '',
       cost: agent.price,
+      currency: agent.currency,
+      quotedAmount: agentResponse.quotedAmount ?? agent.price,
+      quotedAsset: agentResponse.quotedAsset ?? agent.currency,
+      // What actually settled for this step, in its own asset (#130).
+      settledAmount: agentResponse.settledAmount ?? null,
+      settledAsset: agentResponse.settledAsset ?? null,
+      settledIssuer: agentResponse.settledIssuer ?? null,
+      settledNetwork: agentResponse.settledNetwork ?? null,
       paidVia: agentResponse.paidVia,
       txHash: agentResponse.txHash || null,
       explorerUrl: agentResponse.explorerUrl || null,
@@ -834,9 +963,16 @@ Respond ONLY with valid JSON (no markdown, no code fences):
         type: 'payment',
         from: 'Orchestrator',
         to: agent.name,
-        amount: agent.price,
-        currency: agent.currency,
+        // The settled amount and asset, never the quote standing in for them.
+        amount: agentResponse.settledAmount,
+        currency: agentResponse.settledAsset,
+        asset: agentResponse.settledAsset,
+        issuer: agentResponse.settledIssuer,
+        network: agentResponse.settledNetwork,
+        quotedAmount: agentResponse.quotedAmount,
+        quotedAsset: agentResponse.quotedAsset,
         method: agentResponse.paidVia,
+        settlementPolicy: agentResponse.settlement?.policy || null,
         txHash: agentResponse.txHash,
         explorerUrl: agentResponse.explorerUrl,
         timestamp: new Date().toISOString(),
@@ -849,6 +985,11 @@ Respond ONLY with valid JSON (no markdown, no code fences):
   const paymentProtocol = paymentProtocolSummary(x402PaymentCount, xlmFallbackCount)
   const successfulPayments = payments.filter((p) => p.paymentSuccess)
   const successfulTxs = successfulPayments.filter((p) => p.txHash)
+  // Settled totals are per asset. Nothing here adds an XLM settlement to a
+  // USDC total: there is no conversion policy in this repository (#130).
+  const settledTotals = summarizeSettledTotals(payments.map((payment) => payment.settlement))
+  const settledSummary = formatSettledTotals(settledTotals)
+  const quotedTotal = formatAmount(totalSpent)
   const paymentAttemptSummary = summarizePaymentAttempts(paymentAttempts)
   const pendingPaymentCount = paymentAttempts.filter(
     (attempt) => attempt.outcome === 'unknown' || attempt.outcome === 'pending'
@@ -859,8 +1000,15 @@ Respond ONLY with valid JSON (no markdown, no code fences):
 
   broadcastFn?.({
     type: 'orchestrator_complete',
-    totalSpent: formatAmount(totalSpent),
+    // `totalSpent` is the quoted/reserved amount the budget guardrail tracked.
+    // Settled totals are reported separately, per asset (#130).
+    totalSpent: quotedTotal,
     totalSpentExact: totalSpent.toJSON(),
+    quotedTotal,
+    quotedTotalExact: totalSpent.toJSON(),
+    settledTotals,
+    settledSummary,
+    settlementConversionPolicy: SETTLEMENT_CONVERSION_POLICY,
     agentsUsed: countUsed(results),
     agentsSkipped: countSkipped(results),
     elapsed: `${elapsed}ms`,
@@ -882,8 +1030,19 @@ Respond ONLY with valid JSON (no markdown, no code fences):
     plan: plan.plan,
     budget: typeof budget === 'number' ? budget : exactBudget.toNumber(),
     budgetExact: exactBudget.toJSON(),
-    totalSpent: formatAmount(totalSpent),
+    // Quoted/reserved cost: the sum of the prices the budget guardrail admitted
+    // for this run. This is what `totalSpent` has always meant; it is not a
+    // settled total, and `quotedTotal` says so explicitly (#130).
+    totalSpent: quotedTotal,
     totalSpentExact: totalSpent.toJSON(),
+    quotedTotal,
+    quotedTotalExact: totalSpent.toJSON(),
+    // What actually settled, grouped by asset (and issuer/network). XLM and
+    // USDC are never added together.
+    settledTotals,
+    settledSummary,
+    settledPaymentCount: successfulPayments.length,
+    settlementConversionPolicy: SETTLEMENT_CONVERSION_POLICY,
     budgetExhausted,
     agentsUsed: countUsed(results),
     agentsSkipped: countSkipped(results),
@@ -1135,7 +1294,9 @@ export async function executePlan(planId, broadcastFn, context = {}) {
 
   if (Date.now() > new Date(planRecord.expiresAt).getTime()) {
     activePlansStore.delete(planId)
-    const err = new Error(`Plan quote has expired at ${planRecord.expiresAt}. Please request a new preview.`)
+    const err = new Error(
+      `Plan quote has expired at ${planRecord.expiresAt}. Please request a new preview.`
+    )
     err.status = 400
     err.code = 'QUOTE_EXPIRED'
     throw err
@@ -1154,7 +1315,9 @@ export async function executePlan(planId, broadcastFn, context = {}) {
     const previewPrice = planRecord.pricesAtPreview[subtask.agentId]
     if (currentPrice !== previewPrice) {
       activePlansStore.delete(planId)
-      const err = new Error(`Agent '${subtask.agentId}' pricing has changed from ${previewPrice} to ${currentPrice}. Please request a new preview.`)
+      const err = new Error(
+        `Agent '${subtask.agentId}' pricing has changed from ${previewPrice} to ${currentPrice}. Please request a new preview.`
+      )
       err.status = 400
       err.code = 'QUOTE_CHANGED'
       throw err

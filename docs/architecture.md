@@ -135,7 +135,7 @@ Caller (orchestrator x402Fetch — @x402/fetch + ExactStellarScheme + Ed25519 si
 Facilitator
    │ 5. verifies + settles the USDC payment on Stellar testnet
    ▼
-Premium route handler (src/server.js)
+Premium route handler (src/routes/premium-routes.js)
    │ 6. runs the Claude agent, returns 200 + PAYMENT-RESPONSE header (settlement / tx hash)
    ▼
 settlement-header.js
@@ -190,6 +190,31 @@ same logical charge_, so it is only permitted for the documented terminal failur
 - The same probe can be passed to `orchestrate()` as `context.paymentProbe`, so an unresolved x402
   attempt is reconciled _before_ the fallback decision is made.
 
+### Settlement reporting: quoted vs settled (#130)
+
+A step has two different amounts and they are never conflated:
+
+- **Quote / reserved cost** — the registry price for the step (`agent.price`, quoted in USDC). This
+  is what the budget guardrail admits, and it is reported as `quotedTotal` (`totalSpent` remains an
+  alias for it) on the run response.
+- **Settlement** — the asset and amount that actually moved, in `settledTotals`, `results[*]`,
+  `payments[*]`, payment attempts, `txProofs`, and the `payment` / `agent_response` events.
+
+| Path             | Settled asset                          | Settled amount                                       |
+| ---------------- | -------------------------------------- | ---------------------------------------------------- |
+| x402             | USDC (issuer from the network profile) | the quoted USDC price                                |
+| Direct fallback  | native XLM (no issuer)                 | the quote's numeric value, per `XLM_FALLBACK_POLICY` |
+| Unpaid / pending | none (`settledAmount: null`)           | none                                                 |
+
+`settledTotals` is grouped per `(asset, issuer, network)` and uses exact `AssetAmount` base units.
+There is **no** USDC/XLM conversion in this repository, so a mixed run reports an XLM total and a
+USDC total separately (`settledSummary`, e.g. `0.01 USDC + 0.05 XLM`) and
+`settlementConversionPolicy.applied` is `false`. An XLM settlement is never added to a USDC total.
+
+Run history stores the same asset information: `summary.quotedTotal`, `summary.settledTotals`, and
+`txProofs[*].asset` / `.amount` match the API and event payloads, so the dashboard renders what was
+actually settled.
+
 ## Orchestration Flow
 
 How `POST /api/orchestrate { task, budget }` turns one task into a budget-bounded, multi-agent
@@ -243,14 +268,26 @@ prices are enforced by [`pricing.config.js`](../src/pricing.config.js).
 Driven by environment variables (see [`.env.example`](../.env.example) and
 [`src/config.js`](../src/config.js)):
 
-| Variable                                   | Purpose                                                        |
-| ------------------------------------------ | -------------------------------------------------------------- |
-| `ANTHROPIC_API_KEY`                        | Enables live Claude calls; without it, demo fallbacks are used |
-| `SERVER_STELLAR_ADDRESS` / `_SECRET`       | Receives payments; presence enables the x402 paywall           |
-| `ORCHESTRATOR_STELLAR_ADDRESS` / `_SECRET` | Pays for agent calls (x402 + XLM fallback)                     |
-| `NETWORK`                                  | Stellar network (default `stellar:testnet`)                    |
-| `FACILITATOR_URL`                          | x402 facilitator that verifies and settles payments            |
-| `INTERNAL_BASE_URL`                        | Origin the orchestrator uses to reach `/api/premium/*`         |
+| Variable                                   | Purpose                                                                 |
+| ------------------------------------------ | ----------------------------------------------------------------------- |
+| `ANTHROPIC_API_KEY`                        | Enables live Claude calls; without it, demo fallbacks are used          |
+| `SERVER_STELLAR_ADDRESS` / `_SECRET`       | Receives payments; presence enables the x402 paywall                    |
+| `ORCHESTRATOR_STELLAR_ADDRESS` / `_SECRET` | Pays for agent calls (x402 + XLM fallback)                              |
+| `NETWORK`                                  | Stellar network profile (default and only supported: `stellar:testnet`) |
+| `FACILITATOR_URL`                          | x402 facilitator that verifies and settles payments                     |
+| `STELLAR_RPC_URL` / `STELLAR_HORIZON_URL`  | Optional; must match the selected profile or startup fails              |
+| `INTERNAL_BASE_URL`                        | Origin the orchestrator uses to reach `/api/premium/*`                  |
+
+### Network Profile
+
+[`src/stellar/network.js`](../src/stellar/network.js) is the single source of truth for the network
+identifier, transaction passphrase, Horizon/RPC origins, explorer origin, and asset identity (USDC
+issuer). [`src/config.js`](../src/config.js) resolves and validates that profile at startup and
+exposes it as `config.networkProfile`; every wallet, payment, and explorer link then reads from it
+instead of hard-coding testnet. `stellar:testnet` is supported. Unknown networks, and recognised but
+disabled networks such as `stellar:pubnet`, fail at startup with a `NetworkConfigError`. Endpoint
+overrides that point at a different network are rejected as mismatches. Friendbot is available only
+on the testnet profile.
 
 ## Related
 

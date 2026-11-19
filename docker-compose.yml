@@ -5,14 +5,15 @@ services:
     build: .
     container_name: stellarmind
     ports:
-      - '3000:3000'
+      - '3001:3001'
     env_file:
       - .env
     environment:
       - NODE_ENV=production
+      - PORT=3001
     restart: unless-stopped
     healthcheck:
-      test: ['CMD', 'wget', '--spider', 'http://localhost:3000/health']
+      test: ['CMD', 'wget', '--spider', 'http://localhost:3001/healthz']
       interval: 30s
       timeout: 5s
       retries: 3
