@@ -72,13 +72,50 @@ async function loadStatusPage() {
 
 async function loadTxPage() {
   try {
-    const txs = await (await fetch('/api/wallet/transactions')).json()
+    const response = await fetch('/api/wallet/transactions')
+    const data = await response.json()
+
+    // Handle error state
+    if (!data.success) {
+      const errorHtml = `
+        <tr>
+          <td colspan="5" style="text-align:center;padding:32px;">
+            <div style="color:var(--red);margin-bottom:12px;font-size:16px;">
+              ${getTransactionErrorIcon(data.errorType)} ${data.message || 'Failed to load transactions'}
+            </div>
+            ${
+              data.retryable
+                ? `
+              <button onclick="loadTxPage()" style="padding:8px 16px;background:var(--accent);color:white;border:none;border-radius:4px;cursor:pointer;">
+                🔄 Retry
+              </button>
+              <div style="color:var(--text-muted);font-size:12px;margin-top:8px;">
+                Error ID: ${data.correlationId || 'N/A'}
+              </div>
+            `
+                : `
+              <div style="color:var(--text-muted);font-size:12px;margin-top:8px;">
+                ${data.errorType === 'ACCOUNT_NOT_FOUND' ? 'Run the wallet setup first to fund this account.' : ''}
+              </div>
+            `
+            }
+          </td>
+        </tr>
+      `
+      document.getElementById('tx-body').innerHTML = errorHtml
+      document.getElementById('tx-cnt').textContent = '0'
+      document.getElementById('tx-total').textContent = '0 Transactions'
+      return
+    }
+
+    const txs = data.transactions || []
     document.getElementById('tx-cnt').textContent = txs.length
-    document.getElementById('tx-total').textContent = `${txs.length} Transactions`
+    document.getElementById('tx-total').textContent =
+      `${txs.length} Transaction${txs.length !== 1 ? 's' : ''}`
 
     if (!txs.length) {
       document.getElementById('tx-body').innerHTML =
-        '<tr><td colspan="5" style="text-align:center;padding:32px;color:var(--text-muted);">No transactions yet. Run the orchestrator first!</td></tr>'
+        '<tr><td colspan="5" style="text-align:center;padding:32px;color:var(--text-muted);">✅ No transactions yet. This account is empty but valid.</td></tr>'
       return
     }
 
@@ -113,10 +150,34 @@ async function loadTxPage() {
         </tr>`
       })
       .join('')
-  } catch {
-    document.getElementById('tx-body').innerHTML =
-      '<tr><td colspan="5" style="text-align:center;padding:32px;color:var(--text-muted);">Failed to load transactions.</td></tr>'
+  } catch (err) {
+    console.error('Failed to load transactions:', err)
+    document.getElementById('tx-body').innerHTML = `
+      <tr>
+        <td colspan="5" style="text-align:center;padding:32px;">
+          <div style="color:var(--red);margin-bottom:12px;">
+            🌐 Network error: ${err.message}
+          </div>
+          <button onclick="loadTxPage()" style="padding:8px 16px;background:var(--accent);color:white;border:none;border-radius:4px;cursor:pointer;">
+            🔄 Retry
+          </button>
+        </td>
+      </tr>
+    `
   }
+}
+
+/**
+ * Get icon for transaction error types
+ */
+function getTransactionErrorIcon(errorType) {
+  const icons = {
+    ACCOUNT_NOT_FOUND: '❌',
+    TIMEOUT: '⏱️',
+    NETWORK_ERROR: '🌐',
+    UPSTREAM_ERROR: '⚠️',
+  }
+  return icons[errorType] || '⚠️'
 }
 
 async function saveApiKey() {
@@ -152,4 +213,84 @@ async function saveApiKey() {
     btn.disabled = false
     btn.textContent = 'Update Key'
   }
+}
+
+async function loadHistoryPage() {
+  const listEl = document.getElementById('history-list')
+  const emptyEl = document.getElementById('history-empty')
+  const loadingEl = document.getElementById('history-loading')
+  const metaEl = document.getElementById('history-meta')
+  const prevBtn = document.getElementById('history-prev')
+  const nextBtn = document.getElementById('history-next')
+
+  loadingEl.style.display = 'block'
+  emptyEl.style.display = 'none'
+  listEl.innerHTML = ''
+
+  try {
+    const params = new URLSearchParams()
+    const statusFilter = document.getElementById('history-status-filter')?.value
+    const limit = document.getElementById('history-limit')?.value || 20
+    if (statusFilter) params.set('status', statusFilter)
+    params.set('limit', limit)
+    const res = await fetch(`/api/runs?${params.toString()}`)
+    const data = await res.json()
+    loadingEl.style.display = 'none'
+
+    if (!data.runs || data.runs.length === 0) {
+      emptyEl.style.display = 'block'
+      metaEl.textContent = 'No runs found'
+      prevBtn.disabled = true
+      nextBtn.disabled = true
+      return
+    }
+
+    metaEl.textContent = `Showing ${data.runs.length} run${data.runs.length !== 1 ? 's' : ''}`
+
+    listEl.innerHTML = data.runs
+      .map((run) => {
+        const status = run.status || 'unknown'
+        const statusClass = `status-${status}`
+        const created = run.createdAt ? new Date(run.createdAt).toLocaleString() : '—'
+        const completed = run.completedAt ? new Date(run.completedAt).toLocaleString() : '—'
+        const spent =
+          run.totalSpent !== undefined && run.totalSpent !== null
+            ? run.totalSpent
+            : (run.summary?.totalSpent ?? '0')
+        const budget =
+          run.budget !== undefined && run.budget !== null
+            ? run.budget
+            : (run.summary?.budget ?? '—')
+        const task = run.task || 'No task description'
+        const taskShort = task.length > 100 ? task.slice(0, 97) + '...' : task
+        return `
+          <div class="history-item" tabindex="0" role="button" data-run-id="${escapeHtml(run.id)}" onclick="openRunDetail('${escapeHtml(run.id)}')" onkeydown="if(event.key==='Enter'||event.key===' ') {event.preventDefault(); openRunDetail('${escapeHtml(run.id)}');}">
+            <div class="history-row">
+              <div class="history-id"><code>${escapeHtml(run.id)}</code></div>
+              <span class="history-status ${statusClass}">${escapeHtml(status)}</span>
+            </div>
+            <div class="history-task">${escapeHtml(taskShort)}</div>
+            <div class="history-meta">
+              <span>Created: ${escapeHtml(created)}</span>
+              <span>Completed: ${escapeHtml(completed)}</span>
+              <span>Spent: ${escapeHtml(spent)} / ${escapeHtml(budget)}</span>
+            </div>
+          </div>
+        `
+      })
+      .join('')
+
+    prevBtn.disabled = true // pagination not fully implemented in API yet; keep minimal
+    nextBtn.disabled = true
+  } catch (err) {
+    loadingEl.style.display = 'none'
+    emptyEl.style.display = 'block'
+    emptyEl.innerHTML = '<div class="es-icon">❌</div><p>Failed to load run history</p>'
+  }
+}
+
+function escapeHtml(text) {
+  const div = document.createElement('div')
+  div.textContent = text
+  return div.innerHTML
 }

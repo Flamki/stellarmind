@@ -137,8 +137,8 @@ paths:
       tags: [Orchestration]
       description: >
         Generates and validates an orchestration plan, returning validated steps, per-step quotes,
-        total quote, expiry timestamp, and any planner-provider usage. Makes zero premium agent calls
-        or settlement attempts.
+        total quote, expiry timestamp, and any planner-provider usage. Makes zero premium agent
+        calls or settlement attempts.
       requestBody:
         required: true
         content:
@@ -180,8 +180,9 @@ paths:
       operationId: executeOrchestrationPlan
       tags: [Orchestration]
       description: >
-        Executes a stored plan by planId, validating the plan and current pricing against the accepted quote.
-        Returns QUOTE_EXPIRED or QUOTE_CHANGED error if expired or if pricing changed.
+        Executes a stored plan by planId, validating the plan and current pricing against the
+        accepted quote. Returns QUOTE_EXPIRED or QUOTE_CHANGED error if expired or if pricing
+        changed.
       requestBody:
         required: true
         content:
@@ -207,7 +208,8 @@ paths:
               schema:
                 $ref: '#/components/schemas/OrchestrationResult'
         '400':
-          description: Quote expired (QUOTE_EXPIRED), price changed (QUOTE_CHANGED), or validation error
+          description:
+            Quote expired (QUOTE_EXPIRED), price changed (QUOTE_CHANGED), or validation error
         '404':
           description: Plan not found (PLAN_NOT_FOUND)
 
@@ -464,7 +466,9 @@ components:
           items:
             type: object
           nullable: true
-          description: Persisted orchestration results. Null while running, after failures, or for legacy records without stored output.
+          description:
+            Persisted orchestration results. Null while running, after failures, or for legacy
+            records without stored output.
         error:
           type: object
           nullable: true
@@ -474,6 +478,63 @@ components:
               type: string
             code:
               type: string
+        quotedTotal:
+          type: string
+          description:
+            Quoted/reserved cost the budget guardrail admitted (USDC). Not a settled total.
+        settledTotals:
+          type: array
+          description: |
+            Settled amounts grouped per asset (asset, issuer, network). Amounts of
+            different assets are never added together; there is no USDC/XLM
+            conversion policy in this deployment.
+          items:
+            type: object
+            properties:
+              asset:
+                type: string
+              issuer:
+                type: string
+                nullable: true
+              network:
+                type: string
+                nullable: true
+              amount:
+                type: string
+              count:
+                type: integer
+              txCount:
+                type: integer
+        txProofs:
+          type: array
+          description: Settled transaction proofs, including the actual settled asset and amount.
+          items:
+            type: object
+            properties:
+              method:
+                type: string
+              txHash:
+                type: string
+                nullable: true
+              explorerUrl:
+                type: string
+                nullable: true
+              asset:
+                type: string
+                nullable: true
+                description: Settled asset code (USDC for x402, XLM for the direct fallback)
+              issuer:
+                type: string
+                nullable: true
+              network:
+                type: string
+                nullable: true
+              amount:
+                type: string
+                nullable: true
+              quotedAmount:
+                type: string
+                nullable: true
         summary:
           type: object
           nullable: true

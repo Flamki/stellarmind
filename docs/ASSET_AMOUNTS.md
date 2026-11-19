@@ -195,8 +195,56 @@ backwards-compatible values and exact objects:
     "asset": "USDC",
     "precision": 7
   },
+  "quotedTotal": "0.1000",
+  "quotedTotalExact": {
+    "amount": "0.1000000",
+    "baseUnits": "1000000",
+    "asset": "USDC",
+    "precision": 7
+  },
+  "settledTotals": [
+    {
+      "asset": "USDC",
+      "issuer": "GBBD47IF6LWK7P7MDEVSCWR7DPUWV3NY3DTQEVFL4NAT4AQH3ZLLFLA5",
+      "network": "stellar:testnet",
+      "amount": "0.0200000",
+      "amountExact": {
+        "amount": "0.0200000",
+        "baseUnits": "200000",
+        "asset": "USDC",
+        "precision": 7
+      },
+      "count": 2,
+      "txCount": 2
+    },
+    {
+      "asset": "XLM",
+      "issuer": null,
+      "network": "stellar:testnet",
+      "amount": "0.0800000",
+      "amountExact": {
+        "amount": "0.0800000",
+        "baseUnits": "800000",
+        "asset": "XLM",
+        "precision": 7
+      },
+      "count": 2,
+      "txCount": 2
+    }
+  ],
+  "settledSummary": "0.02 USDC + 0.08 XLM",
+  "settlementConversionPolicy": {
+    "applied": false,
+    "reason": "No USDC/XLM conversion rate is configured. Settled amounts are reported per asset and are never added across assets."
+  },
   "budgetExhausted": false,
   "agentsUsed": 4,
   "agentsSkipped": 0
 }
 ```
+
+`totalSpent` / `totalSpentExact` express the **quoted/reserved** cost admitted against the budget
+(and remain aliases of `quotedTotal` / `quotedTotalExact`). `settledTotals` reports what actually
+moved, grouped per `(asset, issuer, network)` using exact base units. An XLM fallback settlement is
+never added to a USDC total: with no configured conversion policy, the two asset totals stay
+separate rather than being combined into one number.

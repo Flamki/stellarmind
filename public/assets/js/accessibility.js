@@ -71,3 +71,22 @@
     setupFocusTraps()
   }
 })()
+
+document.addEventListener('keydown', function (e) {
+  const modal = document.getElementById('history-detail-modal')
+  if (e.key === 'Escape' && modal && modal.style.display === 'flex') {
+    closeRunDetail()
+  }
+})
+
+// Close modal when clicking outside
+window.addEventListener('DOMContentLoaded', function () {
+  const modal = document.getElementById('history-detail-modal')
+  if (modal) {
+    modal.addEventListener('click', function (e) {
+      if (e.target === modal) {
+        closeRunDetail()
+      }
+    })
+  }
+})

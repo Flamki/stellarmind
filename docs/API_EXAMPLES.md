@@ -658,6 +658,43 @@ curl -s -X POST http://localhost:3001/api/orchestrate \
   "plan": "Multi-agent workflow: research-bot → summary-bot → analyst-bot → code-bot (4 agents, 0.15 USDC budget)",
   "budget": 0.15,
   "totalSpent": "0.1000",
+  "quotedTotal": "0.1000",
+  "settledTotals": [
+    {
+      "asset": "USDC",
+      "issuer": "GBBD47IF6LWK7P7MDEVSCWR7DPUWV3NY3DTQEVFL4NAT4AQH3ZLLFLA5",
+      "network": "stellar:testnet",
+      "amount": "0.02",
+      "amountExact": {
+        "amount": "0.0200000",
+        "baseUnits": "200000",
+        "asset": "USDC",
+        "precision": 7
+      },
+      "count": 2,
+      "txCount": 2
+    },
+    {
+      "asset": "XLM",
+      "issuer": null,
+      "network": "stellar:testnet",
+      "amount": "0.08",
+      "amountExact": {
+        "amount": "0.0800000",
+        "baseUnits": "800000",
+        "asset": "XLM",
+        "precision": 7
+      },
+      "count": 2,
+      "txCount": 2
+    }
+  ],
+  "settledSummary": "0.02 USDC + 0.08 XLM",
+  "settledPaymentCount": 4,
+  "settlementConversionPolicy": {
+    "applied": false,
+    "reason": "No USDC/XLM conversion rate is configured. Settled amounts are reported per asset and are never added across assets."
+  },
   "budgetExhausted": false,
   "agentsUsed": 4,
   "agentsSkipped": 0,
@@ -677,6 +714,22 @@ curl -s -X POST http://localhost:3001/api/orchestrate \
       "output": "[Research Agent — Powered by Claude Haiku]\n\nResearch findings on \"x402 on Stellar for AI agents\":\n\n• x402 provides HTTP-native micropayments that allow AI agents to autonomously pay for services without human intervention...",
       "cost": "0.01",
       "currency": "USDC",
+      "quotedAmount": "0.01",
+      "quotedAsset": "USDC",
+      "settledAmount": "0.01",
+      "settledAsset": "USDC",
+      "settledIssuer": "GBBD47IF6LWK7P7MDEVSCWR7DPUWV3NY3DTQEVFL4NAT4AQH3ZLLFLA5",
+      "settledNetwork": "stellar:testnet",
+      "settlement": {
+        "success": true,
+        "method": "x402",
+        "amount": "0.01",
+        "asset": "USDC",
+        "issuer": "GBBD47IF6LWK7P7MDEVSCWR7DPUWV3NY3DTQEVFL4NAT4AQH3ZLLFLA5",
+        "network": "stellar:testnet",
+        "txHash": "abc123def456...",
+        "policy": null
+      },
       "paidVia": "x402",
       "paymentSuccess": true,
       "txHash": "abc123def456...",
@@ -703,6 +756,22 @@ curl -s -X POST http://localhost:3001/api/orchestrate \
       "output": "[Analysis Agent — Powered by Claude Sonnet]\n\nStrategic Analysis: \"Explain why x402 on Stellar matters for AI agents.\"\n\n**Key Findings:**\n• Agent-to-agent payment systems are an emerging category with significant first-mover advantage potential...",
       "cost": "0.05",
       "currency": "USDC",
+      "quotedAmount": "0.05",
+      "quotedAsset": "USDC",
+      "settledAmount": "0.05",
+      "settledAsset": "XLM",
+      "settledIssuer": null,
+      "settledNetwork": "stellar:testnet",
+      "settlement": {
+        "success": true,
+        "method": "stellar-xlm-direct",
+        "amount": "0.05",
+        "asset": "XLM",
+        "issuer": null,
+        "network": "stellar:testnet",
+        "txHash": "mno345pqr678...",
+        "policy": "demo-numeric-xlm"
+      },
       "paidVia": "stellar-xlm-direct",
       "paymentSuccess": true,
       "txHash": "mno345pqr678...",
@@ -728,6 +797,12 @@ curl -s -X POST http://localhost:3001/api/orchestrate \
       "paymentMethod": "x402",
       "paymentSuccess": true,
       "paidVia": "x402",
+      "quotedAmount": "0.01",
+      "quotedAsset": "USDC",
+      "settledAmount": "0.01",
+      "settledAsset": "USDC",
+      "settledIssuer": "GBBD47IF6LWK7P7MDEVSCWR7DPUWV3NY3DTQEVFL4NAT4AQH3ZLLFLA5",
+      "settledNetwork": "stellar:testnet",
       "txHash": "abc123def456...",
       "explorerUrl": "https://stellar.expert/explorer/testnet/tx/abc123def456..."
     }
@@ -737,6 +812,11 @@ curl -s -X POST http://localhost:3001/api/orchestrate \
   "elapsed": "12453ms"
 }
 ````
+
+> `totalSpent` (aliased as `quotedTotal`) is the **quoted/reserved** cost the budget guardrail
+> admitted. `settledTotals` reports what actually moved, grouped per asset; the x402 path settles
+> USDC, the direct fallback settles native XLM, and unpaid steps settle nothing. XLM and USDC
+> amounts are never added together (`settlementConversionPolicy.applied` is `false`).
 
 ### `GET /api/orchestrate`
 

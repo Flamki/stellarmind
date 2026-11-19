@@ -37,11 +37,21 @@ function toAuditEvent(event) {
     agentId: event.agentId || null,
     agent: event.agent || null,
     cost: event.cost || null,
+    // The settled asset and amount travel with the persisted event so a
+    // payment proof keeps its asset across a restart (#130). `cost` above stays
+    // the quoted price.
+    amount: event.amount ?? null,
+    asset: event.asset || event.settledAsset || null,
+    issuer: event.issuer || event.settledIssuer || null,
+    network: event.network || event.settledNetwork || null,
+    quotedAmount: event.quotedAmount ?? null,
+    quotedAsset: event.quotedAsset || event.currency || null,
     paidVia: event.paidVia || null,
     txHash: event.txHash || null,
     explorerUrl: event.explorerUrl || null,
     status: event.status || null,
     totalSpent: event.totalSpent || null,
+    quotedTotal: event.quotedTotal || null,
     reason: event.reason || null,
   }
 }
@@ -237,12 +247,23 @@ export class InMemoryRunHistoryStore {
     const run = this.runs.find((entry) => entry.id === runId)
     if (!run) return
 
+    // A proof is only useful if it names the asset and amount that settled,
+    // not the quote the run reserved (#130). Unpaid/pending steps never reach
+    // this list because they are filtered out here.
     const txProofs = (result.payments || [])
       .filter((payment) => payment.paymentSuccess)
       .map((payment) => ({
         method: payment.paidVia || payment.paymentMethod || 'unknown',
         txHash: payment.txHash || null,
         explorerUrl: payment.explorerUrl || null,
+        amount: payment.settledAmount ?? payment.settlement?.amount ?? null,
+        amountExact: payment.settledAmountExact ?? payment.settlement?.amountExact ?? null,
+        asset: payment.settledAsset ?? payment.settlement?.asset ?? null,
+        issuer: payment.settledIssuer ?? payment.settlement?.issuer ?? null,
+        network: payment.settledNetwork ?? payment.settlement?.network ?? null,
+        quotedAmount: payment.quotedAmount ?? null,
+        quotedAsset: payment.quotedAsset ?? null,
+        settlementPolicy: payment.settlement?.policy ?? null,
       }))
 
     const completedOutput = Array.isArray(result.output)
@@ -255,7 +276,16 @@ export class InMemoryRunHistoryStore {
     run.completedAt = new Date().toISOString()
     run.updatedAt = run.completedAt
     run.summary = {
+      // `totalSpent` stays the quoted/reserved amount the budget guardrail
+      // tracked. The per-asset settled totals below are the money that moved.
       totalSpent: result.totalSpent,
+      quotedTotal: result.quotedTotal ?? result.totalSpent,
+      settledTotals: result.settledTotals || [],
+      settledSummary: result.settledSummary || 'none',
+      settlementConversionPolicy: result.settlementConversionPolicy || {
+        applied: false,
+        reason: 'No cross-asset conversion is configured.',
+      },
       budget: result.budget,
       budgetExhausted: result.budgetExhausted,
       paymentProtocol: result.paymentProtocol,

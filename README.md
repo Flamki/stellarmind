@@ -234,6 +234,15 @@ PORT=3001
 INTERNAL_BASE_URL=https://stellarmind.example.com
 ```
 
+### Network Configuration
+
+One validated network profile drives the whole deployment. `NETWORK` selects it and
+`src/stellar/network.js` supplies the transaction passphrase, Horizon/RPC origins, explorer origin,
+and USDC issuer that every wallet and payment client uses. `stellar:testnet` is the supported
+default; `stellar:pubnet` and unknown networks fail at startup with a `NetworkConfigError`, and
+endpoint overrides (`STELLAR_RPC_URL`, `STELLAR_HORIZON_URL`, `STELLAR_EXPLORER_URL`) must match the
+selected profile. Testnet funding helpers (Friendbot) are never enabled for another profile.
+
 ## Orchestration Admission Queue & Concurrency Limits
 
 Every accepted orchestration request can perform planning, provider LLM calls, and Stellar x402
