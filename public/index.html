@@ -886,6 +886,120 @@
         color: var(--cyan);
       }
 
+      /* ═══ PREVIEW PANEL ═══ */
+      .preview-panel {
+        animation: fadeUp 0.25s ease-out;
+        border-color: rgba(168, 85, 247, 0.2);
+        box-shadow: 0 0 0 1px rgba(168, 85, 247, 0.08) inset;
+      }
+
+      .preview-summary {
+        margin-bottom: 16px;
+      }
+
+      .preview-steps-container {
+        margin-bottom: 16px;
+      }
+
+      .preview-steps {
+        display: flex;
+        flex-direction: column;
+        gap: 8px;
+        max-height: 320px;
+        overflow-y: auto;
+        padding: 2px;
+      }
+
+      .preview-steps::-webkit-scrollbar {
+        width: 4px;
+      }
+
+      .preview-steps::-webkit-scrollbar-thumb {
+        background: rgba(255, 255, 255, 0.06);
+        border-radius: 2px;
+      }
+
+      .preview-step {
+        background: var(--bg-card-alt);
+        border: 1px solid var(--border);
+        border-radius: var(--radius-sm);
+        padding: 10px 12px;
+        transition: var(--tr);
+      }
+
+      .preview-step:hover {
+        border-color: rgba(168, 85, 247, 0.3);
+        background: rgba(168, 85, 247, 0.05);
+      }
+
+      .preview-step-header {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+      }
+
+      .preview-step-num {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        width: 24px;
+        height: 24px;
+        background: var(--gradient);
+        border-radius: 50%;
+        font-size: 11px;
+        font-weight: 700;
+        color: white;
+        flex-shrink: 0;
+      }
+
+      .preview-step-name {
+        flex: 1;
+        font-size: 12.5px;
+        font-weight: 600;
+        color: var(--text-primary);
+      }
+
+      .preview-step-cost {
+        font-family: 'JetBrains Mono', monospace;
+        font-size: 11px;
+        font-weight: 600;
+        color: var(--purple);
+        padding: 3px 8px;
+        background: rgba(168, 85, 247, 0.1);
+        border-radius: 4px;
+      }
+
+      .preview-deps {
+        display: block;
+        margin-top: 6px;
+        font-size: 10px;
+        color: var(--text-muted);
+        font-style: italic;
+      }
+
+      .preview-actions {
+        display: flex;
+        gap: 10px;
+        justify-content: flex-end;
+        padding-top: 6px;
+      }
+
+      .btn-secondary {
+        background: var(--bg-input);
+        color: var(--text-primary);
+      }
+
+      .btn-secondary:hover {
+        background: var(--border);
+      }
+        font-weight: 600;
+      }
+
+      .chip .v {
+        font-family: 'JetBrains Mono', monospace;
+        color: var(--cyan);
+      }
+
       /* ═══ AGENT REGISTRY PAGE ═══ */
       .agent-cards {
         display: grid;
@@ -1346,6 +1460,43 @@
             </div>
           </div>
 
+          <!-- ═══ PREVIEW PANEL ═══ -->
+          <div class="card preview-panel" id="preview-panel" style="display: none;">
+            <div class="card-h">
+              <h2>📋 Execution Plan Preview</h2>
+              <span class="tag purple">Review Before Running</span>
+            </div>
+            <div class="card-b">
+              <div class="preview-summary">
+                <p style="font-size: 12px; color: var(--text-secondary); margin-bottom: 14px;">
+                  Review the planned agents, estimated costs, and execution order before confirming.
+                </p>
+                <div class="chips" style="margin-bottom: 14px;">
+                  <div class="chip">Steps: <span class="v" id="preview-step-count">0</span></div>
+                  <div class="chip">Budget: <span class="v" id="preview-budget">0.00 USDC</span></div>
+                  <div class="chip">Total Quoted: <span class="v" id="preview-total-cost">0.000 USDC</span></div>
+                </div>
+                <div class="preview-budget-warning" id="preview-budget-warning" style="display: none; padding: 10px; background: rgba(251, 191, 36, 0.1); border: 1px solid rgba(251, 191, 36, 0.3); border-radius: 6px; margin-bottom: 14px;">
+                  <span style="color: var(--amber); font-size: 12px; font-weight: 600;">⚠️ Quoted cost exceeds your budget. Increase budget or cancel to revise.</span>
+                </div>
+              </div>
+
+              <div class="preview-steps-container">
+                <h3 style="font-size: 13px; font-weight: 700; margin-bottom: 10px; color: var(--text-primary);">Planned Steps</h3>
+                <div class="preview-steps" id="preview-steps"></div>
+              </div>
+
+              <div class="preview-actions">
+                <button class="btn btn-secondary" onclick="cancelPreview()">
+                  Cancel & Edit
+                </button>
+                <button class="btn" id="preview-confirm-btn" onclick="confirmAndExecute()">
+                  Confirm & Execute
+                </button>
+              </div>
+            </div>
+          </div>
+
           <div class="card result-panel" id="result-panel">
             <div class="card-h">
               <h2>✅ Live Progress & Result</h2>
@@ -1756,6 +1907,20 @@
       const bDisp = document.getElementById('budget-display')
       bSlider.addEventListener('input', () => {
         bDisp.textContent = `${parseFloat(bSlider.value).toFixed(2)} USDC`
+        // Invalidate preview if budget changes
+        if (activePlan && hasPreviewParametersChanged()) {
+          hidePreview()
+          activePlan = null
+        }
+      })
+
+      // ─── Task Input Change Detection ───
+      document.getElementById('task-input').addEventListener('input', () => {
+        // Invalidate preview if task changes
+        if (activePlan && hasPreviewParametersChanged()) {
+          hidePreview()
+          activePlan = null
+        }
       })
 
       // ─── Load Agents (sidebar) ───
