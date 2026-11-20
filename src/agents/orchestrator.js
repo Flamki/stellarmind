@@ -278,7 +278,13 @@ async function callAgentViaX402(agent, input, broadcastFn, context = {}) {
           provenance: {
             source: 'x402_remote',
             endpoint: url,
-            model: agent.model,
+            // We never see the remote model, so the registry label is only a
+            // declaration, not a record of what generated the output (#153).
+            provider: null,
+            model: null,
+            declaredModel: agent.model,
+            promptRevision: null,
+            promptDigest: null,
             illustrative: false,
             note: 'Result served by remote x402-protected endpoint',
           },

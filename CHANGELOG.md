@@ -17,6 +17,10 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Changed
 
+- Agent results record the model that actually responded (`provenance.model`), the provider, and a
+  prompt revision/digest (`promptRevision`, `promptDigest`). After a model fallback `model` is the
+  fallback model. Demo and remote x402 results no longer claim a live model: `model` is `null`
+  (`intendedModel` / `declaredModel` keep the label). No credentials or prompt text are stored.
 - Wallet readiness is no longer a one-time check at startup. It is cached for a bounded time and
   refreshed on demand, so funding or a new trustline is picked up without a restart.
 - Readiness matches the network profile's asset by code **and** issuer. A `USDC` balance from any
