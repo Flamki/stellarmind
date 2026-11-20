@@ -111,15 +111,30 @@ function showResult(r) {
     successful.find((x) => x.agentId === 'analyst-bot') ||
     successful[0]
   const finalAnswer = normalizeFinalAnswer(preferred?.output || 'No final answer returned.')
+  
+  // Check if any results used demo/fallback responses
+  const hasDemoResults = (r.results || []).some(
+    (x) => x.provenance && (x.provenance.source === 'demo' || x.provenance.illustrative)
+  )
 
   let details = ''
   for (const x of r.results || []) {
+    if (x.skipped) {
+      details += `\n[SKIPPED] ${x.agentId}: ${x.reason}\n`
+    } else {
+      const provenanceLabel = formatProvenanceLabel(x.provenance)
+      details += `\n--- ${x.agentName} ${provenanceLabel} (${x.cost} ${x.currency}) ---\n${x.output}\n`
+    }
     details += x.skipped
       ? `\n[SKIPPED] ${x.agentId}: ${x.reason}\n`
       : `\n--- ${x.agentName} (quoted ${x.cost} ${x.currency}; settled ${formatSettlementLabel(x)}) ---\n${x.output}\n`
   }
 
-  out.textContent = `FINAL ANSWER\n${finalAnswer}\n\nAGENT DETAILS${details}`
+  const demoNotice = hasDemoResults 
+    ? '\n⚠️  NOTE: Some responses are illustrative examples (demo mode). Live Claude results require valid API credentials.\n' 
+    : ''
+
+  out.textContent = `FINAL ANSWER\n${finalAnswer}${demoNotice}\n\nAGENT DETAILS${details}`
 
   const txL = (r.payments || [])
     .map(
@@ -136,6 +151,7 @@ function showResult(r) {
     <div class="chip">Protocol: <span class="v">${r.paymentProtocol || 'stellar'}</span></div>
     <div class="chip">Time: <span class="v">${r.elapsed || '-'}</span></div>
     ${r.budgetExhausted ? '<div class="chip" style="color:var(--amber)">Budget Used</div>' : ''}
+    ${hasDemoResults ? '<div class="chip" style="color:var(--purple)">Demo Mode</div>' : ''}
     ${txL ? `<div class="chip" style="flex-wrap:wrap;gap:4px;">Verify: ${txL}</div>` : ''}
   `
 
@@ -153,6 +169,25 @@ function showResult(r) {
   pushLiveLine('Final answer generated')
 }
 
+/**
+ * Format provenance label for display
+ */
+function formatProvenanceLabel(provenance) {
+  if (!provenance) return ''
+  
+  if (provenance.source === 'demo') {
+    return '🎭 [DEMO]'
+  } else if (provenance.source === 'live') {
+    if (provenance.modelFallback) {
+      return `✓ [${provenance.modelFallback.used}]`
+    }
+    return '✓'
+  } else if (provenance.source === 'x402_remote') {
+    return '🌐'
+  } else if (provenance.source === 'error') {
+    return '⚠️'
+  }
+  return ''
 async function openRunDetail(runId) {
   const modal = document.getElementById('history-detail-modal')
   const loading = document.getElementById('history-detail-loading')

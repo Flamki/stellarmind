@@ -203,12 +203,22 @@ This function handles a basic Stellar payment operation suitable for agent-to-ag
 
 /**
  * Try Claude API, fall back to cached/demo response if credits exhausted
+ * Returns { text, provenance } where provenance indicates the source
  */
 async function callClaude(model, maxTokens, prompt, fallbackFn, fallbackInput, options = {}) {
   if (!config.anthropicApiKey) {
     console.log('  ℹ️  No API key — using demo response')
     options.onUsage?.(unavailableUsage(model, 'no_api_key'))
-    return fallbackFn(fallbackInput)
+    return {
+      text: fallbackFn(fallbackInput),
+      provenance: {
+        source: 'demo',
+        reason: 'no_api_key',
+        message: 'Anthropic API key not configured',
+        model: model,
+        illustrative: true,
+      },
+    }
   }
 
   try {
@@ -240,7 +250,14 @@ async function callClaude(model, maxTokens, prompt, fallbackFn, fallbackInput, o
         })`
       )
     }
-    return normalized.text
+    return {
+      text: normalized.text,
+      provenance: {
+        source: 'live',
+        model: model,
+        illustrative: false,
+      },
+    }
   } catch (err) {
     console.error(`Claude API error: ${err.message}`)
     if (
@@ -253,7 +270,16 @@ async function callClaude(model, maxTokens, prompt, fallbackFn, fallbackInput, o
         claudeAvailable = false
       }
       options.onUsage?.(unavailableUsage(model, 'credits_exhausted_fallback'))
-      return fallbackFn(fallbackInput)
+      return {
+        text: fallbackFn(fallbackInput),
+        provenance: {
+          source: 'demo',
+          reason: 'credits_exhausted',
+          message: 'Claude API credits exhausted, using illustrative response',
+          model: model,
+          illustrative: true,
+        },
+      }
     }
     options.onUsage?.(unavailableUsage(model, 'error'))
     throw err
@@ -278,7 +304,16 @@ async function callClaudeWithModelFallback(
     if (!isModelResolutionError || !fallbackModel || fallbackModel === primaryModel) throw err
 
     console.warn(`  Primary model ${primaryModel} unavailable, retrying with ${fallbackModel}`)
-    return callClaude(fallbackModel, maxTokens, prompt, fallbackFn, fallbackInput, options)
+    const result = await callClaude(fallbackModel, maxTokens, prompt, fallbackFn, fallbackInput, options)
+    // Add model fallback info to provenance
+    if (result.provenance && result.provenance.source === 'live') {
+      result.provenance.modelFallback = {
+        primary: primaryModel,
+        used: fallbackModel,
+        reason: 'primary_model_unavailable',
+      }
+    }
+    return result
   }
 }
 
@@ -293,7 +328,7 @@ export function isClaudeAvailable() {
  * Research Agent — Claude Haiku for fast research
  */
 export async function runResearch(topic, options = {}) {
-  return callClaude(
+  const result = await callClaude(
     AGENT_MODELS.research,
     512,
     `You are a research agent. Research this topic thoroughly but concisely (4-5 sentences with key facts and data points): ${topic}`,
@@ -301,13 +336,15 @@ export async function runResearch(topic, options = {}) {
     topic,
     options
   )
+  // Return { text, provenance } for caller to handle
+  return result
 }
 
 /**
  * Summary Agent — Claude Haiku for summarization
  */
 export async function runSummary(text, options = {}) {
-  return callClaude(
+  const result = await callClaude(
     AGENT_MODELS.summary,
     256,
     `You are a summarization agent. Summarize the following text in 2-3 clear, concise sentences capturing the key points:\n\n${text}`,
@@ -315,13 +352,14 @@ export async function runSummary(text, options = {}) {
     text,
     options
   )
+  return result
 }
 
 /**
  * Analysis Agent — Claude Sonnet for deep analysis (premium tier)
  */
 export async function runAnalysis(topic, options = {}) {
-  return callClaudeWithModelFallback(
+  const result = await callClaudeWithModelFallback(
     AGENT_MODELS.analysisPrimary,
     AGENT_MODELS.analysisFallback,
     800,
@@ -335,13 +373,14 @@ Topic: ${topic}`,
     topic,
     options
   )
+  return result
 }
 
 /**
  * Code Agent — Claude Haiku for code tasks
  */
 export async function runCode(prompt, options = {}) {
-  return callClaude(
+  const result = await callClaude(
     AGENT_MODELS.code,
     600,
     `You are a code assistant agent. Help with the following code task. Be concise and provide working code:\n\n${prompt}`,
@@ -349,4 +388,5 @@ export async function runCode(prompt, options = {}) {
     prompt,
     options
   )
+  return result
 }

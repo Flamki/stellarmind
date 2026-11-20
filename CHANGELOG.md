@@ -7,17 +7,13 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
-### Changed
-
-- `GET /api/runs` now returns lightweight run summaries instead of full run records, in a
-  deterministic newest-first order (`createdAt` descending, `id` descending as tie-breaker). Events,
-  output, plans and payment proofs are available from `GET /api/runs/:id`, which each summary links
-  to via `runUrl`.
-- `GET /api/runs` rejects invalid `limit` values (non-integers and values below 1) with a structured
-  `400` instead of silently falling back to the default. Values above 100 are clamped.
-
 ### Added
 
+- `GET /api/wallet/readiness` (`?refresh=true` to re-check): whether the orchestrator wallet can
+  settle in the configured asset, with `ready` (`true`/`false`/`null`), `state`, an actionable
+  `reason`, `checkedAt`, `expiresAt`, `fresh` and `ageMs`. Run and plan responses carry the same
+  data as `x402WalletReadiness`. Configure with `WALLET_READINESS_TTL_MS` and
+  `WALLET_READINESS_TIMEOUT_MS`.
 - Cursor pagination for `GET /api/runs` (`cursor` query parameter, `nextCursor` / `hasMore` in the
   response). Cursors are position-based, so runs created between page requests never produce
   duplicates, and they stay valid across restarts.
@@ -25,6 +21,26 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   pagination. Cursors are bound to the filters they were issued for.
 - Structured validation errors (`details[].code`) for invalid cursors, filters and dates.
 - `interrupted` added to the documented `status` values in the OpenAPI spec.
+
+### Changed
+
+- Wallet readiness is no longer a one-time check at startup. It is cached for a bounded time and
+  refreshed on demand, so funding or a new trustline is picked up without a restart.
+- Readiness matches the network profile's asset by code **and** issuer. A `USDC` balance from any
+  other issuer no longer counts.
+- A failed balance lookup now reports `x402WalletReady: null` (unknown) with a retry hint instead of
+  being treated as an empty wallet. Concurrent checks share one lookup.
+- `GET /api/runs` now returns lightweight run summaries instead of full run records, in a
+  deterministic newest-first order (`createdAt` descending, `id` descending as tie-breaker). Events,
+  output, plans and payment proofs are available from `GET /api/runs/:id`, which each summary links
+  to via `runUrl`.
+- `GET /api/runs` rejects invalid `limit` values (non-integers and values below 1) with a structured
+  `400` instead of silently falling back to the default. Values above 100 are clamped.
+
+### Fixed
+
+- The startup readiness check treated `getBalance()`'s `{ success, balances }` result as an array,
+  so it always failed with "Unable to verify x402 wallet readiness".
 
 ## [1.0.0] — 2026-08-09
 
