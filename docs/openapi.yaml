@@ -74,8 +74,15 @@ paths:
         `"mode": "async"` - Header `Prefer: respond-async`
 
         **Idempotency:** Include an `Idempotency-Key` header (or `X-Idempotency-Key`) to prevent
-        duplicate runs. If the same key is reused with different parameters, the server responds 409
-        Conflict.
+        duplicate runs. The key is bound to a fingerprint of the task (trimmed) and budget. A
+        matching resubmission returns the original run without repeating agent or payment work and
+        sets `X-Idempotent-Replay: true`, including when it arrives while the first request is still
+        running. Reusing the key with a different task or budget responds 409 Conflict
+        (`IDEMPOTENCY_KEY_CONFLICT`, with the original run id). Mappings are persisted with the run
+        history, so they survive a restart. **Retention:** a key stays bound for
+        `IDEMPOTENCY_TTL_MS` (default 24 hours) from the run's creation, or until the run leaves the
+        bounded run history (`RUN_HISTORY_MAX_RUNS`), whichever is first. After that the key may be
+        reused.
       parameters:
         - name: async
           in: query
@@ -90,7 +97,9 @@ paths:
           schema:
             type: string
             maxLength: 256
-          description: Client-generated key to prevent duplicate submissions
+          description: >-
+            Client-generated key to prevent duplicate submissions. Honored for IDEMPOTENCY_TTL_MS
+            (default 24 hours) after the run is created.
         - name: Prefer
           in: header
           required: false
@@ -128,7 +137,9 @@ paths:
         '400':
           description: Validation error (missing/invalid task, budget, mode, or idempotency key)
         '409':
-          description: Idempotency key conflict (same key, different parameters)
+          description: >-
+            Idempotency key conflict (same key within the retention window, different task or
+            budget)
 
   /orchestration/preview:
     post:

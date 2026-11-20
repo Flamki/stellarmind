@@ -20,6 +20,11 @@ const LEGACY_VERSION = 0 // Unversioned files
 // to look like it is still progressing forever.
 export const INTERRUPTED_REASON_SERVER_RESTART = 'server_restart'
 
+// How long an Idempotency-Key stays bound to its run (issue #132). Within the
+// window a matching resubmission returns the original run; a mismatching one is
+// a 409. After it, the key is free to be reused.
+export const DEFAULT_IDEMPOTENCY_TTL_MS = 24 * 60 * 60 * 1000
+
 function createRunId() {
   return `run_${Date.now()}_${crypto.randomBytes(4).toString('hex')}`
 }
@@ -117,10 +122,31 @@ function normalizeRunRecord(run) {
 }
 
 export class InMemoryRunHistoryStore {
-  constructor(maxRuns = 200) {
+  constructor(maxRuns = 200, { idempotencyTtlMs = DEFAULT_IDEMPOTENCY_TTL_MS } = {}) {
     this.maxRuns = maxRuns
+    this.idempotencyTtlMs = idempotencyTtlMs
     this.runs = []
     this.idempotencyMap = new Map()
+  }
+
+  _isIdempotencyExpired(record, now = Date.now()) {
+    const createdMs = Date.parse(record?.createdAt)
+    if (!Number.isFinite(createdMs)) return false
+    return now - createdMs >= this.idempotencyTtlMs
+  }
+
+  /**
+   * Drop mappings that are past the retention window or whose run has left
+   * the bounded history (a mapping without its run cannot be replayed).
+   */
+  _pruneIdempotency() {
+    const now = Date.now()
+    const liveRunIds = new Set(this.runs.map((run) => run.id))
+    for (const [key, record] of this.idempotencyMap) {
+      if (this._isIdempotencyExpired(record, now) || !liveRunIds.has(record.runId)) {
+        this.idempotencyMap.delete(key)
+      }
+    }
   }
 
   async init() {}
@@ -164,6 +190,7 @@ export class InMemoryRunHistoryStore {
         createdAt: now,
       })
     }
+    this._pruneIdempotency()
     return { ...run, runId: run.id }
   }
 
@@ -178,7 +205,13 @@ export class InMemoryRunHistoryStore {
 
   async getIdempotencyRecord(key) {
     if (!key) return null
-    return this.idempotencyMap.get(key) || null
+    const record = this.idempotencyMap.get(key)
+    if (!record) return null
+    if (this._isIdempotencyExpired(record)) {
+      this.idempotencyMap.delete(key)
+      return null
+    }
+    return record
   }
 
   async appendEvent(runId, event) {
@@ -394,8 +427,8 @@ export class InMemoryRunHistoryStore {
 }
 
 export class FileRunHistoryStore extends InMemoryRunHistoryStore {
-  constructor(filePath, maxRuns = 200) {
-    super(maxRuns)
+  constructor(filePath, maxRuns = 200, options = {}) {
+    super(maxRuns, options)
     this.filePath = filePath
     this._writeQueue = Promise.resolve()
   }
@@ -472,6 +505,7 @@ export class FileRunHistoryStore extends InMemoryRunHistoryStore {
         })
       }
     }
+    this._pruneIdempotency()
     // If migration occurred, persist the new format
     if (version === LEGACY_VERSION) {
       await this.persist()
@@ -562,11 +596,12 @@ export class FileRunHistoryStore extends InMemoryRunHistoryStore {
 
   async persist() {
     const writeOp = async () => {
+      this._pruneIdempotency()
       const payload = JSON.stringify(
         {
           version: CURRENT_SCHEMA_VERSION,
           runs: this.runs.slice(0, this.maxRuns),
-          idempotency: Array.from(this.idempotencyMap.entries()).slice(0, this.maxRuns),
+          idempotency: Array.from(this.idempotencyMap.entries()),
         },
         null,
         2
@@ -635,10 +670,12 @@ export class FileRunHistoryStore extends InMemoryRunHistoryStore {
 
 export async function createRunHistoryStore(config) {
   const storage = (config.runHistoryStorage || 'file').toLowerCase()
+  const storeOptions =
+    config.idempotencyTtlMs > 0 ? { idempotencyTtlMs: config.idempotencyTtlMs } : {}
   const store =
     storage === 'memory'
-      ? new InMemoryRunHistoryStore(config.runHistoryMaxRuns)
-      : new FileRunHistoryStore(config.runHistoryFile, config.runHistoryMaxRuns)
+      ? new InMemoryRunHistoryStore(config.runHistoryMaxRuns, storeOptions)
+      : new FileRunHistoryStore(config.runHistoryFile, config.runHistoryMaxRuns, storeOptions)
 
   await store.init()
 
