@@ -10,6 +10,7 @@ import {
   createAnthropicMessage,
 } from './services.js'
 import { getBalance, sendPayment } from '../stellar/wallet.js'
+import { createWalletReadiness } from '../stellar/wallet-readiness.js'
 import { logger } from '../logger.js'
 
 import { x402Client, x402HTTPClient, wrapFetchWithPayment } from '@x402/fetch'
@@ -74,8 +75,6 @@ const EXPLORER_BASE_URL = `${config.networkProfile.explorerBaseUrl}/tx/`
 
 let x402Fetch = null
 let x402InitError = null
-let x402WalletReady = null
-let x402WalletHint = null
 
 if (config.orchestratorSecret) {
   try {
@@ -100,53 +99,43 @@ if (config.orchestratorSecret) {
   logger.warn('x402_client_disabled', { reason: x402InitError })
 }
 
-async function checkX402WalletReadiness() {
-  if (!config.orchestratorAddress) {
-    x402WalletReady = false
-    x402WalletHint = 'ORCHESTRATOR_STELLAR_ADDRESS is not configured'
-    logger.warn('x402_wallet_not_ready', { reason: x402WalletHint })
-    return
-  }
+// Settlement readiness is checked against the network profile's asset (code and issuer), cached
+// for a bounded time, and refreshed on demand. See src/stellar/wallet-readiness.js.
+const walletReadiness = createWalletReadiness({
+  getBalance,
+  address: config.orchestratorAddress,
+  asset: config.networkProfile.usdc,
+  network: config.network,
+  faucetUrl: config.networkProfile.funding.faucetUrl,
+  ttlMs: config.walletReadiness.ttlMs,
+  requestTimeoutMs: config.walletReadiness.requestTimeoutMs,
+  logger,
+})
 
-  try {
-    const balances = await getBalance(config.orchestratorAddress)
-    const usdcBalance = balances.find((balance) => balance.asset === 'USDC')
-    const usdcAmount = Number.parseFloat(usdcBalance?.balance || '0')
+/** Readiness of the orchestrator wallet; `{ refresh: true }` forces a (throttled) re-check. */
+export function getX402WalletReadiness(options) {
+  return walletReadiness.check(options)
+}
 
-    if (!usdcBalance) {
-      x402WalletReady = false
-      x402WalletHint = 'No USDC trustline on orchestrator wallet. Run: npm run setup:usdc'
-      logger.warn('x402_wallet_not_ready', { reason: x402WalletHint })
-      return
-    }
+/** Readiness only matters while an x402 client exists; otherwise it is reported as unknown. */
+function currentWalletReadiness() {
+  return x402Fetch ? walletReadiness.check() : Promise.resolve(null)
+}
 
-    if (!Number.isFinite(usdcAmount) || usdcAmount <= 0) {
-      x402WalletReady = false
-      const faucet = config.networkProfile.funding.faucetUrl
-      x402WalletHint = faucet
-        ? `USDC balance is 0. Fund ${config.networkProfile.label} USDC via ${faucet}`
-        : 'USDC balance is 0. Fund the orchestrator wallet with USDC to enable x402 payments.'
-      logger.warn('x402_wallet_not_ready', { reason: x402WalletHint })
-      return
-    }
-
-    x402WalletReady = true
-    x402WalletHint = null
-    logger.info('x402_wallet_ready', { usdcBalance: usdcBalance.balance })
-  } catch (err) {
-    x402WalletReady = false
-    x402WalletHint = `Unable to verify x402 wallet readiness: ${summarizeError(err)}`
-    logger.warn('x402_wallet_not_ready', { reason: x402WalletHint })
+/**
+ * Readiness fields as run and plan responses expose them. `x402WalletReady` is true, false, or
+ * null (unknown); `x402WalletHint` carries the actionable reason unless the wallet is ready.
+ */
+function walletReadinessFields(readiness) {
+  return {
+    x402WalletReady: readiness ? readiness.ready : null,
+    x402WalletHint: readiness && readiness.ready !== true ? readiness.reason : null,
+    x402WalletReadiness: readiness,
   }
 }
 
-if (x402Fetch) {
-  checkX402WalletReadiness().catch((err) => {
-    x402WalletReady = false
-    x402WalletHint = `Wallet readiness check failed: ${summarizeError(err)}`
-    logger.warn('x402_wallet_not_ready', { reason: x402WalletHint })
-  })
-}
+// Warm the cache at startup; `check` never rejects.
+void currentWalletReadiness()
 
 function summarizeError(err) {
   return (err?.message || 'unknown error').substring(0, 180)
@@ -631,14 +620,15 @@ export async function orchestrate(task, budget, broadcastFn, context = {}) {
   let unpaidCount = 0
   let accumulatedContext = ''
 
+  const readiness = await currentWalletReadiness()
+
   broadcastFn?.({
     type: 'orchestrator_start',
     task,
     budget,
     x402Configured: !!x402Fetch,
     x402InitError,
-    x402WalletReady,
-    x402WalletHint,
+    ...walletReadinessFields(readiness),
     paymentFlow: x402Fetch ? 'x402-http402' : 'stellar-xlm-fallback',
     timestamp: new Date().toISOString(),
   })
@@ -1017,8 +1007,7 @@ Respond ONLY with valid JSON (no markdown, no code fences):
     x402PaymentCount,
     xlmFallbackCount,
     unpaidCount,
-    x402WalletReady,
-    x402WalletHint,
+    ...walletReadinessFields(readiness),
     usageSummary,
     paymentAttemptSummary,
     pendingPaymentCount,
@@ -1051,8 +1040,7 @@ Respond ONLY with valid JSON (no markdown, no code fences):
     xlmFallbackCount,
     unpaidCount,
     x402Configured: !!x402Fetch,
-    x402WalletReady,
-    x402WalletHint,
+    ...walletReadinessFields(readiness),
     results,
     payments: successfulPayments,
     txCount: successfulTxs.length,
@@ -1082,6 +1070,8 @@ export async function previewOrchestration(task, budget, broadcastFn, context = 
 
   const exactBudget = AssetAmount.from(budget, 'USDC')
   let totalQuote = AssetAmount.zero('USDC')
+
+  const readiness = await currentWalletReadiness()
 
   broadcastFn?.({
     type: 'orchestrator_preview_start',
@@ -1278,8 +1268,7 @@ Respond ONLY with valid JSON (no markdown, no code fences):
       summary: summarizeUsageByPhase([planningUsageEntry]),
     },
     x402Configured: !!x402Fetch,
-    x402WalletReady,
-    x402WalletHint,
+    ...walletReadinessFields(readiness),
   }
 }
 

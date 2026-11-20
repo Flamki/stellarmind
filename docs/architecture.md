@@ -155,8 +155,11 @@ Notes:
 - Prices live only in [`pricing.config.js`](../src/pricing.config.js). It is validated at startup
   and generates both the x402 middleware config and the `/api/status` output, so pricing never
   drifts between layers.
-- The orchestrator's x402 client requires `ORCHESTRATOR_STELLAR_SECRET` plus a funded USDC
-  trustline; readiness is checked at boot and surfaced via `x402WalletReady` / `x402WalletHint`.
+- The orchestrator's x402 client requires `ORCHESTRATOR_STELLAR_SECRET` plus a funded USDC trustline
+  for the configured asset (code and issuer from the network profile). Readiness is cached for a
+  bounded time, refreshed on demand, and surfaced via `x402WalletReady` / `x402WalletHint` /
+  `x402WalletReadiness` and `GET /api/wallet/readiness`. A failed lookup reports `null` (unknown),
+  never a confirmed empty wallet.
 - A 200 without a decodable settlement header is treated as an _unverified_ success (flagged via a
   `warning`), not a failure.
 

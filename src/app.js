@@ -13,7 +13,7 @@ import {
   setApiKey,
   MODEL_LABELS,
 } from './agents/services.js'
-import { orchestrate } from './agents/orchestrator.js'
+import { orchestrate, getX402WalletReadiness } from './agents/orchestrator.js'
 import { OrchestrationAdmissionQueue } from './agents/orchestration-queue.js'
 import { getBalance, getTransactions } from './stellar/wallet.js'
 import { requestId, requestLogger, errorHandler } from './middleware/errorHandler.js'
@@ -307,6 +307,18 @@ export function createApp(dependencies = {}) {
       }
 
       res.json(response)
+    } catch (err) {
+      next(err)
+    }
+  })
+
+  // Readiness of the orchestrator wallet for x402 settlement in the configured asset. Served from
+  // a bounded cache; `?refresh=true` re-checks the network (throttled, concurrent calls share one).
+  app.get('/api/wallet/readiness', async (req, res, next) => {
+    try {
+      const refresh = ['1', 'true'].includes(String(req.query.refresh).toLowerCase())
+      const readiness = await getX402WalletReadiness({ refresh })
+      res.json({ ...readiness, correlationId: req.requestId })
     } catch (err) {
       next(err)
     }

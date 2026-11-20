@@ -1071,6 +1071,62 @@ curl -s http://localhost:3001/api/wallet/balances | jq
 
 When wallets are not configured, missing entries are omitted.
 
+### `GET /api/wallet/readiness`
+
+Whether the orchestrator wallet can pay x402 settlements in the **configured settlement asset**
+(code and issuer from the selected network profile). A balance of the same asset code from another
+issuer does not count.
+
+The answer is cached for `WALLET_READINESS_TTL_MS` (default 30s) and re-checked on demand, so
+funding the wallet or adding a trustline is picked up without a restart. Add `?refresh=true` to
+re-check now; refreshes are throttled to one upstream lookup per 2s, and concurrent calls share a
+single lookup.
+
+**Request:**
+
+```bash
+curl -s "http://localhost:3001/api/wallet/readiness?refresh=true" | jq
+```
+
+**Response `200 OK`:**
+
+```json
+{
+  "ready": false,
+  "state": "unfunded",
+  "reason": "USDC balance is 0. Fund the wallet with USDC:GBBD47IF6LWK7P7MDEVSCWR7DPUWV3NY3DTQEVFL4NAT4AQH3ZLLFLA5 via https://faucet.circle.com",
+  "asset": {
+    "code": "USDC",
+    "issuer": "GBBD47IF6LWK7P7MDEVSCWR7DPUWV3NY3DTQEVFL4NAT4AQH3ZLLFLA5"
+  },
+  "network": "stellar:testnet",
+  "checkedAt": "2026-07-30T12:00:00.000Z",
+  "expiresAt": "2026-07-30T12:00:30.000Z",
+  "fresh": true,
+  "ageMs": 0,
+  "balance": "0.0000000",
+  "correlationId": "req_abc123"
+}
+```
+
+| Field       | Meaning                                                                         |
+| ----------- | ------------------------------------------------------------------------------- |
+| `ready`     | `true`, `false`, or `null` when the lookup failed and readiness is **unknown**  |
+| `state`     | See below                                                                       |
+| `reason`    | Actionable explanation, `null` when ready                                       |
+| `checkedAt` | When the answer was obtained (`null` before the first check)                    |
+| `expiresAt` | When it stops being fresh. Failed lookups expire sooner (5s) so they retry soon |
+| `fresh`     | `false` once `expiresAt` has passed                                             |
+| `balance`   | Balance of the configured asset only, `null` if there is no such trustline      |
+
+`state` is one of `ready`, `unfunded` (trustline with zero balance), `no_trustline`, `wrong_issuer`
+(same code, different issuer), `account_not_found`, `not_configured`, or `unavailable`.
+`unavailable` means Horizon could not be reached or timed out. It reports `ready: null` and is never
+presented as a confirmed zero balance.
+
+Run and plan responses expose the same data as `x402WalletReadiness`; `x402WalletReady` and
+`x402WalletHint` remain as the boolean-or-null and the `reason`.
+
 ### `GET /api/wallet/transactions`
 
 Fetch recent transactions for a wallet address with pagination support.
