@@ -97,4 +97,11 @@ export const config = {
   // Per-transaction operation lookups in getTransactions
   horizonOpsMaxConcurrency: Math.max(1, toNumberOr(process.env.HORIZON_OPS_MAX_CONCURRENCY, 4)),
   horizonOpsCacheSize: Math.max(0, toNumberOr(process.env.HORIZON_OPS_CACHE_SIZE, 500)),
+
+  // Orchestrator wallet readiness (settlement asset funded?): how long an answer stays fresh
+  // and the upper bound on one balance lookup.
+  walletReadiness: {
+    ttlMs: Math.max(1000, toNumberOr(process.env.WALLET_READINESS_TTL_MS, 30000)),
+    requestTimeoutMs: Math.max(500, toNumberOr(process.env.WALLET_READINESS_TIMEOUT_MS, 5000)),
+  },
 }
