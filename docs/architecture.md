@@ -274,6 +274,9 @@ Driven by environment variables (see [`.env.example`](../.env.example) and
 | Variable                                   | Purpose                                                                 |
 | ------------------------------------------ | ----------------------------------------------------------------------- |
 | `ANTHROPIC_API_KEY`                        | Enables live Claude calls; without it, demo fallbacks are used          |
+| `ANTHROPIC_REQUEST_TIMEOUT_MS`             | Per-attempt deadline; a timed-out attempt is aborted before any retry   |
+| `ANTHROPIC_MAX_RETRIES`                    | Only retry budget (SDK retries are off): attempts = `1 + this value`    |
+| `ANTHROPIC_OVERALL_TIMEOUT_MS`             | Optional deadline across all attempts and retry delays (`0` = none)     |
 | `SERVER_STELLAR_ADDRESS` / `_SECRET`       | Receives payments; presence enables the x402 paywall                    |
 | `ORCHESTRATOR_STELLAR_ADDRESS` / `_SECRET` | Pays for agent calls (x402 + XLM fallback)                              |
 | `NETWORK`                                  | Stellar network profile (default and only supported: `stellar:testnet`) |

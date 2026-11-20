@@ -59,6 +59,8 @@ export const config = {
     toNumberOr(process.env.ANTHROPIC_REQUEST_TIMEOUT_MS, 20000)
   ),
   anthropicMaxRetries: Math.max(0, toNumberOr(process.env.ANTHROPIC_MAX_RETRIES, 2)),
+  // Overall deadline across all attempts and retry delays (0 = no overall limit)
+  anthropicOverallTimeoutMs: Math.max(0, toNumberOr(process.env.ANTHROPIC_OVERALL_TIMEOUT_MS, 0)),
   anthropicRetryBaseDelayMs: Math.max(
     100,
     toNumberOr(process.env.ANTHROPIC_RETRY_BASE_DELAY_MS, 500)

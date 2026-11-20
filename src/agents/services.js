@@ -36,22 +36,96 @@ export function setApiKey(newKey) {
   console.log('  🔑 Anthropic API key updated at runtime (ephemeral, session-only)')
 }
 
-function sleep(ms) {
-  return new Promise((resolve) => setTimeout(resolve, ms))
+function codedError(message, code, status) {
+  const err = new Error(message)
+  err.code = code
+  if (status) err.status = status
+  return err
 }
 
-function withTimeout(promise, timeoutMs) {
-  return Promise.race([
-    promise,
-    new Promise((_, reject) => {
-      setTimeout(() => {
-        const err = new Error(`Anthropic request timed out after ${timeoutMs}ms`)
-        err.code = 'ANTHROPIC_TIMEOUT'
-        err.status = 408
-        reject(err)
-      }, timeoutMs)
-    }),
-  ])
+function timeoutError(timeoutMs) {
+  return codedError(`Anthropic request timed out after ${timeoutMs}ms`, 'ANTHROPIC_TIMEOUT', 408)
+}
+
+function deadlineError(overallTimeoutMs, cause) {
+  const err = codedError(
+    `Anthropic request exceeded the overall deadline of ${overallTimeoutMs}ms`,
+    'ANTHROPIC_DEADLINE_EXCEEDED',
+    408
+  )
+  if (cause) err.cause = cause
+  return err
+}
+
+function abortedError(signal) {
+  const err = codedError('Anthropic request was cancelled', 'ANTHROPIC_ABORTED')
+  err.name = 'AbortError'
+  if (signal?.reason !== undefined) err.cause = signal.reason
+  return err
+}
+
+/**
+ * Wait `ms`, but wake up immediately (and clear the timer) if `signal` aborts.
+ */
+function abortableSleep(ms, signal) {
+  return new Promise((resolve, reject) => {
+    if (signal?.aborted) {
+      reject(abortedError(signal))
+      return
+    }
+    let onAbort
+    const timer = setTimeout(() => {
+      signal?.removeEventListener('abort', onAbort)
+      resolve()
+    }, ms)
+    onAbort = () => {
+      clearTimeout(timer)
+      reject(abortedError(signal))
+    }
+    signal?.addEventListener('abort', onAbort, { once: true })
+  })
+}
+
+/**
+ * Run ONE upstream attempt under an abortable deadline.
+ *
+ * - The provider call receives an AbortSignal; on timeout or caller
+ *   cancellation the signal is aborted BEFORE this function rejects, so the
+ *   underlying request is cancelled before any new attempt can start.
+ * - `maxRetries: 0` turns off the SDK's own retries: the application loop in
+ *   `createAnthropicMessage` is the single retry budget.
+ * - The deadline timer and the caller-signal listener are always cleaned up
+ *   (success, failure, timeout, cancellation).
+ */
+async function runAttempt(client, payload, { timeoutMs, onTimeout, callerSignal }) {
+  const controller = new AbortController()
+  let timer
+  let onCallerAbort
+
+  const guard = new Promise((_, reject) => {
+    const fail = (err) => {
+      reject(err)
+      controller.abort(err)
+    }
+    timer = setTimeout(() => fail(onTimeout()), timeoutMs)
+    if (callerSignal) {
+      onCallerAbort = () => fail(abortedError(callerSignal))
+      callerSignal.addEventListener('abort', onCallerAbort, { once: true })
+    }
+  })
+  const call = Promise.resolve().then(() =>
+    client.messages.create(payload, { signal: controller.signal, maxRetries: 0 })
+  )
+  // Whichever side loses the race must not surface as an unhandled rejection.
+  guard.catch(() => {})
+  call.catch(() => {})
+
+  try {
+    return await Promise.race([call, guard])
+  } finally {
+    clearTimeout(timer)
+    if (onCallerAbort) callerSignal.removeEventListener('abort', onCallerAbort)
+  }
 }
 
 function isTransientAnthropicError(err) {
@@ -77,17 +151,54 @@ function formatAnthropicError(err) {
   return `${status}, ${code}: ${message}`
 }
 
+/**
+ * Call the Anthropic Messages API with one retry budget.
+ *
+ * Real upstream attempts: at most `1 + maxRetries` (default
+ * `1 + ANTHROPIC_MAX_RETRIES`); the SDK's own retries are disabled.
+ *
+ * @param {object} payload - Messages API payload
+ * @param {object} [options]
+ * @param {number} [options.timeoutMs] - per-attempt deadline
+ * @param {number} [options.maxRetries] - application retries after the first attempt
+ * @param {number} [options.baseDelayMs] - exponential backoff base
+ * @param {number} [options.overallTimeoutMs] - deadline across all attempts and delays (0 = none)
+ * @param {AbortSignal} [options.signal] - cancels the in-flight attempt and any retry delay
+ * @param {object} [options.client] - Anthropic client override (tests)
+ * @param {Function} [options.onRetryAttempt]
+ */
 export async function createAnthropicMessage(payload, options = {}) {
   const timeoutMs = options.timeoutMs ?? config.anthropicRequestTimeoutMs
   const maxRetries = options.maxRetries ?? config.anthropicMaxRetries
   const baseDelayMs = options.baseDelayMs ?? config.anthropicRetryBaseDelayMs
+  const overallTimeoutMs = options.overallTimeoutMs ?? config.anthropicOverallTimeoutMs ?? 0
   const onRetryAttempt = options.onRetryAttempt
+  const callerSignal = options.signal
+  const client = options.client ?? anthropic
+
+  const deadlineAt = overallTimeoutMs > 0 ? Date.now() + overallTimeoutMs : Infinity
 
   let attempt = 0
   while (true) {
+    if (callerSignal?.aborted) throw abortedError(callerSignal)
+    const remainingMs = deadlineAt - Date.now()
+    if (remainingMs <= 0) throw deadlineError(overallTimeoutMs)
+
+    // The last attempt may be cut short by the overall deadline instead.
+    const deadlineLimited = remainingMs < timeoutMs
     try {
-      return await withTimeout(anthropic.messages.create(payload), timeoutMs)
+      return await runAttempt(client, payload, {
+        timeoutMs: deadlineLimited ? remainingMs : timeoutMs,
+        onTimeout: () =>
+          deadlineLimited ? deadlineError(overallTimeoutMs) : timeoutError(timeoutMs),
+        callerSignal,
+      })
     } catch (err) {
+      // Cancellation and the overall deadline are final: never retried.
+      if (err?.code === 'ANTHROPIC_ABORTED' || err?.code === 'ANTHROPIC_DEADLINE_EXCEEDED') {
+        throw err
+      }
+
       const transient = isTransientAnthropicError(err)
       if (!transient) {
         const fastFail = new Error(
@@ -111,6 +222,9 @@ export async function createAnthropicMessage(payload, options = {}) {
 
       const nextAttempt = attempt + 1
       const delayMs = baseDelayMs * 2 ** attempt
+      // A retry that cannot even start before the overall deadline is pointless.
+      if (delayMs >= deadlineAt - Date.now()) throw deadlineError(overallTimeoutMs, err)
+
       console.warn(
         `Anthropic transient error, retrying attempt ${nextAttempt}/${maxRetries} in ${delayMs}ms: ${err.message}`
       )
@@ -121,7 +235,7 @@ export async function createAnthropicMessage(payload, options = {}) {
         status: err?.status || null,
         error: err?.message || 'unknown error',
       })
-      await sleep(delayMs)
+      await abortableSleep(delayMs, callerSignal)
       attempt += 1
     }
   }
@@ -230,6 +344,7 @@ async function callClaude(model, maxTokens, prompt, fallbackFn, fallbackInput, o
       },
       {
         onRetryAttempt: options.onRetryAttempt,
+        signal: options.signal,
       }
     )
     claudeAvailable = true
@@ -304,7 +419,14 @@ async function callClaudeWithModelFallback(
     if (!isModelResolutionError || !fallbackModel || fallbackModel === primaryModel) throw err
 
     console.warn(`  Primary model ${primaryModel} unavailable, retrying with ${fallbackModel}`)
-    const result = await callClaude(fallbackModel, maxTokens, prompt, fallbackFn, fallbackInput, options)
+    const result = await callClaude(
+      fallbackModel,
+      maxTokens,
+      prompt,
+      fallbackFn,
+      fallbackInput,
+      options
+    )
     // Add model fallback info to provenance
     if (result.provenance && result.provenance.source === 'live') {
       result.provenance.modelFallback = {
