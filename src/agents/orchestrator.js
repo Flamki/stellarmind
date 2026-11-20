@@ -272,6 +272,16 @@ async function callAgentViaX402(agent, input, broadcastFn, context = {}) {
           // Likewise, there's no raw Anthropic content-block response to
           // normalize for a remote x402 call.
           responseMeta: null,
+          // Remote x402 calls could be either live or demo on the server side,
+          // but from the orchestrator's perspective we don't have visibility
+          // into that - it's a remote service.
+          provenance: {
+            source: 'x402_remote',
+            endpoint: url,
+            model: agent.model,
+            illustrative: false,
+            note: 'Result served by remote x402-protected endpoint',
+          },
           // The settled attempt travels with the result so run history can
           // persist it and the run summary can report it (#131).
           paymentAttempt,
@@ -392,11 +402,12 @@ async function callAgentViaX402(agent, input, broadcastFn, context = {}) {
   if (context.agentDelayMs) {
     await new Promise((resolve) => setTimeout(resolve, context.agentDelayMs))
   }
-  let result
+  let serviceResult
   let capturedUsage = null
   let capturedResponseMeta = null
+  let capturedProvenance = null
   try {
-    result = await serviceFn(input, {
+    serviceResult = await serviceFn(input, {
       onRetryAttempt: (retry) => {
         broadcastFn?.({
           type: 'anthropic_retry',
@@ -422,9 +433,22 @@ async function callAgentViaX402(agent, input, broadcastFn, context = {}) {
         capturedResponseMeta = meta
       },
     })
+    // Service functions now return { text, provenance }
+    capturedProvenance = serviceResult.provenance || null
   } catch (err) {
-    result = `Error: ${err.message}`
+    serviceResult = {
+      text: `Error: ${err.message}`,
+      provenance: {
+        source: 'error',
+        reason: 'service_call_failed',
+        message: err.message,
+        illustrative: false,
+      },
+    }
+    capturedProvenance = serviceResult.provenance
   }
+  
+  const result = serviceResult.text || serviceResult
 
   let paymentResult = { success: false, txHash: null }
   const directPayment =
@@ -524,6 +548,7 @@ async function callAgentViaX402(agent, input, broadcastFn, context = {}) {
     explorerUrl: paymentResult.explorerUrl || buildExplorerUrl(settledTxHash),
     usage: capturedUsage || unavailableUsage(agent.model || null, 'no_usage_captured'),
     responseMeta: capturedResponseMeta,
+    provenance: capturedProvenance,
     paymentAttempt,
     paymentReconciliationRequired,
     // Quote vs settlement, kept explicitly separate (#130).
@@ -909,6 +934,8 @@ Respond ONLY with valid JSON (no markdown, no code fences):
       // Content-block normalization metadata (issue #150) - null for x402
       // remote calls, where no raw Anthropic response exists to normalize.
       responseMeta: agentResponse.responseMeta || null,
+      // Output provenance (issue #151) - identifies demo/fallback/live responses
+      provenance: agentResponse.provenance || null,
       // The persisted attempt for this step (#131) — an `unknown` outcome
       // stays visible here as a pending charge, never as a settled one.
       paymentAttempt: agentResponse.paymentAttempt || null,
@@ -936,6 +963,8 @@ Respond ONLY with valid JSON (no markdown, no code fences):
       paidVia: agentResponse.paidVia,
       txHash: agentResponse.txHash || null,
       explorerUrl: agentResponse.explorerUrl || null,
+      // Output provenance - distinguishes live, demo, and remote responses
+      provenance: agentResponse.provenance || null,
       // The step's payment attempt, persisted by the route as soon as it
       // is observed so it survives a crash before completeRun (#131).
       paymentAttempt: agentResponse.paymentAttempt || null,
