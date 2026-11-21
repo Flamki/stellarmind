@@ -318,9 +318,14 @@ Example `/readyz` response:
 
 StellarMind persists orchestration and payment audit history.
 
-- `GET /api/runs?limit=20`
-  - returns recent runs across restarts when `RUN_HISTORY_STORAGE=file`
-  - includes task, budget/spend summary, status, and tx proof linkage (`txHash`, `explorerUrl`)
+- `GET /api/runs?limit=20&cursor=…&status=failed,interrupted&createdFrom=2026-10-01&createdTo=2026-10-31`
+  - returns lightweight run summaries (task, status, timestamps, spend totals, event count), newest
+    first, across restarts when `RUN_HISTORY_STORAGE=file`
+  - cursor-paginated: pass the response's `nextCursor` back as `cursor`; `null` means the last page
+  - optional `status` and `createdFrom` / `createdTo` filters; invalid values return `400` with
+    structured `details`
+- `GET /api/runs/:id` returns the full record (events, output, plan, tx proof linkage such as
+  `txHash` and `explorerUrl`)
 
 Storage modes:
 
