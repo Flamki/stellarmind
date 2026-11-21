@@ -8,6 +8,7 @@ import {
   summarizePaymentAttempts,
   upsertPaymentAttempt,
 } from '../agents/payment-attempts.js'
+import { selectRunPage, toRunSummary } from './run-query.js'
 
 // Schema versioning constants
 const CURRENT_SCHEMA_VERSION = 1
@@ -386,6 +387,25 @@ export class InMemoryRunHistoryStore {
     return this.runs
       .slice(0, normalizeLimit(limit, 20, this.maxRuns))
       .map((run) => normalizeRunRecord({ ...run, runId: run.id }))
+  }
+
+  /**
+   * One page of lightweight run summaries (issue #141): deterministic
+   * newest-first order, keyset pagination, and status/date filters.
+   *
+   * Selection and projection both run synchronously against the live array,
+   * so a page is always a consistent snapshot even while runs are being
+   * created. See `./run-query.js` for the ordering and cursor contract.
+   *
+   * @param {object} [query] see `selectRunPage`
+   * @returns {Promise<{ runs: object[], hasMore: boolean, nextPosition: object|null, limit: number }>}
+   */
+  async listRuns(query = {}) {
+    const page = selectRunPage(this.runs, query)
+    return {
+      ...page,
+      runs: page.runs.map((run) => toRunSummary(normalizeRunRecord({ ...run, runId: run.id }))),
+    }
   }
 
   async flush() {

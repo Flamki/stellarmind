@@ -1,5 +1,10 @@
 import crypto from 'node:crypto'
-import { validateOrchestrate, validateOrchestrateExecute } from '../requestValidation.js'
+import {
+  validateOrchestrate,
+  validateOrchestrateExecute,
+  validateListRuns,
+} from '../requestValidation.js'
+import { RUN_LIST_ORDER, encodeRunCursor } from '../storage/run-query.js'
 import { logger } from '../logger.js'
 import { config } from '../config.js'
 import { OrchestrationAdmissionQueue } from '../agents/orchestration-queue.js'
@@ -534,15 +539,33 @@ export function registerOrchestrationRoutes(app, deps = {}) {
     }
   })
 
-  app.get('/api/runs', async (req, res, next) => {
+  // Lightweight, cursor-paginated run list (issue #141). Each item is a
+  // summary; the full record (events, output, proofs) is `GET /api/runs/:id`.
+  app.get('/api/runs', validateListRuns, async (req, res, next) => {
     try {
-      const limit = req.query.limit || 20
-      const runs = await runHistoryStore.listRecent(limit)
+      const { limit, after, statuses, createdFromMs, createdToMs, filterKey } =
+        req.validated.runList
+      const page = await runHistoryStore.listRuns({
+        limit,
+        after,
+        statuses,
+        createdFromMs,
+        createdToMs,
+      })
       res.json({
         storage: config.runHistoryStorage,
         file: config.runHistoryStorage === 'file' ? config.runHistoryFile : null,
-        count: runs.length,
-        runs,
+        count: page.runs.length,
+        limit: page.limit,
+        order: RUN_LIST_ORDER,
+        filters: {
+          status: statuses,
+          createdFrom: createdFromMs === null ? null : new Date(createdFromMs).toISOString(),
+          createdTo: createdToMs === null ? null : new Date(createdToMs).toISOString(),
+        },
+        hasMore: page.hasMore,
+        nextCursor: page.nextPosition ? encodeRunCursor(page.nextPosition, filterKey) : null,
+        runs: page.runs,
       })
     } catch (err) {
       next(err)
