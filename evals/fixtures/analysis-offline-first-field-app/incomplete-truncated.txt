@@ -1,0 +1,7 @@
+**Key Findings**
+- Local-first storage lets field workers keep recording data when connectivity drops, which removes the most common cause of lost submissions.
+- Sync becomes a core subsystem: queuing, retries and ordering need to be designed rather than bolted on.
+- Conflict handling is unavoidable when several devices edit the same record, so a clear rule (last write wins, field-level merge or manual review) must be chosen for each data type.
+
+**Risks**
+- Silent sync failures can leave devices holding stale or unsent data without anyone noticing, and the

@@ -1,0 +1,7 @@
+{
+  "plan": "Scrape the web for serverless material, then summarize it.",
+  "subtasks": [
+    { "agentId": "web-scraper-bot", "input": "Collect articles about serverless computing", "cost": "0.01" },
+    { "agentId": "summary-bot", "input": "Summarize the serverless articles", "cost": "0.01" }
+  ]
+}

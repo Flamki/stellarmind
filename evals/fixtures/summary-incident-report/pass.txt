@@ -1,0 +1,1 @@
+A disk fault forced the primary database to fail over on Tuesday, and recovery took 42 minutes because the replica needed a schema migration, leaving customers able to read but not save data. No data was lost, and the team is adding a deploy-time schema check and quarterly failover rehearsals.

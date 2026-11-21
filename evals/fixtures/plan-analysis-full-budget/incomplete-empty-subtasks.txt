@@ -1,0 +1,4 @@
+{
+  "plan": "No agents are needed for this task.",
+  "subtasks": []
+}

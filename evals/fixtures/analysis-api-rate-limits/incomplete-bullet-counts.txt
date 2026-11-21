@@ -1,0 +1,13 @@
+**Key Findings**
+- Per-key limits protect shared capacity by stopping one noisy client from degrading service for everyone.
+
+**Risks**
+- Overly tight limits can break legitimate batch jobs and drive integrators away.
+- A shared counter becomes a new dependency and a possible bottleneck if it is slow or unavailable.
+- Clients that ignore Retry-After headers can retry in tight loops and make load worse.
+- Limits applied per IP address instead of per key penalize users behind shared networks.
+- Inconsistent limits between environments make problems hard to reproduce in testing.
+
+**Opportunities**
+- Tiered quotas create a natural path to paid plans.
+- Usage data per key helps spot abuse and plan capacity.

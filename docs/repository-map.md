@@ -21,6 +21,7 @@ stellarmind/
 │   ├── stellar/        # Stellar wallet integration
 │   └── storage/        # Run history persistence
 ├── tests/              # Test suites
+├── evals/              # Offline agent quality evaluation set (docs/evaluation.md)
 │   └── load/           # Load test scenarios (k6, Artillery)
 ├── package.json        # Node.js dependencies and scripts
 ├── vercel.json         # Vercel deployment configuration
@@ -87,6 +88,7 @@ Stellar blockchain integration for wallet management and payment settlement.
 | `docs/ASSET_AMOUNTS.md`        | Asset amount precision and accounting  |
 | `docs/repository-map.md`       | This file — repository structure guide |
 | `docs/issue-task-checklist.md` | Checklist for implementing issues      |
+| `docs/evaluation.md`           | Offline agent quality evaluation set   |
 
 ## Configuration Files
 
