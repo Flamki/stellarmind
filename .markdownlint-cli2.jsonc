@@ -21,5 +21,12 @@
     // Allow generic code blocks without language tag.
     "MD040": false,
   },
-  "ignores": ["node_modules/**", ".git/**", "coverage/**", "dist/**", ".github/**"],
+  "ignores": [
+    "node_modules/**",
+    ".git/**",
+    "coverage/**",
+    "dist/**",
+    ".github/**",
+    "evals/baseline/**",
+  ],
 }

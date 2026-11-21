@@ -3,3 +3,5 @@ node_modules/
 coverage/
 dist/
 **/*.log
+# Generated evaluation baseline (rewritten by `npm run eval:accept`)
+evals/baseline/

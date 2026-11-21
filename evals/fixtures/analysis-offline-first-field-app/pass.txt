@@ -1,0 +1,14 @@
+**Key Findings**
+- Local-first storage lets field workers keep recording data when connectivity drops, which removes the most common cause of lost submissions.
+- Sync becomes a core subsystem: queuing, retries and ordering need to be designed rather than bolted on.
+- Conflict handling is unavoidable when several devices edit the same record, so a clear rule (last write wins, field-level merge or manual review) must be chosen for each data type.
+
+**Risks**
+- Silent sync failures can leave devices holding stale or unsent data without anyone noticing.
+- Local databases increase the amount of sensitive data stored on lost or shared devices.
+- Schema changes are harder to roll out when old app versions keep writing for weeks.
+
+**Opportunities**
+- Faster perceived performance, since reads and writes hit local storage first.
+- Lower server load from batched uploads instead of constant small requests.
+- A reusable sync layer that other apps in the organization can adopt.

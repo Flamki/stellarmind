@@ -1,0 +1,1288 @@
+{
+  "reportVersion": 1,
+  "evalSet": {
+    "name": "stellarmind-agent-quality",
+    "version": "1.0.0",
+    "digest": "sha256:0e2f452b8685710d"
+  },
+  "source": "offline-fixtures",
+  "sourceNote": "Hand-written reference outputs. No model was called and no key or network was used.",
+  "revisions": {
+    "analyst-bot": {
+      "model": "claude-sonnet-4-5-20250929",
+      "fallbackModel": "claude-haiku-4-5-20251001",
+      "promptRevision": "sha256:87fe528ca7c48bdc"
+    },
+    "code-bot": {
+      "model": "claude-haiku-4-5-20251001",
+      "fallbackModel": null,
+      "promptRevision": "sha256:4c5d82f66c94147f"
+    },
+    "orchestrator": {
+      "model": "claude-haiku-4-5-20251001",
+      "fallbackModel": null,
+      "promptRevision": null,
+      "note": "planner prompt is built inline in orchestrator.js and has no revision yet"
+    },
+    "research-bot": {
+      "model": "claude-haiku-4-5-20251001",
+      "fallbackModel": null,
+      "promptRevision": "sha256:1a56f92b88f5aec8"
+    },
+    "summary-bot": {
+      "model": "claude-haiku-4-5-20251001",
+      "fallbackModel": null,
+      "promptRevision": "sha256:0dd510a132bb174b"
+    }
+  },
+  "summary": {
+    "status": "pass",
+    "cases": 12,
+    "automated": {
+      "properties": 90,
+      "passed": 90,
+      "referenceOutputsFullyPassing": 12
+    },
+    "negativeFixtures": {
+      "total": 25,
+      "rejectedAsExpected": 25
+    },
+    "humanReview": {
+      "accepted": 0,
+      "needsWork": 0,
+      "stale": 0,
+      "notRecorded": 12
+    }
+  },
+  "cases": [
+    {
+      "id": "research-http-402",
+      "agent": "research-bot",
+      "phase": "execute",
+      "task": "How the HTTP 402 Payment Required status code can support per-request API payments",
+      "revision": {
+        "model": "claude-haiku-4-5-20251001",
+        "promptRevision": "sha256:1a56f92b88f5aec8"
+      },
+      "automated": {
+        "referencePassed": true,
+        "passed": 8,
+        "total": 8,
+        "properties": [
+          {
+            "id": "not_empty",
+            "check": "not_empty",
+            "pass": true,
+            "detail": "705 characters"
+          },
+          {
+            "id": "four_to_five_sentences",
+            "check": "sentence_count",
+            "pass": true,
+            "detail": "5 sentences (want 4-5)"
+          },
+          {
+            "id": "concise",
+            "check": "word_count",
+            "pass": true,
+            "detail": "117 words (want 40-160)"
+          },
+          {
+            "id": "names_the_topic",
+            "check": "contains_all",
+            "pass": true,
+            "detail": "all present"
+          },
+          {
+            "id": "explains_payment",
+            "check": "contains_any",
+            "pass": true,
+            "detail": "found: payment"
+          },
+          {
+            "id": "has_data_point",
+            "check": "matches",
+            "pass": true,
+            "detail": "/\\d/i"
+          },
+          {
+            "id": "no_filler",
+            "check": "not_contains",
+            "pass": true,
+            "detail": "none present"
+          },
+          {
+            "id": "ends_cleanly",
+            "check": "ends_cleanly",
+            "pass": true,
+            "detail": "last character: \".\""
+          }
+        ]
+      },
+      "negativeFixtures": [
+        {
+          "file": "incomplete-truncated.txt",
+          "note": "Cut off at the token limit mid-sentence.",
+          "expectedFailures": [
+            "four_to_five_sentences",
+            "ends_cleanly"
+          ],
+          "actualFailures": [
+            "four_to_five_sentences",
+            "ends_cleanly"
+          ],
+          "rejectedAsExpected": true
+        },
+        {
+          "file": "incomplete-off-topic.txt",
+          "note": "Fluent but about something else entirely.",
+          "expectedFailures": [
+            "names_the_topic",
+            "explains_payment",
+            "has_data_point"
+          ],
+          "actualFailures": [
+            "names_the_topic",
+            "explains_payment",
+            "has_data_point"
+          ],
+          "rejectedAsExpected": true
+        }
+      ],
+      "humanReview": {
+        "status": "not recorded",
+        "questions": [
+          "Are the stated facts about HTTP 402 and x402 accurate, with nothing invented?",
+          "Would a newcomer understand how a per-request payment flow works from this answer?"
+        ],
+        "latest": null
+      }
+    },
+    {
+      "id": "research-stellar-finality",
+      "agent": "research-bot",
+      "phase": "execute",
+      "task": "How transaction finality works on the Stellar network",
+      "revision": {
+        "model": "claude-haiku-4-5-20251001",
+        "promptRevision": "sha256:1a56f92b88f5aec8"
+      },
+      "automated": {
+        "referencePassed": true,
+        "passed": 8,
+        "total": 8,
+        "properties": [
+          {
+            "id": "not_empty",
+            "check": "not_empty",
+            "pass": true,
+            "detail": "590 characters"
+          },
+          {
+            "id": "four_to_five_sentences",
+            "check": "sentence_count",
+            "pass": true,
+            "detail": "5 sentences (want 4-5)"
+          },
+          {
+            "id": "concise",
+            "check": "word_count",
+            "pass": true,
+            "detail": "92 words (want 40-160)"
+          },
+          {
+            "id": "names_consensus",
+            "check": "contains_all",
+            "pass": true,
+            "detail": "all present"
+          },
+          {
+            "id": "names_ledger",
+            "check": "contains_all",
+            "pass": true,
+            "detail": "all present"
+          },
+          {
+            "id": "has_data_point",
+            "check": "matches",
+            "pass": true,
+            "detail": "/\\d/i"
+          },
+          {
+            "id": "no_filler",
+            "check": "not_contains",
+            "pass": true,
+            "detail": "none present"
+          },
+          {
+            "id": "ends_cleanly",
+            "check": "ends_cleanly",
+            "pass": true,
+            "detail": "last character: \".\""
+          }
+        ]
+      },
+      "negativeFixtures": [
+        {
+          "file": "incomplete-one-liner.txt",
+          "note": "A single thin sentence with no mechanism or numbers.",
+          "expectedFailures": [
+            "four_to_five_sentences",
+            "concise",
+            "names_consensus",
+            "names_ledger",
+            "has_data_point"
+          ],
+          "actualFailures": [
+            "four_to_five_sentences",
+            "concise",
+            "names_consensus",
+            "names_ledger",
+            "has_data_point"
+          ],
+          "rejectedAsExpected": true
+        },
+        {
+          "file": "incomplete-placeholder.txt",
+          "note": "Right shape, but one sentence is an unfinished TODO.",
+          "expectedFailures": [
+            "no_filler"
+          ],
+          "actualFailures": [
+            "no_filler"
+          ],
+          "rejectedAsExpected": true
+        }
+      ],
+      "humanReview": {
+        "status": "not recorded",
+        "questions": [
+          "Are the consensus, ledger timing and fee statements accurate for the current network?",
+          "Does the answer say when a transaction is final, not only how fast it is?"
+        ],
+        "latest": null
+      }
+    },
+    {
+      "id": "summary-budget-memo",
+      "agent": "summary-bot",
+      "phase": "execute",
+      "task": "The facilities team reviewed three vendors for the office cleaning contract. Vendor A quoted $2,400 per month, Vendor B quoted $2,150 per month, and Vendor C quoted $2,900 per month but includes window cleaning and carpet care. After a two-week trial, the team found Vendor B missed several scheduled visits, while Vendor A completed every visit on time. The finance lead asked that the decision be made within 14 days so the new contract can start at the beginning of next quarter. The team recommends Vendor A because its price is close to the lowest quote and its reliability record is better.",
+      "revision": {
+        "model": "claude-haiku-4-5-20251001",
+        "promptRevision": "sha256:0dd510a132bb174b"
+      },
+      "automated": {
+        "referencePassed": true,
+        "passed": 9,
+        "total": 9,
+        "properties": [
+          {
+            "id": "not_empty",
+            "check": "not_empty",
+            "pass": true,
+            "detail": "263 characters"
+          },
+          {
+            "id": "two_to_three_sentences",
+            "check": "sentence_count",
+            "pass": true,
+            "detail": "2 sentences (want 2-3)"
+          },
+          {
+            "id": "shorter_than_source",
+            "check": "max_word_ratio_of_input",
+            "pass": true,
+            "detail": "0.42 of input length (want <=0.6)"
+          },
+          {
+            "id": "keeps_price",
+            "check": "contains_all",
+            "pass": true,
+            "detail": "all present"
+          },
+          {
+            "id": "keeps_deadline",
+            "check": "contains_all",
+            "pass": true,
+            "detail": "all present"
+          },
+          {
+            "id": "keeps_recommendation",
+            "check": "contains_all",
+            "pass": true,
+            "detail": "all present"
+          },
+          {
+            "id": "no_bullets",
+            "check": "not_matches",
+            "pass": true,
+            "detail": "/^\\s*(?:[-*•]|\\d+[.)])\\s/im"
+          },
+          {
+            "id": "no_meta_commentary",
+            "check": "not_contains",
+            "pass": true,
+            "detail": "none present"
+          },
+          {
+            "id": "ends_cleanly",
+            "check": "ends_cleanly",
+            "pass": true,
+            "detail": "last character: \".\""
+          }
+        ]
+      },
+      "negativeFixtures": [
+        {
+          "file": "incomplete-verbatim-copy.txt",
+          "note": "Pastes the source back instead of condensing it.",
+          "expectedFailures": [
+            "two_to_three_sentences",
+            "shorter_than_source"
+          ],
+          "actualFailures": [
+            "two_to_three_sentences",
+            "shorter_than_source"
+          ],
+          "rejectedAsExpected": true
+        },
+        {
+          "file": "incomplete-drops-figures.txt",
+          "note": "Short and fluent but loses every figure and the recommendation.",
+          "expectedFailures": [
+            "keeps_price",
+            "keeps_deadline",
+            "keeps_recommendation"
+          ],
+          "actualFailures": [
+            "keeps_price",
+            "keeps_deadline",
+            "keeps_recommendation"
+          ],
+          "rejectedAsExpected": true
+        }
+      ],
+      "humanReview": {
+        "status": "not recorded",
+        "questions": [
+          "Does the summary add any claim that is not in the source?",
+          "Is the emphasis right (recommendation and deadline first, trial detail second)?"
+        ],
+        "latest": null
+      }
+    },
+    {
+      "id": "summary-incident-report",
+      "agent": "summary-bot",
+      "phase": "execute",
+      "task": "On Tuesday at 09:12 UTC the primary database failed over to its replica after a disk fault. The failover completed in 42 minutes because the replica was running an older schema version and had to be migrated before it could accept writes. During that period customers could read data but could not save changes. Support received 187 tickets, and no data was lost. The team has added a schema check to the deploy pipeline and will rehearse failovers every quarter. A full review is scheduled for next Monday.",
+      "revision": {
+        "model": "claude-haiku-4-5-20251001",
+        "promptRevision": "sha256:0dd510a132bb174b"
+      },
+      "automated": {
+        "referencePassed": true,
+        "passed": 9,
+        "total": 9,
+        "properties": [
+          {
+            "id": "not_empty",
+            "check": "not_empty",
+            "pass": true,
+            "detail": "294 characters"
+          },
+          {
+            "id": "two_to_three_sentences",
+            "check": "sentence_count",
+            "pass": true,
+            "detail": "2 sentences (want 2-3)"
+          },
+          {
+            "id": "shorter_than_source",
+            "check": "max_word_ratio_of_input",
+            "pass": true,
+            "detail": "0.56 of input length (want <=0.6)"
+          },
+          {
+            "id": "keeps_duration",
+            "check": "contains_all",
+            "pass": true,
+            "detail": "all present"
+          },
+          {
+            "id": "keeps_outcome",
+            "check": "contains_all",
+            "pass": true,
+            "detail": "all present"
+          },
+          {
+            "id": "keeps_follow_up",
+            "check": "contains_any",
+            "pass": true,
+            "detail": "found: schema check, rehears"
+          },
+          {
+            "id": "no_bullets",
+            "check": "not_matches",
+            "pass": true,
+            "detail": "/^\\s*(?:[-*•]|\\d+[.)])\\s/im"
+          },
+          {
+            "id": "no_meta_commentary",
+            "check": "not_contains",
+            "pass": true,
+            "detail": "none present"
+          },
+          {
+            "id": "ends_cleanly",
+            "check": "ends_cleanly",
+            "pass": true,
+            "detail": "last character: \".\""
+          }
+        ]
+      },
+      "negativeFixtures": [
+        {
+          "file": "incomplete-truncated.txt",
+          "note": "One run-on sentence cut off at the token limit.",
+          "expectedFailures": [
+            "two_to_three_sentences",
+            "keeps_outcome",
+            "keeps_follow_up",
+            "ends_cleanly"
+          ],
+          "actualFailures": [
+            "two_to_three_sentences",
+            "keeps_outcome",
+            "keeps_follow_up",
+            "ends_cleanly"
+          ],
+          "rejectedAsExpected": true
+        },
+        {
+          "file": "incomplete-bulleted.txt",
+          "note": "Correct facts, but a four-item bullet list instead of 2-3 sentences.",
+          "expectedFailures": [
+            "two_to_three_sentences",
+            "no_bullets"
+          ],
+          "actualFailures": [
+            "two_to_three_sentences",
+            "no_bullets"
+          ],
+          "rejectedAsExpected": true
+        }
+      ],
+      "humanReview": {
+        "status": "not recorded",
+        "questions": [
+          "Is the cause-and-effect order of the incident preserved (fault, failover, impact)?",
+          "Would an executive reading only this summary understand customer impact?"
+        ],
+        "latest": null
+      }
+    },
+    {
+      "id": "summary-meeting-notes",
+      "agent": "summary-bot",
+      "phase": "execute",
+      "task": "The product group met on Thursday to plan the March release. Dana proposed moving the launch from March 4 to March 18 to finish accessibility fixes, and the group approved the change. Luis will update the roadmap and tell the partner teams by Monday. The group also agreed to cut the planned dark-mode feature from this release because testing is not finished. Priya raised a concern about the support rota during the launch week, and it was assigned to the operations manager for follow-up. The next meeting is on Thursday of next week.",
+      "revision": {
+        "model": "claude-haiku-4-5-20251001",
+        "promptRevision": "sha256:0dd510a132bb174b"
+      },
+      "automated": {
+        "referencePassed": true,
+        "passed": 8,
+        "total": 8,
+        "properties": [
+          {
+            "id": "not_empty",
+            "check": "not_empty",
+            "pass": true,
+            "detail": "306 characters"
+          },
+          {
+            "id": "two_to_three_sentences",
+            "check": "sentence_count",
+            "pass": true,
+            "detail": "2 sentences (want 2-3)"
+          },
+          {
+            "id": "shorter_than_source",
+            "check": "max_word_ratio_of_input",
+            "pass": true,
+            "detail": "0.53 of input length (want <=0.6)"
+          },
+          {
+            "id": "keeps_new_date",
+            "check": "contains_all",
+            "pass": true,
+            "detail": "all present"
+          },
+          {
+            "id": "keeps_cut_feature",
+            "check": "contains_all",
+            "pass": true,
+            "detail": "all present"
+          },
+          {
+            "id": "keeps_owner_deadline",
+            "check": "contains_all",
+            "pass": true,
+            "detail": "all present"
+          },
+          {
+            "id": "no_meta_commentary",
+            "check": "not_contains",
+            "pass": true,
+            "detail": "none present"
+          },
+          {
+            "id": "ends_cleanly",
+            "check": "ends_cleanly",
+            "pass": true,
+            "detail": "last character: \".\""
+          }
+        ]
+      },
+      "negativeFixtures": [
+        {
+          "file": "incomplete-wrong-date.txt",
+          "note": "Well formed but reports the wrong launch date.",
+          "expectedFailures": [
+            "keeps_new_date"
+          ],
+          "actualFailures": [
+            "keeps_new_date"
+          ],
+          "rejectedAsExpected": true
+        },
+        {
+          "file": "incomplete-empty.txt",
+          "note": "The provider returned only whitespace.",
+          "expectedFailures": [
+            "not_empty",
+            "two_to_three_sentences",
+            "keeps_new_date",
+            "keeps_cut_feature",
+            "keeps_owner_deadline",
+            "ends_cleanly"
+          ],
+          "actualFailures": [
+            "not_empty",
+            "two_to_three_sentences",
+            "keeps_new_date",
+            "keeps_cut_feature",
+            "keeps_owner_deadline",
+            "ends_cleanly"
+          ],
+          "rejectedAsExpected": true
+        }
+      ],
+      "humanReview": {
+        "status": "not recorded",
+        "questions": [
+          "Are decisions clearly separated from open follow-ups?",
+          "Is every action attributed to the right person or team?"
+        ],
+        "latest": null
+      }
+    },
+    {
+      "id": "analysis-offline-first-field-app",
+      "agent": "analyst-bot",
+      "phase": "execute",
+      "task": "Adopting an offline-first architecture for a field-data collection mobile app",
+      "revision": {
+        "model": "claude-sonnet-4-5-20250929",
+        "promptRevision": "sha256:87fe528ca7c48bdc"
+      },
+      "automated": {
+        "referencePassed": true,
+        "passed": 8,
+        "total": 8,
+        "properties": [
+          {
+            "id": "not_empty",
+            "check": "not_empty",
+            "pass": true,
+            "detail": "977 characters"
+          },
+          {
+            "id": "has_required_sections",
+            "check": "headings",
+            "pass": true,
+            "detail": "all present"
+          },
+          {
+            "id": "findings_3_to_4",
+            "check": "section_bullets",
+            "pass": true,
+            "detail": "3 bullets under \"Key Findings\" (want 3-4)"
+          },
+          {
+            "id": "risks_2_to_3",
+            "check": "section_bullets",
+            "pass": true,
+            "detail": "3 bullets under \"Risks\" (want 2-3)"
+          },
+          {
+            "id": "opportunities_2_to_3",
+            "check": "section_bullets",
+            "pass": true,
+            "detail": "3 bullets under \"Opportunities\" (want 2-3)"
+          },
+          {
+            "id": "substantive",
+            "check": "word_count",
+            "pass": true,
+            "detail": "148 words (want 90-400)"
+          },
+          {
+            "id": "no_filler",
+            "check": "not_contains",
+            "pass": true,
+            "detail": "none present"
+          },
+          {
+            "id": "ends_cleanly",
+            "check": "ends_cleanly",
+            "pass": true,
+            "detail": "last character: \".\""
+          }
+        ]
+      },
+      "negativeFixtures": [
+        {
+          "file": "incomplete-truncated.txt",
+          "note": "Stops inside the Risks section; Opportunities never appears.",
+          "expectedFailures": [
+            "has_required_sections",
+            "risks_2_to_3",
+            "opportunities_2_to_3",
+            "substantive",
+            "ends_cleanly"
+          ],
+          "actualFailures": [
+            "has_required_sections",
+            "risks_2_to_3",
+            "opportunities_2_to_3",
+            "substantive",
+            "ends_cleanly"
+          ],
+          "rejectedAsExpected": true
+        },
+        {
+          "file": "incomplete-wrong-structure.txt",
+          "note": "One unstructured paragraph with no sections or bullets.",
+          "expectedFailures": [
+            "has_required_sections",
+            "findings_3_to_4",
+            "risks_2_to_3",
+            "opportunities_2_to_3",
+            "substantive"
+          ],
+          "actualFailures": [
+            "has_required_sections",
+            "findings_3_to_4",
+            "risks_2_to_3",
+            "opportunities_2_to_3",
+            "substantive"
+          ],
+          "rejectedAsExpected": true
+        }
+      ],
+      "humanReview": {
+        "status": "not recorded",
+        "questions": [
+          "Are the findings specific to offline-first apps rather than generic software advice?",
+          "Are the risks real risks, and are the opportunities actionable?"
+        ],
+        "latest": null
+      }
+    },
+    {
+      "id": "analysis-api-rate-limits",
+      "agent": "analyst-bot",
+      "phase": "execute",
+      "task": "Introducing per-key rate limits on a public REST API",
+      "revision": {
+        "model": "claude-sonnet-4-5-20250929",
+        "promptRevision": "sha256:87fe528ca7c48bdc"
+      },
+      "automated": {
+        "referencePassed": true,
+        "passed": 8,
+        "total": 8,
+        "properties": [
+          {
+            "id": "not_empty",
+            "check": "not_empty",
+            "pass": true,
+            "detail": "856 characters"
+          },
+          {
+            "id": "has_required_sections",
+            "check": "headings",
+            "pass": true,
+            "detail": "all present"
+          },
+          {
+            "id": "findings_3_to_4",
+            "check": "section_bullets",
+            "pass": true,
+            "detail": "4 bullets under \"Key Findings\" (want 3-4)"
+          },
+          {
+            "id": "risks_2_to_3",
+            "check": "section_bullets",
+            "pass": true,
+            "detail": "2 bullets under \"Risks\" (want 2-3)"
+          },
+          {
+            "id": "opportunities_2_to_3",
+            "check": "section_bullets",
+            "pass": true,
+            "detail": "3 bullets under \"Opportunities\" (want 2-3)"
+          },
+          {
+            "id": "substantive",
+            "check": "word_count",
+            "pass": true,
+            "detail": "127 words (want 90-400)"
+          },
+          {
+            "id": "no_filler",
+            "check": "not_contains",
+            "pass": true,
+            "detail": "none present"
+          },
+          {
+            "id": "ends_cleanly",
+            "check": "ends_cleanly",
+            "pass": true,
+            "detail": "last character: \".\""
+          }
+        ]
+      },
+      "negativeFixtures": [
+        {
+          "file": "incomplete-missing-section.txt",
+          "note": "Ends after Risks; the Opportunities section is missing.",
+          "expectedFailures": [
+            "has_required_sections",
+            "opportunities_2_to_3"
+          ],
+          "actualFailures": [
+            "has_required_sections",
+            "opportunities_2_to_3"
+          ],
+          "rejectedAsExpected": true
+        },
+        {
+          "file": "incomplete-bullet-counts.txt",
+          "note": "All sections present but with 1 finding and 5 risks.",
+          "expectedFailures": [
+            "findings_3_to_4",
+            "risks_2_to_3"
+          ],
+          "actualFailures": [
+            "findings_3_to_4",
+            "risks_2_to_3"
+          ],
+          "rejectedAsExpected": true
+        }
+      ],
+      "humanReview": {
+        "status": "not recorded",
+        "questions": [
+          "Does the analysis cover client-facing behavior (status codes, headers), not only server protection?",
+          "Are the trade-offs balanced rather than one-sided?"
+        ],
+        "latest": null
+      }
+    },
+    {
+      "id": "code-chunk-array",
+      "agent": "code-bot",
+      "phase": "execute",
+      "task": "Write a JavaScript function chunk(array, size) that splits an array into arrays of length size (the last one may be shorter) and throws a RangeError when size is not a positive integer.",
+      "revision": {
+        "model": "claude-haiku-4-5-20251001",
+        "promptRevision": "sha256:4c5d82f66c94147f"
+      },
+      "automated": {
+        "referencePassed": true,
+        "passed": 7,
+        "total": 7,
+        "properties": [
+          {
+            "id": "not_empty",
+            "check": "not_empty",
+            "pass": true,
+            "detail": "352 characters"
+          },
+          {
+            "id": "has_concise_js_block",
+            "check": "code_block",
+            "pass": true,
+            "detail": "1 js block(s), longest 10 lines (want <=25)"
+          },
+          {
+            "id": "js_parses",
+            "check": "js_syntax",
+            "pass": true,
+            "detail": "1 block(s) parse"
+          },
+          {
+            "id": "defines_function",
+            "check": "contains_all",
+            "pass": true,
+            "detail": "all present"
+          },
+          {
+            "id": "validates_size",
+            "check": "contains_all",
+            "pass": true,
+            "detail": "all present"
+          },
+          {
+            "id": "no_filler",
+            "check": "not_contains",
+            "pass": true,
+            "detail": "none present"
+          },
+          {
+            "id": "ends_cleanly",
+            "check": "ends_cleanly",
+            "pass": true,
+            "detail": "last character: \".\""
+          }
+        ]
+      },
+      "negativeFixtures": [
+        {
+          "file": "incomplete-syntax-error.txt",
+          "note": "The function is missing its closing brace.",
+          "expectedFailures": [
+            "js_parses"
+          ],
+          "actualFailures": [
+            "js_parses"
+          ],
+          "rejectedAsExpected": true
+        },
+        {
+          "file": "incomplete-truncated.txt",
+          "note": "Cut off inside the code block, so the fence never closes.",
+          "expectedFailures": [
+            "has_concise_js_block",
+            "js_parses",
+            "ends_cleanly"
+          ],
+          "actualFailures": [
+            "has_concise_js_block",
+            "js_parses",
+            "ends_cleanly"
+          ],
+          "rejectedAsExpected": true
+        },
+        {
+          "file": "incomplete-no-validation.txt",
+          "note": "Parses fine but ignores the RangeError requirement.",
+          "expectedFailures": [
+            "validates_size"
+          ],
+          "actualFailures": [
+            "validates_size"
+          ],
+          "rejectedAsExpected": true
+        }
+      ],
+      "humanReview": {
+        "status": "not recorded",
+        "questions": [
+          "Does the function behave correctly for empty arrays, size larger than the array, and non-integer sizes?",
+          "Is the code idiomatic and easy to read?"
+        ],
+        "latest": null
+      }
+    },
+    {
+      "id": "code-fix-off-by-one",
+      "agent": "code-bot",
+      "phase": "execute",
+      "task": "Fix the bug: this function should add the numbers from 1 to n inclusive, but sumTo(3) returns 3 instead of 6.\n\n```js\nfunction sumTo(n) {\n  let total = 0\n  for (let i = 1; i < n; i++) {\n    total += i\n  }\n  return total\n}\n```",
+      "revision": {
+        "model": "claude-haiku-4-5-20251001",
+        "promptRevision": "sha256:4c5d82f66c94147f"
+      },
+      "automated": {
+        "referencePassed": true,
+        "passed": 8,
+        "total": 8,
+        "properties": [
+          {
+            "id": "not_empty",
+            "check": "not_empty",
+            "pass": true,
+            "detail": "253 characters"
+          },
+          {
+            "id": "has_concise_js_block",
+            "check": "code_block",
+            "pass": true,
+            "detail": "1 js block(s), longest 7 lines (want <=15)"
+          },
+          {
+            "id": "js_parses",
+            "check": "js_syntax",
+            "pass": true,
+            "detail": "1 block(s) parse"
+          },
+          {
+            "id": "keeps_function_name",
+            "check": "contains_all",
+            "pass": true,
+            "detail": "all present"
+          },
+          {
+            "id": "fixes_upper_bound",
+            "check": "matches",
+            "pass": true,
+            "detail": "/i\\s*<=\\s*n/i"
+          },
+          {
+            "id": "original_bug_removed",
+            "check": "not_matches",
+            "pass": true,
+            "detail": "/i\\s*<\\s*n\\b/im"
+          },
+          {
+            "id": "explains_cause",
+            "check": "sentence_count",
+            "pass": true,
+            "detail": "2 sentences (want 1-4)"
+          },
+          {
+            "id": "ends_cleanly",
+            "check": "ends_cleanly",
+            "pass": true,
+            "detail": "last character: \"`\""
+          }
+        ]
+      },
+      "negativeFixtures": [
+        {
+          "file": "incomplete-bug-unchanged.txt",
+          "note": "Claims a fix but returns the original code.",
+          "expectedFailures": [
+            "fixes_upper_bound",
+            "original_bug_removed"
+          ],
+          "actualFailures": [
+            "fixes_upper_bound",
+            "original_bug_removed"
+          ],
+          "rejectedAsExpected": true
+        },
+        {
+          "file": "incomplete-no-explanation.txt",
+          "note": "Correct code with no explanation at all.",
+          "expectedFailures": [
+            "explains_cause"
+          ],
+          "actualFailures": [
+            "explains_cause"
+          ],
+          "rejectedAsExpected": true
+        }
+      ],
+      "humanReview": {
+        "status": "not recorded",
+        "questions": [
+          "Is the explanation of the root cause correct and understandable?",
+          "Is the change minimal, with no unrelated rewrites?"
+        ],
+        "latest": null
+      }
+    },
+    {
+      "id": "plan-research-then-summary",
+      "agent": "orchestrator",
+      "phase": "plan",
+      "task": "Research the main pros and cons of serverless computing, then give me a short summary",
+      "revision": {
+        "model": "claude-haiku-4-5-20251001",
+        "promptRevision": null
+      },
+      "automated": {
+        "referencePassed": true,
+        "passed": 6,
+        "total": 6,
+        "properties": [
+          {
+            "id": "plan_is_valid",
+            "check": "plan_valid",
+            "pass": true,
+            "detail": "2 valid subtask(s)"
+          },
+          {
+            "id": "two_to_three_steps",
+            "check": "plan_subtasks",
+            "pass": true,
+            "detail": "2 subtasks (want 2-3)"
+          },
+          {
+            "id": "research_then_summary",
+            "check": "plan_agents",
+            "pass": true,
+            "detail": "agents: research-bot -> summary-bot"
+          },
+          {
+            "id": "avoids_unneeded_analysis",
+            "check": "plan_agents",
+            "pass": true,
+            "detail": "agents: research-bot -> summary-bot"
+          },
+          {
+            "id": "stays_in_budget",
+            "check": "plan_within_budget",
+            "pass": true,
+            "detail": "registry cost 0.02 vs budget 0.05 USDC"
+          },
+          {
+            "id": "inputs_reference_task",
+            "check": "plan_input_mentions",
+            "pass": true,
+            "detail": "found: serverless"
+          }
+        ]
+      },
+      "negativeFixtures": [
+        {
+          "file": "incomplete-unknown-agent.txt",
+          "note": "Routes a step to an agent that is not in the registry.",
+          "expectedFailures": [
+            "plan_is_valid",
+            "two_to_three_steps",
+            "research_then_summary",
+            "avoids_unneeded_analysis",
+            "stays_in_budget",
+            "inputs_reference_task"
+          ],
+          "actualFailures": [
+            "plan_is_valid",
+            "two_to_three_steps",
+            "research_then_summary",
+            "avoids_unneeded_analysis",
+            "stays_in_budget",
+            "inputs_reference_task"
+          ],
+          "rejectedAsExpected": true
+        },
+        {
+          "file": "incomplete-over-budget.txt",
+          "note": "Valid shape but four agents costing 0.10 USDC against a 0.05 budget.",
+          "expectedFailures": [
+            "two_to_three_steps",
+            "avoids_unneeded_analysis",
+            "stays_in_budget"
+          ],
+          "actualFailures": [
+            "two_to_three_steps",
+            "avoids_unneeded_analysis",
+            "stays_in_budget"
+          ],
+          "rejectedAsExpected": true
+        }
+      ],
+      "humanReview": {
+        "status": "not recorded",
+        "questions": [
+          "Is the plan description a fair one-line summary of the approach?",
+          "Would the subtask inputs give each agent enough context to do its part?"
+        ],
+        "latest": null
+      }
+    },
+    {
+      "id": "plan-code-tight-budget",
+      "agent": "orchestrator",
+      "phase": "plan",
+      "task": "Write a function that validates email addresses",
+      "revision": {
+        "model": "claude-haiku-4-5-20251001",
+        "promptRevision": null
+      },
+      "automated": {
+        "referencePassed": true,
+        "passed": 5,
+        "total": 5,
+        "properties": [
+          {
+            "id": "plan_is_valid",
+            "check": "plan_valid",
+            "pass": true,
+            "detail": "1 valid subtask(s)"
+          },
+          {
+            "id": "one_to_two_steps",
+            "check": "plan_subtasks",
+            "pass": true,
+            "detail": "1 subtasks (want 1-2)"
+          },
+          {
+            "id": "uses_code_agent",
+            "check": "plan_agents",
+            "pass": true,
+            "detail": "agents: code-bot"
+          },
+          {
+            "id": "stays_in_budget",
+            "check": "plan_within_budget",
+            "pass": true,
+            "detail": "registry cost 0.03 vs budget 0.03 USDC"
+          },
+          {
+            "id": "inputs_reference_task",
+            "check": "plan_input_mentions",
+            "pass": true,
+            "detail": "found: email"
+          }
+        ]
+      },
+      "negativeFixtures": [
+        {
+          "file": "incomplete-over-budget.txt",
+          "note": "Adds an analysis step the 0.03 budget cannot pay for.",
+          "expectedFailures": [
+            "stays_in_budget"
+          ],
+          "actualFailures": [
+            "stays_in_budget"
+          ],
+          "rejectedAsExpected": true
+        },
+        {
+          "file": "incomplete-wrong-agent.txt",
+          "note": "Sends a coding task to the research agent.",
+          "expectedFailures": [
+            "uses_code_agent"
+          ],
+          "actualFailures": [
+            "uses_code_agent"
+          ],
+          "rejectedAsExpected": true
+        }
+      ],
+      "humanReview": {
+        "status": "not recorded",
+        "questions": [
+          "Does the plan avoid wasting a tight budget on steps the task does not need?",
+          "Is the code agent's input specific enough to get a usable function back?"
+        ],
+        "latest": null
+      }
+    },
+    {
+      "id": "plan-analysis-full-budget",
+      "agent": "orchestrator",
+      "phase": "plan",
+      "task": "Assess the risks of moving our billing to a new payment provider",
+      "revision": {
+        "model": "claude-haiku-4-5-20251001",
+        "promptRevision": null
+      },
+      "automated": {
+        "referencePassed": true,
+        "passed": 6,
+        "total": 6,
+        "properties": [
+          {
+            "id": "plan_is_valid",
+            "check": "plan_valid",
+            "pass": true,
+            "detail": "2 valid subtask(s)"
+          },
+          {
+            "id": "two_to_three_steps",
+            "check": "plan_subtasks",
+            "pass": true,
+            "detail": "2 subtasks (want 2-3)"
+          },
+          {
+            "id": "uses_analysis",
+            "check": "plan_agents",
+            "pass": true,
+            "detail": "agents: research-bot -> analyst-bot"
+          },
+          {
+            "id": "research_precedes_analysis",
+            "check": "plan_agents",
+            "pass": true,
+            "detail": "agents: research-bot -> analyst-bot"
+          },
+          {
+            "id": "stays_in_budget",
+            "check": "plan_within_budget",
+            "pass": true,
+            "detail": "registry cost 0.06 vs budget 0.10 USDC"
+          },
+          {
+            "id": "inputs_reference_task",
+            "check": "plan_input_mentions",
+            "pass": true,
+            "detail": "found: billing, payment provider"
+          }
+        ]
+      },
+      "negativeFixtures": [
+        {
+          "file": "incomplete-skips-analysis.txt",
+          "note": "Research and summary only; the requested assessment never happens.",
+          "expectedFailures": [
+            "uses_analysis",
+            "research_precedes_analysis"
+          ],
+          "actualFailures": [
+            "uses_analysis",
+            "research_precedes_analysis"
+          ],
+          "rejectedAsExpected": true
+        },
+        {
+          "file": "incomplete-empty-subtasks.txt",
+          "note": "Valid JSON with an empty subtasks array.",
+          "expectedFailures": [
+            "plan_is_valid",
+            "two_to_three_steps",
+            "uses_analysis",
+            "research_precedes_analysis",
+            "stays_in_budget",
+            "inputs_reference_task"
+          ],
+          "actualFailures": [
+            "plan_is_valid",
+            "two_to_three_steps",
+            "uses_analysis",
+            "research_precedes_analysis",
+            "stays_in_budget",
+            "inputs_reference_task"
+          ],
+          "rejectedAsExpected": true
+        }
+      ],
+      "humanReview": {
+        "status": "not recorded",
+        "questions": [
+          "Does the order of steps make sense for a risk assessment?",
+          "Is the chosen mix a sensible use of the available budget?"
+        ],
+        "latest": null
+      }
+    }
+  ]
+}

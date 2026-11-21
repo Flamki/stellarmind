@@ -9,6 +9,11 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
+- Versioned offline evaluation set for agent output quality (`evals/`, `docs/evaluation.md`): 12
+  curated, non-sensitive cases with concrete success properties, deliberately incomplete fixtures
+  that must fail, deterministic reports naming the model and prompt revision, and a committed
+  baseline. `npm run eval` checks it, `npm run eval:accept` accepts an intentional change, and
+  optional `npm run eval:live` is opt-in and token-capped. Needs no key, wallet or network.
 - `GET /api/wallet/readiness` (`?refresh=true` to re-check): whether the orchestrator wallet can
   settle in the configured asset, with `ready` (`true`/`false`/`null`), `state`, an actionable
   `reason`, `checkedAt`, `expiresAt`, `fresh` and `ageMs`. Run and plan responses carry the same
@@ -24,6 +29,10 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Changed
 
+- Agent results record the model that actually responded (`provenance.model`), the provider, and a
+  prompt revision/digest (`promptRevision`, `promptDigest`). After a model fallback `model` is the
+  fallback model. Demo and remote x402 results no longer claim a live model: `model` is `null`
+  (`intendedModel` / `declaredModel` keep the label). No credentials or prompt text are stored.
 - Wallet readiness is no longer a one-time check at startup. It is cached for a bounded time and
   refreshed on demand, so funding or a new trustline is picked up without a restart.
 - Readiness matches the network profile's asset by code **and** issuer. A `USDC` balance from any

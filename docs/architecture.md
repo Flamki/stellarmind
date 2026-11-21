@@ -266,6 +266,32 @@ prices are enforced by [`pricing.config.js`](../src/pricing.config.js).
 | 📊 Analysis | `analyst-bot`  | 0.05         | Claude Sonnet (Haiku fallback) |
 | 💻 Code     | `code-bot`     | 0.03         | Claude Haiku                   |
 
+### Output provenance: model and prompt (#153)
+
+Each agent result carries a `provenance` object, persisted with the run (`GET /api/runs/:id` →
+`results[].provenance`) and sent on the `agent_response` event. It records what actually produced
+the output, never a registry label, and never credentials or prompt text.
+
+| Field                     | Live (`source: "live"`)                                | Demo (`source: "demo"`)         |
+| ------------------------- | ------------------------------------------------------ | ------------------------------- |
+| `provider`                | `anthropic`                                            | `null`                          |
+| `model`                   | Model the API reported in its response                 | `null` (no model was used)      |
+| `requestedModel`          | Model id sent in the request                           | -                               |
+| `intendedModel`           | -                                                      | Model that would have been used |
+| `promptId`                | Agent template (`research`, `summary`, ...)            | -                               |
+| `promptRevision`          | `sha256:` digest of the template; changes with wording | `null`                          |
+| `promptDigest`            | `sha256:` digest of the exact rendered prompt          | `null`                          |
+| `maxTokens`, `responseId` | Request limit and provider message id                  | -                               |
+| `modelFallback`           | `{ primary, used, reason }` when the fallback answered | -                               |
+
+`model` is always the model that responded, so after a fallback it is the fallback model. `model` +
+`promptId` + `promptRevision` + `maxTokens` identify the evaluation configuration to match. Results
+served by a remote x402 endpoint set `model` to `null` and keep the registry label as
+`declaredModel`, because the remote model cannot be verified.
+
+The offline evaluation set ([evaluation.md](evaluation.md)) reports the same `promptRevision`, so a
+prompt change shows up as a different revision in the evaluation report.
+
 ## Key Configuration
 
 Driven by environment variables (see [`.env.example`](../.env.example) and
