@@ -1,0 +1,11 @@
+The loop stops one step early because the condition uses `<`, so n itself is never added. Changing it to `<=` fixes the off-by-one error.
+
+```js
+function sumTo(n) {
+  let total = 0
+  for (let i = 1; i <= n; i++) {
+    total += i
+  }
+  return total
+}
+```

@@ -1,0 +1,1 @@
+HTTP 402 Payment Required is a status code reserved in the HTTP specification for payment flows. Protocols such as x402 revive it so a server can answer an unpaid request with a machine-readable price. This lets software agents pay per call and the idea only works when settlement is fast and cheap, since a payment that costs

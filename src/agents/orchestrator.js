@@ -453,7 +453,7 @@ async function callAgentViaX402(agent, input, broadcastFn, context = {}) {
     }
     capturedProvenance = serviceResult.provenance
   }
-  
+
   const result = serviceResult.text || serviceResult
 
   let paymentResult = { success: false, txHash: null }
@@ -628,7 +628,7 @@ export function parsePlanResponse(planResponse) {
   return parsed
 }
 
-const PLANNING_MODEL = 'claude-haiku-4-5-20251001'
+export const PLANNING_MODEL = 'claude-haiku-4-5-20251001'
 
 export async function orchestrate(task, budget, broadcastFn, context = {}) {
   if (context.signal?.aborted) {

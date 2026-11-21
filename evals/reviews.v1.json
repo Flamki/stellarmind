@@ -1,0 +1,4 @@
+{
+  "description": "Human judgments recorded against the evaluation set. Empty on purpose: no human review has been recorded yet, and the report says so. See docs/evaluation.md for how to add an entry.",
+  "reviews": []
+}

@@ -1,0 +1,7 @@
+{
+  "plan": "Research the topic and summarize it.",
+  "subtasks": [
+    { "agentId": "research-bot", "input": "Research moving billing to a new payment provider", "cost": "0.01" },
+    { "agentId": "summary-bot", "input": "Summarize the billing migration research", "cost": "0.01" }
+  ]
+}

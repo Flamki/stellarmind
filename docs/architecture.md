@@ -289,6 +289,9 @@ the output, never a registry label, and never credentials or prompt text.
 served by a remote x402 endpoint set `model` to `null` and keep the registry label as
 `declaredModel`, because the remote model cannot be verified.
 
+The offline evaluation set ([evaluation.md](evaluation.md)) reports the same `promptRevision`, so a
+prompt change shows up as a different revision in the evaluation report.
+
 ## Key Configuration
 
 Driven by environment variables (see [`.env.example`](../.env.example) and

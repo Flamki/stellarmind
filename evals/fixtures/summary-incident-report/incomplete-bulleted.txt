@@ -1,0 +1,4 @@
+- A disk fault forced a database failover on Tuesday.
+- Recovery took 42 minutes because the replica needed a schema migration.
+- No data was lost.
+- A schema check and quarterly failover rehearsals are being added.
