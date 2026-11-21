@@ -22,6 +22,15 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - Structured validation errors (`details[].code`) for invalid cursors, filters and dates.
 - `interrupted` added to the documented `status` values in the OpenAPI spec.
 
+### Fixed
+
+- Model requests are now abortable: each attempt has its own deadline and receives an
+  `AbortSignal`, a timed-out attempt is aborted before the next one starts, and deadline timers
+  and retry delays are always cleared or cancelled. The SDK's own retries are disabled, so real
+  upstream attempts per request are `1 + ANTHROPIC_MAX_RETRIES`. New optional
+  `ANTHROPIC_OVERALL_TIMEOUT_MS` bounds all attempts and retry delays; request cancellation
+  propagates to the in-flight attempt.
+
 ### Changed
 
 - Wallet readiness is no longer a one-time check at startup. It is cached for a bounded time and
