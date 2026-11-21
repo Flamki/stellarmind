@@ -2,6 +2,7 @@ import Anthropic from '@anthropic-ai/sdk'
 import { config } from '../config.js'
 import { usageFromMessage, unavailableUsage } from './usage.js'
 import { normalizeContent } from './response-normalization.js'
+import { promptDigest, renderPromptTemplate } from './provenance.js'
 
 export let anthropic = new Anthropic({ apiKey: config.anthropicApiKey })
 
@@ -21,6 +22,25 @@ export const MODEL_LABELS = {
   summary: AGENT_MODELS.summary,
   analysis: `${AGENT_MODELS.analysisPrimary} (fallback: ${AGENT_MODELS.analysisFallback})`,
   code: AGENT_MODELS.code,
+}
+
+/**
+ * Instruction templates for each agent. `{input}` is replaced with the caller's
+ * text. The digest of the template is the stable prompt revision recorded with
+ * every live output (issue #153): edit the wording and the revision changes.
+ */
+export const PROMPT_TEMPLATES = {
+  research:
+    'You are a research agent. Research this topic thoroughly but concisely (4-5 sentences with key facts and data points): {input}',
+  summary:
+    'You are a summarization agent. Summarize the following text in 2-3 clear, concise sentences capturing the key points:\n\n{input}',
+  analysis: `You are a strategic analysis agent. Provide a structured analysis of the following topic. Include:
+1. **Key Findings** (3-4 bullet points)
+2. **Risks** (2-3 potential concerns)
+3. **Opportunities** (2-3 actionable opportunities)
+
+Topic: {input}`,
+  code: 'You are a code assistant agent. Help with the following code task. Be concise and provide working code:\n\n{input}',
 }
 
 /**
@@ -201,11 +221,20 @@ async function executeAgentPayment(senderSecret, recipientPublic, amount) {
 This function handles a basic Stellar payment operation suitable for agent-to-agent micropayments.`,
 }
 
+// Demo output was not produced by any model, so it must not claim one. The
+// model that would have served the call is kept separately as `intendedModel`.
+function demoModelFields(intendedModel) {
+  return { provider: null, model: null, intendedModel, promptRevision: null, promptDigest: null }
+}
+
 /**
  * Try Claude API, fall back to cached/demo response if credits exhausted
  * Returns { text, provenance } where provenance indicates the source
  */
-async function callClaude(model, maxTokens, prompt, fallbackFn, fallbackInput, options = {}) {
+async function callClaude(model, maxTokens, promptId, input, fallbackFn, options = {}) {
+  const template = PROMPT_TEMPLATES[promptId]
+  const prompt = renderPromptTemplate(template, input)
+  const fallbackInput = input
   if (!config.anthropicApiKey) {
     console.log('  ℹ️  No API key — using demo response')
     options.onUsage?.(unavailableUsage(model, 'no_api_key'))
@@ -215,7 +244,7 @@ async function callClaude(model, maxTokens, prompt, fallbackFn, fallbackInput, o
         source: 'demo',
         reason: 'no_api_key',
         message: 'Anthropic API key not configured',
-        model: model,
+        ...demoModelFields(model),
         illustrative: true,
       },
     }
@@ -254,7 +283,16 @@ async function callClaude(model, maxTokens, prompt, fallbackFn, fallbackInput, o
       text: normalized.text,
       provenance: {
         source: 'live',
-        model: model,
+        provider: 'anthropic',
+        // The model the API reports it used; falls back to the requested id
+        // only when the response omits it.
+        model: typeof msg?.model === 'string' && msg.model ? msg.model : model,
+        requestedModel: model,
+        responseId: typeof msg?.id === 'string' ? msg.id : null,
+        promptId,
+        promptRevision: promptDigest(template),
+        promptDigest: promptDigest(prompt),
+        maxTokens,
         illustrative: false,
       },
     }
@@ -276,7 +314,7 @@ async function callClaude(model, maxTokens, prompt, fallbackFn, fallbackInput, o
           source: 'demo',
           reason: 'credits_exhausted',
           message: 'Claude API credits exhausted, using illustrative response',
-          model: model,
+          ...demoModelFields(model),
           illustrative: true,
         },
       }
@@ -290,13 +328,13 @@ async function callClaudeWithModelFallback(
   primaryModel,
   fallbackModel,
   maxTokens,
-  prompt,
+  promptId,
+  input,
   fallbackFn,
-  fallbackInput,
   options = {}
 ) {
   try {
-    return await callClaude(primaryModel, maxTokens, prompt, fallbackFn, fallbackInput, options)
+    return await callClaude(primaryModel, maxTokens, promptId, input, fallbackFn, options)
   } catch (err) {
     const message = String(err?.message || '').toLowerCase()
     const isModelResolutionError =
@@ -304,12 +342,12 @@ async function callClaudeWithModelFallback(
     if (!isModelResolutionError || !fallbackModel || fallbackModel === primaryModel) throw err
 
     console.warn(`  Primary model ${primaryModel} unavailable, retrying with ${fallbackModel}`)
-    const result = await callClaude(fallbackModel, maxTokens, prompt, fallbackFn, fallbackInput, options)
+    const result = await callClaude(fallbackModel, maxTokens, promptId, input, fallbackFn, options)
     // Add model fallback info to provenance
     if (result.provenance && result.provenance.source === 'live') {
       result.provenance.modelFallback = {
         primary: primaryModel,
-        used: fallbackModel,
+        used: result.provenance.model,
         reason: 'primary_model_unavailable',
       }
     }
@@ -331,9 +369,9 @@ export async function runResearch(topic, options = {}) {
   const result = await callClaude(
     AGENT_MODELS.research,
     512,
-    `You are a research agent. Research this topic thoroughly but concisely (4-5 sentences with key facts and data points): ${topic}`,
-    FALLBACKS.research,
+    'research',
     topic,
+    FALLBACKS.research,
     options
   )
   // Return { text, provenance } for caller to handle
@@ -347,9 +385,9 @@ export async function runSummary(text, options = {}) {
   const result = await callClaude(
     AGENT_MODELS.summary,
     256,
-    `You are a summarization agent. Summarize the following text in 2-3 clear, concise sentences capturing the key points:\n\n${text}`,
-    FALLBACKS.summary,
+    'summary',
     text,
+    FALLBACKS.summary,
     options
   )
   return result
@@ -363,14 +401,9 @@ export async function runAnalysis(topic, options = {}) {
     AGENT_MODELS.analysisPrimary,
     AGENT_MODELS.analysisFallback,
     800,
-    `You are a strategic analysis agent. Provide a structured analysis of the following topic. Include:
-1. **Key Findings** (3-4 bullet points)
-2. **Risks** (2-3 potential concerns)
-3. **Opportunities** (2-3 actionable opportunities)
-
-Topic: ${topic}`,
-    FALLBACKS.analysis,
+    'analysis',
     topic,
+    FALLBACKS.analysis,
     options
   )
   return result
@@ -380,13 +413,6 @@ Topic: ${topic}`,
  * Code Agent — Claude Haiku for code tasks
  */
 export async function runCode(prompt, options = {}) {
-  const result = await callClaude(
-    AGENT_MODELS.code,
-    600,
-    `You are a code assistant agent. Help with the following code task. Be concise and provide working code:\n\n${prompt}`,
-    FALLBACKS.code,
-    prompt,
-    options
-  )
+  const result = await callClaude(AGENT_MODELS.code, 600, 'code', prompt, FALLBACKS.code, options)
   return result
 }
