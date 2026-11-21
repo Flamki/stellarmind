@@ -170,6 +170,81 @@ function showResult(r) {
 }
 
 /**
+ * Show preview panel with plan details
+ */
+function showPreview(plan) {
+  const previewPanel = document.getElementById('preview-panel')
+  if (!previewPanel) return
+
+  // Calculate totals
+  const totalQuoted = (plan.steps || []).reduce((sum, step) => {
+    return sum + (parseFloat(step.quotedCost) || 0)
+  }, 0)
+
+  const asset = plan.steps?.[0]?.quotedAsset || 'USDC'
+  const stepCount = plan.steps?.length || 0
+
+  // Build steps HTML
+  const stepsHtml = (plan.steps || []).map((step, index) => {
+    const stepNum = index + 1
+    const agentName = step.agentName || step.agentId || 'Unknown Agent'
+    const cost = parseFloat(step.quotedCost || 0).toFixed(3)
+    const deps = step.dependencies?.length > 0 
+      ? `<span class="preview-deps">Depends on: ${step.dependencies.join(', ')}</span>`
+      : ''
+    
+    return `
+      <div class="preview-step">
+        <div class="preview-step-header">
+          <span class="preview-step-num">${stepNum}</span>
+          <span class="preview-step-name">${agentName}</span>
+          <span class="preview-step-cost">${cost} ${asset}</span>
+        </div>
+        ${deps}
+      </div>
+    `
+  }).join('')
+
+  // Update preview content
+  document.getElementById('preview-steps').innerHTML = stepsHtml || '<p style="color: var(--text-muted);">No steps planned.</p>'
+  document.getElementById('preview-total-cost').textContent = `${totalQuoted.toFixed(3)} ${asset}`
+  document.getElementById('preview-step-count').textContent = stepCount
+  document.getElementById('preview-budget').textContent = `${lastPreviewParams.budget.toFixed(2)} ${asset}`
+
+  // Show/hide budget warning
+  const budgetWarning = document.getElementById('preview-budget-warning')
+  if (totalQuoted > lastPreviewParams.budget) {
+    budgetWarning.style.display = 'block'
+    document.getElementById('preview-confirm-btn').disabled = true
+  } else {
+    budgetWarning.style.display = 'none'
+    document.getElementById('preview-confirm-btn').disabled = false
+  }
+
+  // Show the preview panel
+  previewPanel.style.display = 'block'
+  
+  // Hide the submit task card
+  const taskCard = document.querySelector('.page.active .card')
+  if (taskCard) taskCard.style.opacity = '0.5'
+
+  setResultTag('Preview Ready', 'purple')
+}
+
+/**
+ * Hide preview panel and return to task input
+ */
+function hidePreview() {
+  const previewPanel = document.getElementById('preview-panel')
+  if (previewPanel) {
+    previewPanel.style.display = 'none'
+  }
+
+  // Restore the submit task card
+  const taskCard = document.querySelector('.page.active .card')
+  if (taskCard) taskCard.style.opacity = '1'
+
+  setResultTag('Idle', '')
  * Format provenance label for display
  */
 function formatProvenanceLabel(provenance) {
