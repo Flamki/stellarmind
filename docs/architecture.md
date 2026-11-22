@@ -289,6 +289,27 @@ the output, never a registry label, and never credentials or prompt text.
 served by a remote x402 endpoint set `model` to `null` and keep the registry label as
 `declaredModel`, because the remote model cannot be verified.
 
+### Idempotent submissions (#132)
+
+`POST /api/orchestrate` (and `/api/orchestrate/execute`) accept an `Idempotency-Key` header (or
+`X-Idempotency-Key`, or an `idempotencyKey` body field), at most 256 characters. The key is bound to
+a fingerprint of the normalized request (task trimmed, budget), and the key-to-run mapping is stored
+with the run history.
+
+| Situation                                                | Result                                                                           |
+| -------------------------------------------------------- | -------------------------------------------------------------------------------- |
+| Same key, same task and budget (sequential or in flight) | Original run returned, `X-Idempotent-Replay: true`; no new agent or payment work |
+| Same key, different task or budget                       | `409` `IDEMPOTENCY_KEY_CONFLICT`, with the original run id                       |
+| Many matching requests at once                           | One run; the rest attach to it                                                   |
+| After a restart                                          | Mappings are reloaded from the run-history file                                  |
+
+**Retention.** A mapping lasts `IDEMPOTENCY_TTL_MS` (default 24 hours) from the run's creation, or
+until the run is evicted from the bounded history (`RUN_HISTORY_MAX_RUNS`), whichever comes first.
+After that the key is free again and may be reused, with the same or different parameters. Expired
+mappings are dropped on lookup, on load and on every save. With `RUN_HISTORY_STORAGE=memory`
+mappings last only until restart. A run interrupted by a restart is marked failed, and replaying its
+key returns that failure until the mapping expires; use a new key to retry the work.
+
 ## Key Configuration
 
 Driven by environment variables (see [`.env.example`](../.env.example) and

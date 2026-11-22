@@ -28,6 +28,11 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   prompt revision/digest (`promptRevision`, `promptDigest`). After a model fallback `model` is the
   fallback model. Demo and remote x402 results no longer claim a live model: `model` is `null`
   (`intendedModel` / `declaredModel` keep the label). No credentials or prompt text are stored.
+- Idempotency keys now have a defined retention window. A key stays bound to its run for
+  `IDEMPOTENCY_TTL_MS` (default 24 hours) or until the run leaves the bounded run history; after
+  that it can be reused. Expired mappings are dropped on lookup, load and save, and the saved
+  mapping list no longer keeps the oldest entries and drops the newest. Behavior is documented in
+  `docs/architecture.md` and `docs/openapi.yaml`.
 - Wallet readiness is no longer a one-time check at startup. It is cached for a bounded time and
   refreshed on demand, so funding or a new trustline is picked up without a restart.
 - Readiness matches the network profile's asset by code **and** issuer. A `USDC` balance from any

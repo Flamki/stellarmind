@@ -93,6 +93,8 @@ export const config = {
     ? path.resolve(process.env.RUN_HISTORY_FILE)
     : path.join(repoRoot, 'data', 'run-history.json'),
   runHistoryMaxRuns: Math.max(10, toNumberOr(process.env.RUN_HISTORY_MAX_RUNS, 200)),
+  // Retention window for Idempotency-Key -> run mappings (default 24h).
+  idempotencyTtlMs: Math.max(1000, toNumberOr(process.env.IDEMPOTENCY_TTL_MS, 24 * 60 * 60 * 1000)),
 
   // Per-transaction operation lookups in getTransactions
   horizonOpsMaxConcurrency: Math.max(1, toNumberOr(process.env.HORIZON_OPS_MAX_CONCURRENCY, 4)),
