@@ -89,7 +89,7 @@ describe('Plan Preview & Confirm Workflow (#166)', () => {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         task: 'Quick test task',
-        budget: 0.10,
+        budget: 0.1,
       }),
     })
 
@@ -134,7 +134,7 @@ describe('Plan Preview & Confirm Workflow (#166)', () => {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         task: 'Double execution test',
-        budget: 0.10,
+        budget: 0.1,
       }),
     })
 
@@ -173,7 +173,7 @@ describe('Plan Preview & Confirm Workflow (#166)', () => {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         task: 'Multi-step task requiring research, analysis, and summary',
-        budget: 0.20,
+        budget: 0.2,
       }),
     })
 
@@ -189,7 +189,7 @@ describe('Plan Preview & Confirm Workflow (#166)', () => {
     }, 0)
 
     assert.ok(calculatedTotal > 0, 'Total quoted cost should be positive')
-    assert.ok(calculatedTotal <= 0.20, 'Total should not exceed budget')
+    assert.ok(calculatedTotal <= 0.2, 'Total should not exceed budget')
   })
 
   it('should include dependency information in preview', async () => {
@@ -210,10 +210,7 @@ describe('Plan Preview & Confirm Workflow (#166)', () => {
     // Some tasks may have dependent steps
     if (stepsWithDeps.length > 0) {
       const dependentStep = stepsWithDeps[0]
-      assert.ok(
-        Array.isArray(dependentStep.dependencies),
-        'Dependencies should be an array'
-      )
+      assert.ok(Array.isArray(dependentStep.dependencies), 'Dependencies should be an array')
       assert.ok(
         dependentStep.dependencies.length > 0,
         'Dependent step should reference other steps'
@@ -299,18 +296,14 @@ describe('Plan Preview & Confirm Workflow (#166)', () => {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         task: 'Test asset type',
-        budget: 0.10,
+        budget: 0.1,
       }),
     })
 
     const preview = await response.json()
 
     preview.steps.forEach((step) => {
-      assert.strictEqual(
-        step.quotedAsset,
-        'USDC',
-        'All quotes should be in USDC'
-      )
+      assert.strictEqual(step.quotedAsset, 'USDC', 'All quotes should be in USDC')
     })
   })
 
@@ -320,7 +313,7 @@ describe('Plan Preview & Confirm Workflow (#166)', () => {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         task: 'Plan ID format test',
-        budget: 0.10,
+        budget: 0.1,
       }),
     })
 
@@ -344,7 +337,7 @@ describe('Plan Preview & Confirm Workflow (#166)', () => {
 
   it('should handle GET request for preview', async () => {
     const task = 'GET request test'
-    const budget = 0.10
+    const budget = 0.1
 
     const response = await fetch(
       `${serverUrl}/api/orchestrate/preview?task=${encodeURIComponent(task)}&budget=${budget}`,
@@ -379,7 +372,7 @@ describe('Plan Preview & Confirm Workflow (#166)', () => {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         task: '',
-        budget: 0.10,
+        budget: 0.1,
       }),
     })
 

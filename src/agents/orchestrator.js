@@ -408,6 +408,7 @@ async function callAgentViaX402(agent, input, broadcastFn, context = {}) {
   let capturedProvenance = null
   try {
     serviceResult = await serviceFn(input, {
+      signal: context.signal,
       onRetryAttempt: (retry) => {
         broadcastFn?.({
           type: 'anthropic_retry',
@@ -447,7 +448,7 @@ async function callAgentViaX402(agent, input, broadcastFn, context = {}) {
     }
     capturedProvenance = serviceResult.provenance
   }
-  
+
   const result = serviceResult.text || serviceResult
 
   let paymentResult = { success: false, txHash: null }
@@ -700,6 +701,7 @@ Respond ONLY with valid JSON (no markdown, no code fences):
           ],
         },
         {
+          signal: context.signal,
           onRetryAttempt: (retry) => {
             broadcastFn?.({
               type: 'anthropic_retry',
@@ -1154,6 +1156,7 @@ Respond ONLY with valid JSON (no markdown, no code fences):
           ],
         },
         {
+          signal: context.signal,
           onRetryAttempt: (retry) => {
             broadcastFn?.({
               type: 'anthropic_retry',

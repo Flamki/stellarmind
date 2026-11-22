@@ -69,8 +69,12 @@ function addFeed(ev) {
       cl = 'ok'
       lb = `${ev.agent} responded`
       // Add provenance indicator
-      const provenanceIndicator = ev.provenance 
-        ? (ev.provenance.source === 'demo' ? ' 🎭' : ev.provenance.source === 'x402_remote' ? ' 🌐' : '')
+      const provenanceIndicator = ev.provenance
+        ? ev.provenance.source === 'demo'
+          ? ' 🎭'
+          : ev.provenance.source === 'x402_remote'
+            ? ' 🌐'
+            : ''
         : ''
       sb = `${ev.paidVia ? '[' + ev.paidVia + '] ' : ''}${(ev.resultPreview || 'Output received').substring(0, 40)}...${provenanceIndicator}`
       break
