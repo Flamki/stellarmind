@@ -121,6 +121,8 @@ Run history persistence (for orchestration/payment audit):
 RUN_HISTORY_STORAGE=file
 RUN_HISTORY_FILE=./data/run-history.json
 RUN_HISTORY_MAX_RUNS=200
+# How long an Idempotency-Key stays bound to its run (default 24h)
+IDEMPOTENCY_TTL_MS=86400000
 ```
 
 The run-history file uses schema versioning for safe migrations:
