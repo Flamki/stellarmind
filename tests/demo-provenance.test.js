@@ -1,7 +1,7 @@
 /**
  * Demo Response Provenance Tests
  * Validates that demo/fallback responses are clearly distinguished from live results.
- * 
+ *
  * Run: node tests/demo-provenance.test.js
  */
 
@@ -31,7 +31,7 @@ test('Live response has correct provenance', () => {
     model: 'claude-haiku-4-5-20251001',
     illustrative: false,
   }
-  
+
   assert.strictEqual(liveProvenance.source, 'live')
   assert.strictEqual(liveProvenance.illustrative, false)
   assert.ok(liveProvenance.model)
@@ -45,7 +45,7 @@ test('Demo response (no API key) has correct provenance', () => {
     model: 'claude-haiku-4-5-20251001',
     illustrative: true,
   }
-  
+
   assert.strictEqual(demoProvenance.source, 'demo')
   assert.strictEqual(demoProvenance.reason, 'no_api_key')
   assert.strictEqual(demoProvenance.illustrative, true)
@@ -60,7 +60,7 @@ test('Demo response (credits exhausted) has correct provenance', () => {
     model: 'claude-haiku-4-5-20251001',
     illustrative: true,
   }
-  
+
   assert.strictEqual(demoProvenance.source, 'demo')
   assert.strictEqual(demoProvenance.reason, 'credits_exhausted')
   assert.strictEqual(demoProvenance.illustrative, true)
@@ -74,7 +74,7 @@ test('x402 remote response has correct provenance', () => {
     illustrative: false,
     note: 'Result served by remote x402-protected endpoint',
   }
-  
+
   assert.strictEqual(remoteProvenance.source, 'x402_remote')
   assert.strictEqual(remoteProvenance.illustrative, false)
   assert.ok(remoteProvenance.endpoint)
@@ -91,7 +91,7 @@ test('Model fallback response has correct provenance', () => {
       reason: 'primary_model_unavailable',
     },
   }
-  
+
   assert.strictEqual(fallbackProvenance.source, 'live')
   assert.ok(fallbackProvenance.modelFallback)
   assert.strictEqual(fallbackProvenance.modelFallback.primary, 'claude-sonnet-4-5-20250929')
@@ -105,7 +105,7 @@ test('Error response has correct provenance', () => {
     message: 'Network timeout',
     illustrative: false,
   }
-  
+
   assert.strictEqual(errorProvenance.source, 'error')
   assert.ok(errorProvenance.message)
 })
@@ -121,7 +121,7 @@ test('Service function returns { text, provenance }', () => {
       illustrative: false,
     },
   }
-  
+
   assert.ok(serviceResponse.text)
   assert.ok(serviceResponse.provenance)
   assert.strictEqual(typeof serviceResponse.text, 'string')
@@ -142,7 +142,7 @@ test('Agent result includes provenance field', () => {
       illustrative: false,
     },
   }
-  
+
   assert.ok(agentResult.provenance)
   assert.strictEqual(agentResult.provenance.source, 'live')
 })
@@ -159,7 +159,7 @@ test('Agent result with demo provenance is clearly marked', () => {
       illustrative: true,
     },
   }
-  
+
   assert.ok(agentResult.provenance)
   assert.strictEqual(agentResult.provenance.source, 'demo')
   assert.strictEqual(agentResult.provenance.illustrative, true)
@@ -178,11 +178,11 @@ test('Provenance and payment are separate concepts', () => {
     paymentSuccess: true,
     txHash: 'abc123...',
   }
-  
+
   // Demo response can still have payment
   assert.strictEqual(result.provenance.source, 'demo')
   assert.strictEqual(result.paymentSuccess, true)
-  
+
   // Payment outcome doesn't determine provenance
   assert.notStrictEqual(result.provenance.source, result.paidVia)
 })
@@ -197,7 +197,7 @@ test('Live response can have failed payment', () => {
     paidVia: 'none',
     paymentSuccess: false,
   }
-  
+
   assert.strictEqual(result.provenance.source, 'live')
   assert.strictEqual(result.paymentSuccess, false)
 })
@@ -219,14 +219,15 @@ test('Mixed run has per-step provenance', () => {
       provenance: { source: 'live', illustrative: false },
     },
   ]
-  
+
   assert.strictEqual(results[0].provenance.source, 'live')
   assert.strictEqual(results[1].provenance.source, 'demo')
   assert.strictEqual(results[2].provenance.source, 'live')
-  
+
   // Each step has independent provenance
-  const hasMixedProvenance = results.some(r => r.provenance.source === 'demo') &&
-                              results.some(r => r.provenance.source === 'live')
+  const hasMixedProvenance =
+    results.some((r) => r.provenance.source === 'demo') &&
+    results.some((r) => r.provenance.source === 'live')
   assert.ok(hasMixedProvenance)
 })
 
@@ -241,10 +242,10 @@ test('Mixed run summary identifies demo steps', () => {
       provenance: { source: 'demo', illustrative: true },
     },
   ]
-  
-  const demoCount = results.filter(r => r.provenance?.illustrative).length
-  const liveCount = results.filter(r => r.provenance && !r.provenance.illustrative).length
-  
+
+  const demoCount = results.filter((r) => r.provenance?.illustrative).length
+  const liveCount = results.filter((r) => r.provenance && !r.provenance.illustrative).length
+
   assert.strictEqual(demoCount, 1)
   assert.strictEqual(liveCount, 1)
 })
@@ -261,7 +262,7 @@ test('Demo text is labeled as illustrative', () => {
       message: 'Anthropic API key not configured',
     },
   }
-  
+
   assert.ok(demoResponse.provenance.illustrative)
   assert.ok(demoResponse.provenance.message)
   // Demo text should not claim to be from verified sources
@@ -277,7 +278,7 @@ test('Live text is not labeled as illustrative', () => {
       illustrative: false,
     },
   }
-  
+
   assert.strictEqual(liveResponse.provenance.illustrative, false)
 })
 
@@ -296,7 +297,7 @@ test('agent_response event includes provenance', () => {
     },
     timestamp: new Date().toISOString(),
   }
-  
+
   assert.ok(event.provenance)
   assert.strictEqual(event.provenance.source, 'demo')
 })
@@ -305,7 +306,7 @@ console.log('Provenance Sources')
 
 test('All valid provenance sources are defined', () => {
   const validSources = ['live', 'demo', 'x402_remote', 'error']
-  
+
   for (const source of validSources) {
     assert.ok(typeof source === 'string')
     assert.ok(source.length > 0)
@@ -319,7 +320,7 @@ test('Provenance reasons for demo mode are defined', () => {
     'service_call_failed',
     'primary_model_unavailable',
   ]
-  
+
   for (const reason of validReasons) {
     assert.ok(typeof reason === 'string')
     assert.ok(reason.length > 0)

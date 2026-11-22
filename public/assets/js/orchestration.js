@@ -152,7 +152,7 @@ async function previewOrchestration() {
     }
 
     const plan = await response.json()
-    
+
     // Store plan and parameters for later execution
     activePlan = plan
     lastPreviewParams = { task, budget }
@@ -180,7 +180,7 @@ async function confirmAndExecute() {
 
   const btn = document.getElementById('preview-confirm-btn')
   const originalText = btn ? btn.innerHTML : 'Confirm & Execute'
-  
+
   if (btn) {
     btn.disabled = true
     btn.innerHTML = '<span class="spinner"></span>Executing...'
@@ -197,7 +197,7 @@ async function confirmAndExecute() {
 
     if (!response.ok) {
       const errorData = await response.json().catch(() => ({ error: 'Unknown error' }))
-      
+
       // Handle expired/invalid plan
       if (response.status === 404) {
         hidePreview()
@@ -210,11 +210,11 @@ async function confirmAndExecute() {
     }
 
     const result = await response.json()
-    
+
     // Hide preview and show results
     hidePreview()
     activePlan = null
-    
+
     showResult(result)
     loadWallets()
   } catch (e) {
@@ -247,11 +247,8 @@ function cancelPreview() {
 function hasPreviewParametersChanged() {
   const currentTask = document.getElementById('task-input').value.trim()
   const currentBudget = parseFloat(document.getElementById('budget-slider').value)
-  
-  return (
-    currentTask !== lastPreviewParams.task ||
-    currentBudget !== lastPreviewParams.budget
-  )
+
+  return currentTask !== lastPreviewParams.task || currentBudget !== lastPreviewParams.budget
 }
 
 /**

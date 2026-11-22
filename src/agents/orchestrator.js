@@ -453,7 +453,7 @@ async function callAgentViaX402(agent, input, broadcastFn, context = {}) {
     }
     capturedProvenance = serviceResult.provenance
   }
-  
+
   const result = serviceResult.text || serviceResult
 
   let paymentResult = { success: false, txHash: null }
