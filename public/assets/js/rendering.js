@@ -111,7 +111,7 @@ function showResult(r) {
     successful.find((x) => x.agentId === 'analyst-bot') ||
     successful[0]
   const finalAnswer = normalizeFinalAnswer(preferred?.output || 'No final answer returned.')
-  
+
   // Check if any results used demo/fallback responses
   const hasDemoResults = (r.results || []).some(
     (x) => x.provenance && (x.provenance.source === 'demo' || x.provenance.illustrative)
@@ -130,8 +130,8 @@ function showResult(r) {
       : `\n--- ${x.agentName} (quoted ${x.cost} ${x.currency}; settled ${formatSettlementLabel(x)}) ---\n${x.output}\n`
   }
 
-  const demoNotice = hasDemoResults 
-    ? '\n⚠️  NOTE: Some responses are illustrative examples (demo mode). Live Claude results require valid API credentials.\n' 
+  const demoNotice = hasDemoResults
+    ? '\n⚠️  NOTE: Some responses are illustrative examples (demo mode). Live Claude results require valid API credentials.\n'
     : ''
 
   out.textContent = `FINAL ANSWER\n${finalAnswer}${demoNotice}\n\nAGENT DETAILS${details}`
@@ -185,15 +185,17 @@ function showPreview(plan) {
   const stepCount = plan.steps?.length || 0
 
   // Build steps HTML
-  const stepsHtml = (plan.steps || []).map((step, index) => {
-    const stepNum = index + 1
-    const agentName = step.agentName || step.agentId || 'Unknown Agent'
-    const cost = parseFloat(step.quotedCost || 0).toFixed(3)
-    const deps = step.dependencies?.length > 0 
-      ? `<span class="preview-deps">Depends on: ${step.dependencies.join(', ')}</span>`
-      : ''
-    
-    return `
+  const stepsHtml = (plan.steps || [])
+    .map((step, index) => {
+      const stepNum = index + 1
+      const agentName = step.agentName || step.agentId || 'Unknown Agent'
+      const cost = parseFloat(step.quotedCost || 0).toFixed(3)
+      const deps =
+        step.dependencies?.length > 0
+          ? `<span class="preview-deps">Depends on: ${step.dependencies.join(', ')}</span>`
+          : ''
+
+      return `
       <div class="preview-step">
         <div class="preview-step-header">
           <span class="preview-step-num">${stepNum}</span>
@@ -203,13 +205,16 @@ function showPreview(plan) {
         ${deps}
       </div>
     `
-  }).join('')
+    })
+    .join('')
 
   // Update preview content
-  document.getElementById('preview-steps').innerHTML = stepsHtml || '<p style="color: var(--text-muted);">No steps planned.</p>'
+  document.getElementById('preview-steps').innerHTML =
+    stepsHtml || '<p style="color: var(--text-muted);">No steps planned.</p>'
   document.getElementById('preview-total-cost').textContent = `${totalQuoted.toFixed(3)} ${asset}`
   document.getElementById('preview-step-count').textContent = stepCount
-  document.getElementById('preview-budget').textContent = `${lastPreviewParams.budget.toFixed(2)} ${asset}`
+  document.getElementById('preview-budget').textContent =
+    `${lastPreviewParams.budget.toFixed(2)} ${asset}`
 
   // Show/hide budget warning
   const budgetWarning = document.getElementById('preview-budget-warning')
@@ -223,7 +228,7 @@ function showPreview(plan) {
 
   // Show the preview panel
   previewPanel.style.display = 'block'
-  
+
   // Hide the submit task card
   const taskCard = document.querySelector('.page.active .card')
   if (taskCard) taskCard.style.opacity = '0.5'
@@ -245,11 +250,14 @@ function hidePreview() {
   if (taskCard) taskCard.style.opacity = '1'
 
   setResultTag('Idle', '')
+}
+
+/**
  * Format provenance label for display
  */
 function formatProvenanceLabel(provenance) {
   if (!provenance) return ''
-  
+
   if (provenance.source === 'demo') {
     return '🎭 [DEMO]'
   } else if (provenance.source === 'live') {
@@ -263,6 +271,8 @@ function formatProvenanceLabel(provenance) {
     return '⚠️'
   }
   return ''
+}
+
 async function openRunDetail(runId) {
   const modal = document.getElementById('history-detail-modal')
   const loading = document.getElementById('history-detail-loading')
