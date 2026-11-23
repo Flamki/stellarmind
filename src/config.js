@@ -102,6 +102,15 @@ export const config = {
   horizonOpsMaxConcurrency: Math.max(1, toNumberOr(process.env.HORIZON_OPS_MAX_CONCURRENCY, 4)),
   horizonOpsCacheSize: Math.max(0, toNumberOr(process.env.HORIZON_OPS_CACHE_SIZE, 500)),
 
+  // Direct-payment submissions from one payer account are serialised in this process.
+  // Waiting is bounded: queue depth per account, time spent waiting for a turn, and
+  // total submit attempts per payment (first try included).
+  submission: {
+    maxQueueDepth: Math.max(1, toNumberOr(process.env.SUBMISSION_MAX_QUEUE_DEPTH, 20)),
+    maxWaitMs: Math.max(0, toNumberOr(process.env.SUBMISSION_MAX_WAIT_MS, 60000)),
+    maxAttempts: Math.max(1, toNumberOr(process.env.SUBMISSION_MAX_ATTEMPTS, 2)),
+  },
+
   // Orchestrator wallet readiness (settlement asset funded?): how long an answer stays fresh
   // and the upper bound on one balance lookup.
   walletReadiness: {
