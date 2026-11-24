@@ -1,14 +1,14 @@
-import {
-  Keypair,
-  Horizon,
-  Networks,
-  TransactionBuilder,
-  Operation,
-  Asset,
-} from '@stellar/stellar-sdk'
+import { Keypair, Horizon } from '@stellar/stellar-sdk'
 import { config } from '../config.js'
+import { explorerTxUrl, getFriendbotUrl } from './network.js'
+import { createSubmissionCoordinator } from './submission-coordinator.js'
+import { createPaymentSender } from './payment-sender.js'
 
-const HORIZON_URL = 'https://horizon-testnet.stellar.org'
+// One validated profile drives every network fact in this module: Horizon
+// origin, transaction passphrase, explorer links, and the friend-only funding
+// helper. Nothing here hard-codes testnet any more.
+const profile = config.networkProfile
+const HORIZON_URL = profile.horizonUrl
 const server = new Horizon.Server(HORIZON_URL)
 
 // ── Bounded concurrency and caching for per-transaction operation lookups ─────
@@ -58,10 +58,10 @@ export function operationsCacheEntryCount() {
  * (`NETWORK`), so a result fetched on one profile must never answer a lookup on
  * another. The endpoint is part of the key for the same reason.
  */
-export function operationsCacheKey(hash, horizonServer = server, profile = config.network) {
+export function operationsCacheKey(hash, horizonServer = server, profileId = config.network) {
   const endpoint =
     horizonServer?.serverURL || horizonServer?.serverUrl || horizonServer?.url || HORIZON_URL
-  return `${profile}|${endpoint}|${hash}`
+  return `${profileId}|${endpoint}|${hash}`
 }
 
 function cacheLookup(key) {
@@ -139,18 +139,45 @@ export async function fetchTransactionOperations(hash, horizonServer = server) {
 
 /**
  * Get balance for a Stellar public key
+ *
+ * Returns an object with:
+ * - success: boolean indicating if the operation succeeded
+ * - balances: array of balance objects (only present when success is true)
+ * - error: error details (only present when success is false)
+ * - errorType: categorized error type for client handling
  */
 export async function getBalance(publicKey) {
   try {
     const account = await server.loadAccount(publicKey)
-    return account.balances.map((b) => ({
+    const balances = account.balances.map((b) => ({
       asset: b.asset_type === 'native' ? 'XLM' : `${b.asset_code}`,
       balance: b.balance,
       issuer: b.asset_issuer || null,
     }))
+
+    return {
+      success: true,
+      balances,
+    }
   } catch (err) {
     console.error(`Failed to load balance for ${publicKey}:`, err.message)
-    return []
+
+    // Categorize the error type
+    let errorType = 'UPSTREAM_ERROR'
+    if (err.response?.status === 404) {
+      errorType = 'ACCOUNT_NOT_FOUND'
+    } else if (err.message?.includes('timeout') || err.code === 'ETIMEDOUT') {
+      errorType = 'TIMEOUT'
+    } else if (err.message?.includes('ENOTFOUND') || err.message?.includes('ECONNREFUSED')) {
+      errorType = 'NETWORK_ERROR'
+    }
+
+    return {
+      success: false,
+      error: err.message,
+      errorType,
+      timestamp: new Date().toISOString(),
+    }
   }
 }
 
@@ -162,53 +189,47 @@ export function getKeypair(secretKey) {
 }
 
 /**
- * Send XLM payment between two wallets (for demo agent-to-agent payments)
+ * Send XLM payment between two wallets (for demo agent-to-agent payments).
+ *
+ * Coordinated per payer account (see submission-coordinator.js), so concurrent
+ * calls for one payer queue up and each loads a fresh sequence number. Resolves
+ * `{ success, outcome, txHash, ... }`; it does not throw.
  */
-export async function sendPayment(senderSecret, recipientPublic, amount, memo = '') {
-  try {
-    const senderKeypair = Keypair.fromSecret(senderSecret)
-    const senderAccount = await server.loadAccount(senderKeypair.publicKey())
+export const submissionCoordinator = createSubmissionCoordinator({
+  maxQueueDepth: config.submission.maxQueueDepth,
+  maxWaitMs: config.submission.maxWaitMs,
+})
 
-    const txBuilder = new TransactionBuilder(senderAccount, {
-      fee: '100',
-      networkPassphrase: Networks.TESTNET,
-    })
-
-    txBuilder.addOperation(
-      Operation.payment({
-        destination: recipientPublic,
-        asset: Asset.native(),
-        amount: String(amount),
-      })
-    )
-
-    if (memo) {
-      txBuilder.addMemo(new (await import('@stellar/stellar-sdk')).Memo('text', memo.slice(0, 28)))
+const paymentSender = createPaymentSender({
+  loadAccount: (publicKey) => server.loadAccount(publicKey),
+  submitTransaction: (tx) => server.submitTransaction(tx),
+  lookupTransaction: async (hash) => {
+    try {
+      const record = await server.transactions().transaction(hash).call()
+      return { found: true, ledger: record.ledger_attr ?? record.ledger }
+    } catch (err) {
+      if (err?.response?.status === 404) return { found: false }
+      throw err
     }
+  },
+  coordinator: submissionCoordinator,
+  passphrase: profile.passphrase,
+  explorerUrl: (hash) => explorerTxUrl(profile, hash),
+  maxAttempts: config.submission.maxAttempts,
+  logger: console,
+})
 
-    txBuilder.setTimeout(30)
-    const tx = txBuilder.build()
-    tx.sign(senderKeypair)
-
-    const result = await server.submitTransaction(tx)
-    return {
-      success: true,
-      txHash: result.hash,
-      ledger: result.ledger,
-      explorerUrl: `https://stellar.expert/explorer/testnet/tx/${result.hash}`,
-    }
-  } catch (err) {
-    console.error('Payment failed:', err.message)
-    return { success: false, error: err.message }
-  }
+export function sendPayment(senderSecret, recipientPublic, amount, memo = '') {
+  return paymentSender.sendPayment(senderSecret, recipientPublic, amount, memo)
 }
 
 /**
- * Fund a wallet via Friendbot (testnet only)
+ * Fund a wallet via Friendbot. Testnet only: `getFriendbotUrl` refuses to
+ * return a helper for any profile that does not define one.
  */
 export async function fundWithFriendbot(publicKey) {
   try {
-    const response = await fetch(`https://friendbot.stellar.org?addr=${publicKey}`)
+    const response = await fetch(`${getFriendbotUrl(profile)}?addr=${publicKey}`)
     const data = await response.json()
     return { success: true, data }
   } catch (err) {
@@ -218,6 +239,12 @@ export async function fundWithFriendbot(publicKey) {
 
 /**
  * Get recent transactions for a wallet
+ *
+ * Returns an object with:
+ * - success: boolean indicating if the operation succeeded
+ * - transactions: array of transaction objects (only present when success is true)
+ * - error: error details (only present when success is false)
+ * - errorType: categorized error type for client handling
  */
 export async function getTransactions(publicKey, limit = 10, cursor = null, order = 'desc') {
   try {
@@ -255,14 +282,33 @@ export async function getTransactions(publicKey, limit = 10, cursor = null, orde
           // Distinguishes "this transaction has no operations" from "the lookup
           // failed" — both used to arrive as an empty array.
           ...(error ? { operationsError: error } : {}),
-          explorerUrl: `https://stellar.expert/explorer/testnet/tx/${tx.hash}`,
+          explorerUrl: explorerTxUrl(profile, tx.hash),
         }
       }
     )
 
-    return decorated
+    return {
+      success: true,
+      transactions: decorated,
+    }
   } catch (err) {
     console.error('Failed to fetch transactions:', err.message)
-    return []
+
+    // Categorize the error type
+    let errorType = 'UPSTREAM_ERROR'
+    if (err.response?.status === 404) {
+      errorType = 'ACCOUNT_NOT_FOUND'
+    } else if (err.message?.includes('timeout') || err.code === 'ETIMEDOUT') {
+      errorType = 'TIMEOUT'
+    } else if (err.message?.includes('ENOTFOUND') || err.message?.includes('ECONNREFUSED')) {
+      errorType = 'NETWORK_ERROR'
+    }
+
+    return {
+      success: false,
+      error: err.message,
+      errorType,
+      timestamp: new Date().toISOString(),
+    }
   }
 }

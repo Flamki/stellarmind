@@ -135,7 +135,7 @@ Caller (orchestrator x402Fetch — @x402/fetch + ExactStellarScheme + Ed25519 si
 Facilitator
    │ 5. verifies + settles the USDC payment on Stellar testnet
    ▼
-Premium route handler (src/server.js)
+Premium route handler (src/routes/premium-routes.js)
    │ 6. runs the Claude agent, returns 200 + PAYMENT-RESPONSE header (settlement / tx hash)
    ▼
 settlement-header.js
@@ -155,8 +155,11 @@ Notes:
 - Prices live only in [`pricing.config.js`](../src/pricing.config.js). It is validated at startup
   and generates both the x402 middleware config and the `/api/status` output, so pricing never
   drifts between layers.
-- The orchestrator's x402 client requires `ORCHESTRATOR_STELLAR_SECRET` plus a funded USDC
-  trustline; readiness is checked at boot and surfaced via `x402WalletReady` / `x402WalletHint`.
+- The orchestrator's x402 client requires `ORCHESTRATOR_STELLAR_SECRET` plus a funded USDC trustline
+  for the configured asset (code and issuer from the network profile). Readiness is cached for a
+  bounded time, refreshed on demand, and surfaced via `x402WalletReady` / `x402WalletHint` /
+  `x402WalletReadiness` and `GET /api/wallet/readiness`. A failed lookup reports `null` (unknown),
+  never a confirmed empty wallet.
 - A 200 without a decodable settlement header is treated as an _unverified_ success (flagged via a
   `warning`), not a failure.
 
@@ -189,6 +192,58 @@ same logical charge_, so it is only permitted for the documented terminal failur
   `503 PAYMENT_PROBE_UNAVAILABLE` and the attempts stay pending.
 - The same probe can be passed to `orchestrate()` as `context.paymentProbe`, so an unresolved x402
   attempt is reconciled _before_ the fallback decision is made.
+
+### Direct-payment submission coordination (#133)
+
+Direct XLM payments (`sendPayment` in `src/stellar/wallet.js`) all come from one configured payer.
+Two payments loading that account at once would both build on the same sequence number and one would
+be rejected with `tx_bad_seq`. `src/stellar/submission-coordinator.js` therefore queues submissions
+**per source account**: each payment loads a fresh sequence only after the previous one for that
+account has finished, while different accounts never wait for each other.
+
+- **Bounded waiting.** At most `SUBMISSION_MAX_QUEUE_DEPTH` payments per account (running plus
+  waiting) and at most `SUBMISSION_MAX_WAIT_MS` waiting for a turn. Over either limit the payment
+  fails with `QUEUE_FULL` or `QUEUE_WAIT_TIMEOUT`; it is never silently dropped.
+- **Failures release the queue.** A rejected or failed payment frees the account for the next one
+  and returns a structured result: `outcome` (`confirmed`, `rejected`, `unknown`, `failed`),
+  `errorType`, `resultCodes` for Horizon rejections, `attempts`, `queueWaitMs` and `txHash`.
+- **Uncertain submissions are resolved first.** If a submit gives no definitive answer (timeout,
+  lost response), the transaction hash is looked up. Found means confirmed (`reconciled: true`);
+  past its max time and not found means it can never apply; otherwise the outcome is `unknown` and
+  the next payment for that account is refused (`PRIOR_SUBMISSION_UNRESOLVED`) until it is resolved.
+  A retry only follows a stale sequence (`tx_bad_seq`) or a submission known not to have applied,
+  and total submit attempts are bounded by `SUBMISSION_MAX_ATTEMPTS`.
+
+**Deployment boundary: single process.** The queues are in memory, so they coordinate callers inside
+one Node process only. Two processes or replicas sharing one payer account are not coordinated and
+can still collide on sequence numbers; run one instance per payer account (or add an external lock
+before scaling out). The x402 path signs and submits through the facilitator and is not changed by
+this.
+
+### Settlement reporting: quoted vs settled (#130)
+
+A step has two different amounts and they are never conflated:
+
+- **Quote / reserved cost** — the registry price for the step (`agent.price`, quoted in USDC). This
+  is what the budget guardrail admits, and it is reported as `quotedTotal` (`totalSpent` remains an
+  alias for it) on the run response.
+- **Settlement** — the asset and amount that actually moved, in `settledTotals`, `results[*]`,
+  `payments[*]`, payment attempts, `txProofs`, and the `payment` / `agent_response` events.
+
+| Path             | Settled asset                          | Settled amount                                       |
+| ---------------- | -------------------------------------- | ---------------------------------------------------- |
+| x402             | USDC (issuer from the network profile) | the quoted USDC price                                |
+| Direct fallback  | native XLM (no issuer)                 | the quote's numeric value, per `XLM_FALLBACK_POLICY` |
+| Unpaid / pending | none (`settledAmount: null`)           | none                                                 |
+
+`settledTotals` is grouped per `(asset, issuer, network)` and uses exact `AssetAmount` base units.
+There is **no** USDC/XLM conversion in this repository, so a mixed run reports an XLM total and a
+USDC total separately (`settledSummary`, e.g. `0.01 USDC + 0.05 XLM`) and
+`settlementConversionPolicy.applied` is `false`. An XLM settlement is never added to a USDC total.
+
+Run history stores the same asset information: `summary.quotedTotal`, `summary.settledTotals`, and
+`txProofs[*].asset` / `.amount` match the API and event payloads, so the dashboard renders what was
+actually settled.
 
 ## Orchestration Flow
 
@@ -238,19 +293,55 @@ prices are enforced by [`pricing.config.js`](../src/pricing.config.js).
 | 📊 Analysis | `analyst-bot`  | 0.05         | Claude Sonnet (Haiku fallback) |
 | 💻 Code     | `code-bot`     | 0.03         | Claude Haiku                   |
 
+### Idempotent submissions (#132)
+
+`POST /api/orchestrate` (and `/api/orchestrate/execute`) accept an `Idempotency-Key` header (or
+`X-Idempotency-Key`, or an `idempotencyKey` body field), at most 256 characters. The key is bound to
+a fingerprint of the normalized request (task trimmed, budget), and the key-to-run mapping is stored
+with the run history.
+
+| Situation                                                | Result                                                                           |
+| -------------------------------------------------------- | -------------------------------------------------------------------------------- |
+| Same key, same task and budget (sequential or in flight) | Original run returned, `X-Idempotent-Replay: true`; no new agent or payment work |
+| Same key, different task or budget                       | `409` `IDEMPOTENCY_KEY_CONFLICT`, with the original run id                       |
+| Many matching requests at once                           | One run; the rest attach to it                                                   |
+| After a restart                                          | Mappings are reloaded from the run-history file                                  |
+
+**Retention.** A mapping lasts `IDEMPOTENCY_TTL_MS` (default 24 hours) from the run's creation, or
+until the run is evicted from the bounded history (`RUN_HISTORY_MAX_RUNS`), whichever comes first.
+After that the key is free again and may be reused, with the same or different parameters. Expired
+mappings are dropped on lookup, on load and on every save. With `RUN_HISTORY_STORAGE=memory`
+mappings last only until restart. A run interrupted by a restart is marked failed, and replaying its
+key returns that failure until the mapping expires; use a new key to retry the work.
+
 ## Key Configuration
 
 Driven by environment variables (see [`.env.example`](../.env.example) and
 [`src/config.js`](../src/config.js)):
 
-| Variable                                   | Purpose                                                        |
-| ------------------------------------------ | -------------------------------------------------------------- |
-| `ANTHROPIC_API_KEY`                        | Enables live Claude calls; without it, demo fallbacks are used |
-| `SERVER_STELLAR_ADDRESS` / `_SECRET`       | Receives payments; presence enables the x402 paywall           |
-| `ORCHESTRATOR_STELLAR_ADDRESS` / `_SECRET` | Pays for agent calls (x402 + XLM fallback)                     |
-| `NETWORK`                                  | Stellar network (default `stellar:testnet`)                    |
-| `FACILITATOR_URL`                          | x402 facilitator that verifies and settles payments            |
-| `INTERNAL_BASE_URL`                        | Origin the orchestrator uses to reach `/api/premium/*`         |
+| Variable                                   | Purpose                                                                 |
+| ------------------------------------------ | ----------------------------------------------------------------------- |
+| `ANTHROPIC_API_KEY`                        | Enables live Claude calls; without it, demo fallbacks are used          |
+| `ANTHROPIC_REQUEST_TIMEOUT_MS`             | Per-attempt deadline; a timed-out attempt is aborted before any retry   |
+| `ANTHROPIC_MAX_RETRIES`                    | Only retry budget (SDK retries are off): attempts = `1 + this value`    |
+| `ANTHROPIC_OVERALL_TIMEOUT_MS`             | Optional deadline across all attempts and retry delays (`0` = none)     |
+| `SERVER_STELLAR_ADDRESS` / `_SECRET`       | Receives payments; presence enables the x402 paywall                    |
+| `ORCHESTRATOR_STELLAR_ADDRESS` / `_SECRET` | Pays for agent calls (x402 + XLM fallback)                              |
+| `NETWORK`                                  | Stellar network profile (default and only supported: `stellar:testnet`) |
+| `FACILITATOR_URL`                          | x402 facilitator that verifies and settles payments                     |
+| `STELLAR_RPC_URL` / `STELLAR_HORIZON_URL`  | Optional; must match the selected profile or startup fails              |
+| `INTERNAL_BASE_URL`                        | Origin the orchestrator uses to reach `/api/premium/*`                  |
+
+### Network Profile
+
+[`src/stellar/network.js`](../src/stellar/network.js) is the single source of truth for the network
+identifier, transaction passphrase, Horizon/RPC origins, explorer origin, and asset identity (USDC
+issuer). [`src/config.js`](../src/config.js) resolves and validates that profile at startup and
+exposes it as `config.networkProfile`; every wallet, payment, and explorer link then reads from it
+instead of hard-coding testnet. `stellar:testnet` is supported. Unknown networks, and recognised but
+disabled networks such as `stellar:pubnet`, fail at startup with a `NetworkConfigError`. Endpoint
+overrides that point at a different network are rejected as mismatches. Friendbot is available only
+on the testnet profile.
 
 ## Related
 

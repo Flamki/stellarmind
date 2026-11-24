@@ -8,6 +8,7 @@ const pageTitles = {
   agents: 'Agent Registry',
   status: 'API Status',
   transactions: 'Transactions',
+  history: 'Run History',
 }
 
 function showPage(id) {
@@ -26,4 +27,5 @@ function showPage(id) {
   if (id === 'agents') loadAgentPage()
   if (id === 'status') loadStatusPage()
   if (id === 'transactions') loadTxPage()
+  if (id === 'history') loadHistoryPage()
 }

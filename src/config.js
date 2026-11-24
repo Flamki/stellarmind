@@ -1,6 +1,7 @@
 import dotenv from 'dotenv'
 import { fileURLToPath } from 'node:url'
 import path from 'node:path'
+import { resolveNetworkProfile } from './stellar/network.js'
 
 dotenv.config({
   path: fileURLToPath(new URL('../.env', import.meta.url)),
@@ -18,12 +19,25 @@ const toNumberOr = (value, fallback) => {
 }
 const repoRoot = fileURLToPath(new URL('..', import.meta.url))
 
+// Resolve one validated network profile before anything else reads config. An
+// unknown, unsupported, or internally inconsistent network fails here, at
+// startup, with an actionable error instead of letting wallet and payment
+// clients describe different networks at runtime.
+const networkProfile = resolveNetworkProfile({
+  network: process.env.NETWORK,
+  horizonUrl: process.env.STELLAR_HORIZON_URL,
+  rpcUrl: process.env.STELLAR_RPC_URL,
+  explorerUrl: process.env.STELLAR_EXPLORER_URL,
+})
+
 export const config = {
   port,
   internalBaseUrl,
-  network: process.env.NETWORK || 'stellar:testnet',
+  network: networkProfile.network,
+  networkProfile,
+  horizonUrl: networkProfile.horizonUrl,
   facilitatorUrl: process.env.FACILITATOR_URL || 'https://www.x402.org/facilitator',
-  stellarRpcUrl: process.env.STELLAR_RPC_URL || 'https://soroban-testnet.stellar.org',
+  stellarRpcUrl: networkProfile.rpcUrl,
   adminToken: process.env.ADMIN_TOKEN || '',
 
   // Server wallet (receives payments)
@@ -45,6 +59,8 @@ export const config = {
     toNumberOr(process.env.ANTHROPIC_REQUEST_TIMEOUT_MS, 20000)
   ),
   anthropicMaxRetries: Math.max(0, toNumberOr(process.env.ANTHROPIC_MAX_RETRIES, 2)),
+  // Overall deadline across all attempts and retry delays (0 = no overall limit)
+  anthropicOverallTimeoutMs: Math.max(0, toNumberOr(process.env.ANTHROPIC_OVERALL_TIMEOUT_MS, 0)),
   anthropicRetryBaseDelayMs: Math.max(
     100,
     toNumberOr(process.env.ANTHROPIC_RETRY_BASE_DELAY_MS, 500)
@@ -79,8 +95,26 @@ export const config = {
     ? path.resolve(process.env.RUN_HISTORY_FILE)
     : path.join(repoRoot, 'data', 'run-history.json'),
   runHistoryMaxRuns: Math.max(10, toNumberOr(process.env.RUN_HISTORY_MAX_RUNS, 200)),
+  // Retention window for Idempotency-Key -> run mappings (default 24h).
+  idempotencyTtlMs: Math.max(1000, toNumberOr(process.env.IDEMPOTENCY_TTL_MS, 24 * 60 * 60 * 1000)),
 
   // Per-transaction operation lookups in getTransactions
   horizonOpsMaxConcurrency: Math.max(1, toNumberOr(process.env.HORIZON_OPS_MAX_CONCURRENCY, 4)),
   horizonOpsCacheSize: Math.max(0, toNumberOr(process.env.HORIZON_OPS_CACHE_SIZE, 500)),
+
+  // Direct-payment submissions from one payer account are serialised in this process.
+  // Waiting is bounded: queue depth per account, time spent waiting for a turn, and
+  // total submit attempts per payment (first try included).
+  submission: {
+    maxQueueDepth: Math.max(1, toNumberOr(process.env.SUBMISSION_MAX_QUEUE_DEPTH, 20)),
+    maxWaitMs: Math.max(0, toNumberOr(process.env.SUBMISSION_MAX_WAIT_MS, 60000)),
+    maxAttempts: Math.max(1, toNumberOr(process.env.SUBMISSION_MAX_ATTEMPTS, 2)),
+  },
+
+  // Orchestrator wallet readiness (settlement asset funded?): how long an answer stays fresh
+  // and the upper bound on one balance lookup.
+  walletReadiness: {
+    ttlMs: Math.max(1000, toNumberOr(process.env.WALLET_READINESS_TTL_MS, 30000)),
+    requestTimeoutMs: Math.max(500, toNumberOr(process.env.WALLET_READINESS_TIMEOUT_MS, 5000)),
+  },
 }

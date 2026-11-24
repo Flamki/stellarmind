@@ -74,8 +74,15 @@ paths:
         `"mode": "async"` - Header `Prefer: respond-async`
 
         **Idempotency:** Include an `Idempotency-Key` header (or `X-Idempotency-Key`) to prevent
-        duplicate runs. If the same key is reused with different parameters, the server responds 409
-        Conflict.
+        duplicate runs. The key is bound to a fingerprint of the task (trimmed) and budget. A
+        matching resubmission returns the original run without repeating agent or payment work and
+        sets `X-Idempotent-Replay: true`, including when it arrives while the first request is still
+        running. Reusing the key with a different task or budget responds 409 Conflict
+        (`IDEMPOTENCY_KEY_CONFLICT`, with the original run id). Mappings are persisted with the run
+        history, so they survive a restart. **Retention:** a key stays bound for
+        `IDEMPOTENCY_TTL_MS` (default 24 hours) from the run's creation, or until the run leaves the
+        bounded run history (`RUN_HISTORY_MAX_RUNS`), whichever is first. After that the key may be
+        reused.
       parameters:
         - name: async
           in: query
@@ -90,7 +97,9 @@ paths:
           schema:
             type: string
             maxLength: 256
-          description: Client-generated key to prevent duplicate submissions
+          description: >-
+            Client-generated key to prevent duplicate submissions. Honored for IDEMPOTENCY_TTL_MS
+            (default 24 hours) after the run is created.
         - name: Prefer
           in: header
           required: false
@@ -128,7 +137,9 @@ paths:
         '400':
           description: Validation error (missing/invalid task, budget, mode, or idempotency key)
         '409':
-          description: Idempotency key conflict (same key, different parameters)
+          description: >-
+            Idempotency key conflict (same key within the retention window, different task or
+            budget)
 
   /orchestration/preview:
     post:
@@ -137,8 +148,8 @@ paths:
       tags: [Orchestration]
       description: >
         Generates and validates an orchestration plan, returning validated steps, per-step quotes,
-        total quote, expiry timestamp, and any planner-provider usage. Makes zero premium agent calls
-        or settlement attempts.
+        total quote, expiry timestamp, and any planner-provider usage. Makes zero premium agent
+        calls or settlement attempts.
       requestBody:
         required: true
         content:
@@ -180,8 +191,9 @@ paths:
       operationId: executeOrchestrationPlan
       tags: [Orchestration]
       description: >
-        Executes a stored plan by planId, validating the plan and current pricing against the accepted quote.
-        Returns QUOTE_EXPIRED or QUOTE_CHANGED error if expired or if pricing changed.
+        Executes a stored plan by planId, validating the plan and current pricing against the
+        accepted quote. Returns QUOTE_EXPIRED or QUOTE_CHANGED error if expired or if pricing
+        changed.
       requestBody:
         required: true
         content:
@@ -207,7 +219,8 @@ paths:
               schema:
                 $ref: '#/components/schemas/OrchestrationResult'
         '400':
-          description: Quote expired (QUOTE_EXPIRED), price changed (QUOTE_CHANGED), or validation error
+          description:
+            Quote expired (QUOTE_EXPIRED), price changed (QUOTE_CHANGED), or validation error
         '404':
           description: Plan not found (PLAN_NOT_FOUND)
 
@@ -257,30 +270,103 @@ paths:
 
   /runs:
     get:
-      summary: List recent runs
+      summary: List runs (cursor-paginated summaries)
       operationId: listRuns
       tags: [Orchestration]
+      description: |
+        Returns lightweight run **summaries**, newest first, one page at a time. Events, outputs,
+        plans and payment proofs are not included; fetch them with `GET /runs/{runId}` (each item
+        carries a `runUrl`).
+
+        **Ordering.** Runs are ordered by `createdAt` descending, with `id` descending as the
+        tie-breaker, so runs created in the same millisecond still have one fixed order.
+
+        **Pagination.** Pass the previous response's `nextCursor` as `cursor` to get the next page.
+        A cursor marks a position (the last run returned), not an offset, so a run created while you
+        are paging is newer than the cursor and can never push an older run onto a second page:
+        no run is returned twice. `nextCursor` is `null` (and `hasMore` is `false`) on the last
+        page. Treat cursors as opaque; they are valid across server restarts.
+
+        **Filters** (`status`, `createdFrom`, `createdTo`) combine with AND and with pagination.
+        A cursor is bound to the filters it was issued for: reusing it with different filters is
+        rejected with `CURSOR_FILTER_MISMATCH`; omit the cursor to restart. `limit` may change
+        between pages.
       parameters:
         - name: limit
           in: query
           required: false
+          description: Page size. Values above the maximum are clamped; the applied value is echoed.
           schema:
             type: integer
+            minimum: 1
+            maximum: 100
             default: 20
+        - name: cursor
+          in: query
+          required: false
+          description: Opaque `nextCursor` value from a previous response.
+          schema:
+            type: string
+            maxLength: 512
+        - name: status
+          in: query
+          required: false
+          description: >
+            Only runs in these statuses. Repeat the parameter or comma-separate values
+            (`status=failed,interrupted`); values are matched case-sensitively.
+          style: form
+          explode: false
+          schema:
+            type: array
+            items:
+              type: string
+              enum: [running, completed, failed, interrupted]
+        - name: createdFrom
+          in: query
+          required: false
+          description: >
+            Inclusive lower bound on `createdAt`. A UTC date (`2026-10-01`, meaning the start of
+            that day) or an ISO 8601 date-time with a `Z` or `±hh:mm` offset (an exact instant).
+            Date-times without an offset are rejected.
+          schema:
+            type: string
+            example: '2026-10-01'
+        - name: createdTo
+          in: query
+          required: false
+          description: >
+            Inclusive upper bound on `createdAt`. A UTC date (`2026-10-31`, meaning through
+            23:59:59.999 of that day) or an ISO 8601 date-time with a `Z` or `±hh:mm` offset. Must
+            not be earlier than `createdFrom`.
+          schema:
+            type: string
+            example: '2026-10-31T23:59:59Z'
       responses:
         '200':
-          description: Recent runs
+          description: One page of run summaries
           content:
             application/json:
               schema:
-                type: object
-                properties:
-                  count:
-                    type: integer
-                  runs:
-                    type: array
-                    items:
-                      $ref: '#/components/schemas/RunDetail'
+                $ref: '#/components/schemas/RunList'
+        '400':
+          description: >
+            Invalid query parameters (cursor, limit, status or date values). The body lists every
+            problem in `details`, each with a machine-readable `code`.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ValidationError'
+              example:
+                code: INVALID_INPUT
+                message: Invalid run list query parameters
+                requestId: 7b51851b-c464-4eba-9f03-6baca9d900b4
+                details:
+                  - field: status
+                    code: INVALID_STATUS
+                    reason:
+                      'Unknown status. Expected one or more of: running, completed, failed,
+                      interrupted'
+                    received: done
 
   /budget:
     get:
@@ -428,6 +514,164 @@ components:
           type: string
           enum: [async]
 
+    RunSummary:
+      type: object
+      description: >
+        Lightweight list item. Unbounded fields (events, output, plan, txProofs, usage) are omitted;
+        use `GET /runs/{runId}` for the full record.
+      properties:
+        id:
+          type: string
+        runId:
+          type: string
+        task:
+          type: string
+          nullable: true
+        budget:
+          type: number
+          nullable: true
+        source:
+          type: string
+          nullable: true
+        status:
+          type: string
+          enum: [running, completed, failed, interrupted]
+        createdAt:
+          type: string
+          format: date-time
+          nullable: true
+        updatedAt:
+          type: string
+          format: date-time
+          nullable: true
+        completedAt:
+          type: string
+          format: date-time
+          nullable: true
+        outputAvailable:
+          type: boolean
+          description:
+            true only when the final output has been persisted and can be read from the detail
+            endpoint
+        error:
+          type: object
+          nullable: true
+          description: Failure code and message (message truncated to 500 characters)
+          properties:
+            code:
+              type: string
+              nullable: true
+            message:
+              type: string
+              nullable: true
+        interruptedAt:
+          type: string
+          format: date-time
+          nullable: true
+        interruptedReason:
+          type: string
+          nullable: true
+          description: Machine-readable reason for an `interrupted` run (e.g. `server_restart`)
+        totals:
+          type: object
+          description:
+            Settlement totals copied from the run summary; fields are null when not recorded
+          properties:
+            totalSpent:
+              nullable: true
+            quotedTotal:
+              nullable: true
+            settledSummary:
+              nullable: true
+            txCount:
+              nullable: true
+            elapsed:
+              nullable: true
+        eventCount:
+          type: integer
+          description:
+            Number of audit events recorded for the run (events themselves are in the detail record)
+        runUrl:
+          type: string
+          description: Path of the full record, `/api/runs/{id}`
+
+    RunList:
+      type: object
+      properties:
+        storage:
+          type: string
+        file:
+          type: string
+          nullable: true
+        count:
+          type: integer
+          description: Number of runs in this page
+        limit:
+          type: integer
+          description: Page size that was applied
+        order:
+          type: string
+          example: createdAt:desc,id:desc
+        filters:
+          type: object
+          description: The filters that were applied, with date bounds resolved to instants
+          properties:
+            status:
+              type: array
+              items:
+                type: string
+            createdFrom:
+              type: string
+              format: date-time
+              nullable: true
+            createdTo:
+              type: string
+              format: date-time
+              nullable: true
+        hasMore:
+          type: boolean
+        nextCursor:
+          type: string
+          nullable: true
+          description: Pass as `cursor` to fetch the next page; null on the last page
+        runs:
+          type: array
+          items:
+            $ref: '#/components/schemas/RunSummary'
+
+    ValidationError:
+      type: object
+      properties:
+        code:
+          type: string
+          example: INVALID_INPUT
+        message:
+          type: string
+        requestId:
+          type: string
+        details:
+          type: array
+          items:
+            type: object
+            properties:
+              field:
+                type: string
+              code:
+                type: string
+                enum:
+                  - INVALID_CURSOR
+                  - CURSOR_FILTER_MISMATCH
+                  - INVALID_LIMIT
+                  - INVALID_STATUS
+                  - INVALID_DATE
+                  - INVALID_DATE_RANGE
+                  - DUPLICATE_PARAMETER
+                  - INVALID_VALUE
+              reason:
+                type: string
+              received:
+                type: string
+
     RunDetail:
       type: object
       description: |
@@ -441,7 +685,7 @@ components:
           type: string
         status:
           type: string
-          enum: [running, completed, failed]
+          enum: [running, completed, failed, interrupted]
         task:
           type: string
         budget:
@@ -464,7 +708,9 @@ components:
           items:
             type: object
           nullable: true
-          description: Persisted orchestration results. Null while running, after failures, or for legacy records without stored output.
+          description:
+            Persisted orchestration results. Null while running, after failures, or for legacy
+            records without stored output.
         error:
           type: object
           nullable: true
@@ -474,6 +720,63 @@ components:
               type: string
             code:
               type: string
+        quotedTotal:
+          type: string
+          description:
+            Quoted/reserved cost the budget guardrail admitted (USDC). Not a settled total.
+        settledTotals:
+          type: array
+          description: |
+            Settled amounts grouped per asset (asset, issuer, network). Amounts of
+            different assets are never added together; there is no USDC/XLM
+            conversion policy in this deployment.
+          items:
+            type: object
+            properties:
+              asset:
+                type: string
+              issuer:
+                type: string
+                nullable: true
+              network:
+                type: string
+                nullable: true
+              amount:
+                type: string
+              count:
+                type: integer
+              txCount:
+                type: integer
+        txProofs:
+          type: array
+          description: Settled transaction proofs, including the actual settled asset and amount.
+          items:
+            type: object
+            properties:
+              method:
+                type: string
+              txHash:
+                type: string
+                nullable: true
+              explorerUrl:
+                type: string
+                nullable: true
+              asset:
+                type: string
+                nullable: true
+                description: Settled asset code (USDC for x402, XLM for the direct fallback)
+              issuer:
+                type: string
+                nullable: true
+              network:
+                type: string
+                nullable: true
+              amount:
+                type: string
+                nullable: true
+              quotedAmount:
+                type: string
+                nullable: true
         summary:
           type: object
           nullable: true
