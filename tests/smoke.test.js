@@ -24,6 +24,8 @@ const child = spawn(process.execPath, [serverPath], {
 
 let serverOutput = ''
 let exited = false
+let cleanupHandled = false
+
 child.stdout.on('data', (chunk) => {
   serverOutput += chunk
 })
@@ -35,7 +37,34 @@ child.on('exit', () => {
 })
 child.on('error', (err) => {
   console.error(`Smoke check failed: could not spawn server: ${err.message}`)
+  cleanupChild()
   process.exit(1)
+})
+
+// Cross-platform child process cleanup
+function cleanupChild() {
+  if (cleanupHandled) return
+  cleanupHandled = true
+
+  if (child && !exited) {
+    // Windows doesn't support SIGTERM, use 'SIGKILL' or rely on kill()
+    if (process.platform === 'win32') {
+      child.kill('SIGKILL')
+    } else {
+      child.kill('SIGTERM')
+    }
+  }
+}
+
+// Ensure cleanup on process exit
+process.on('exit', cleanupChild)
+process.on('SIGINT', () => {
+  cleanupChild()
+  process.exit(130)
+})
+process.on('SIGTERM', () => {
+  cleanupChild()
+  process.exit(143)
 })
 
 // Bounded requests: a route that accepts the connection but never responds
@@ -86,8 +115,10 @@ async function main() {
 
 main()
   .then(() => {
-    child.kill('SIGTERM')
-    process.exit(0)
+    console.log('Cleaning up...')
+    cleanupChild()
+    // Give process time to cleanup before exit
+    setTimeout(() => process.exit(0), 100)
   })
   .catch((err) => {
     console.error(`Smoke check failed: ${err.message}`)
@@ -95,6 +126,6 @@ main()
       console.error('--- server output ---')
       console.error(serverOutput)
     }
-    child.kill('SIGTERM')
-    process.exit(1)
+    cleanupChild()
+    setTimeout(() => process.exit(1), 100)
   })
