@@ -8,6 +8,7 @@ import {
   summarizePaymentAttempts,
   upsertPaymentAttempt,
 } from '../agents/payment-attempts.js'
+import { selectRunPage, toRunSummary } from './run-query.js'
 
 // Schema versioning constants
 const CURRENT_SCHEMA_VERSION = 1
@@ -19,6 +20,11 @@ const LEGACY_VERSION = 0 // Unversioned files
 // promise, no timer, nothing left executing it — so it must not be allowed
 // to look like it is still progressing forever.
 export const INTERRUPTED_REASON_SERVER_RESTART = 'server_restart'
+
+// How long an Idempotency-Key stays bound to its run (issue #132). Within the
+// window a matching resubmission returns the original run; a mismatching one is
+// a 409. After it, the key is free to be reused.
+export const DEFAULT_IDEMPOTENCY_TTL_MS = 24 * 60 * 60 * 1000
 
 function createRunId() {
   return `run_${Date.now()}_${crypto.randomBytes(4).toString('hex')}`
@@ -37,11 +43,21 @@ function toAuditEvent(event) {
     agentId: event.agentId || null,
     agent: event.agent || null,
     cost: event.cost || null,
+    // The settled asset and amount travel with the persisted event so a
+    // payment proof keeps its asset across a restart (#130). `cost` above stays
+    // the quoted price.
+    amount: event.amount ?? null,
+    asset: event.asset || event.settledAsset || null,
+    issuer: event.issuer || event.settledIssuer || null,
+    network: event.network || event.settledNetwork || null,
+    quotedAmount: event.quotedAmount ?? null,
+    quotedAsset: event.quotedAsset || event.currency || null,
     paidVia: event.paidVia || null,
     txHash: event.txHash || null,
     explorerUrl: event.explorerUrl || null,
     status: event.status || null,
     totalSpent: event.totalSpent || null,
+    quotedTotal: event.quotedTotal || null,
     reason: event.reason || null,
   }
 }
@@ -107,10 +123,31 @@ function normalizeRunRecord(run) {
 }
 
 export class InMemoryRunHistoryStore {
-  constructor(maxRuns = 200) {
+  constructor(maxRuns = 200, { idempotencyTtlMs = DEFAULT_IDEMPOTENCY_TTL_MS } = {}) {
     this.maxRuns = maxRuns
+    this.idempotencyTtlMs = idempotencyTtlMs
     this.runs = []
     this.idempotencyMap = new Map()
+  }
+
+  _isIdempotencyExpired(record, now = Date.now()) {
+    const createdMs = Date.parse(record?.createdAt)
+    if (!Number.isFinite(createdMs)) return false
+    return now - createdMs >= this.idempotencyTtlMs
+  }
+
+  /**
+   * Drop mappings that are past the retention window or whose run has left
+   * the bounded history (a mapping without its run cannot be replayed).
+   */
+  _pruneIdempotency() {
+    const now = Date.now()
+    const liveRunIds = new Set(this.runs.map((run) => run.id))
+    for (const [key, record] of this.idempotencyMap) {
+      if (this._isIdempotencyExpired(record, now) || !liveRunIds.has(record.runId)) {
+        this.idempotencyMap.delete(key)
+      }
+    }
   }
 
   async init() {}
@@ -154,6 +191,7 @@ export class InMemoryRunHistoryStore {
         createdAt: now,
       })
     }
+    this._pruneIdempotency()
     return { ...run, runId: run.id }
   }
 
@@ -168,7 +206,13 @@ export class InMemoryRunHistoryStore {
 
   async getIdempotencyRecord(key) {
     if (!key) return null
-    return this.idempotencyMap.get(key) || null
+    const record = this.idempotencyMap.get(key)
+    if (!record) return null
+    if (this._isIdempotencyExpired(record)) {
+      this.idempotencyMap.delete(key)
+      return null
+    }
+    return record
   }
 
   async appendEvent(runId, event) {
@@ -237,12 +281,23 @@ export class InMemoryRunHistoryStore {
     const run = this.runs.find((entry) => entry.id === runId)
     if (!run) return
 
+    // A proof is only useful if it names the asset and amount that settled,
+    // not the quote the run reserved (#130). Unpaid/pending steps never reach
+    // this list because they are filtered out here.
     const txProofs = (result.payments || [])
       .filter((payment) => payment.paymentSuccess)
       .map((payment) => ({
         method: payment.paidVia || payment.paymentMethod || 'unknown',
         txHash: payment.txHash || null,
         explorerUrl: payment.explorerUrl || null,
+        amount: payment.settledAmount ?? payment.settlement?.amount ?? null,
+        amountExact: payment.settledAmountExact ?? payment.settlement?.amountExact ?? null,
+        asset: payment.settledAsset ?? payment.settlement?.asset ?? null,
+        issuer: payment.settledIssuer ?? payment.settlement?.issuer ?? null,
+        network: payment.settledNetwork ?? payment.settlement?.network ?? null,
+        quotedAmount: payment.quotedAmount ?? null,
+        quotedAsset: payment.quotedAsset ?? null,
+        settlementPolicy: payment.settlement?.policy ?? null,
       }))
 
     const completedOutput = Array.isArray(result.output)
@@ -255,7 +310,16 @@ export class InMemoryRunHistoryStore {
     run.completedAt = new Date().toISOString()
     run.updatedAt = run.completedAt
     run.summary = {
+      // `totalSpent` stays the quoted/reserved amount the budget guardrail
+      // tracked. The per-asset settled totals below are the money that moved.
       totalSpent: result.totalSpent,
+      quotedTotal: result.quotedTotal ?? result.totalSpent,
+      settledTotals: result.settledTotals || [],
+      settledSummary: result.settledSummary || 'none',
+      settlementConversionPolicy: result.settlementConversionPolicy || {
+        applied: false,
+        reason: 'No cross-asset conversion is configured.',
+      },
       budget: result.budget,
       budgetExhausted: result.budgetExhausted,
       paymentProtocol: result.paymentProtocol,
@@ -358,14 +422,33 @@ export class InMemoryRunHistoryStore {
       .map((run) => normalizeRunRecord({ ...run, runId: run.id }))
   }
 
+  /**
+   * One page of lightweight run summaries (issue #141): deterministic
+   * newest-first order, keyset pagination, and status/date filters.
+   *
+   * Selection and projection both run synchronously against the live array,
+   * so a page is always a consistent snapshot even while runs are being
+   * created. See `./run-query.js` for the ordering and cursor contract.
+   *
+   * @param {object} [query] see `selectRunPage`
+   * @returns {Promise<{ runs: object[], hasMore: boolean, nextPosition: object|null, limit: number }>}
+   */
+  async listRuns(query = {}) {
+    const page = selectRunPage(this.runs, query)
+    return {
+      ...page,
+      runs: page.runs.map((run) => toRunSummary(normalizeRunRecord({ ...run, runId: run.id }))),
+    }
+  }
+
   async flush() {
     return Promise.resolve()
   }
 }
 
 export class FileRunHistoryStore extends InMemoryRunHistoryStore {
-  constructor(filePath, maxRuns = 200) {
-    super(maxRuns)
+  constructor(filePath, maxRuns = 200, options = {}) {
+    super(maxRuns, options)
     this.filePath = filePath
     this._writeQueue = Promise.resolve()
   }
@@ -442,6 +525,7 @@ export class FileRunHistoryStore extends InMemoryRunHistoryStore {
         })
       }
     }
+    this._pruneIdempotency()
     // If migration occurred, persist the new format
     if (version === LEGACY_VERSION) {
       await this.persist()
@@ -532,11 +616,12 @@ export class FileRunHistoryStore extends InMemoryRunHistoryStore {
 
   async persist() {
     const writeOp = async () => {
+      this._pruneIdempotency()
       const payload = JSON.stringify(
         {
           version: CURRENT_SCHEMA_VERSION,
           runs: this.runs.slice(0, this.maxRuns),
-          idempotency: Array.from(this.idempotencyMap.entries()).slice(0, this.maxRuns),
+          idempotency: Array.from(this.idempotencyMap.entries()),
         },
         null,
         2
@@ -605,10 +690,12 @@ export class FileRunHistoryStore extends InMemoryRunHistoryStore {
 
 export async function createRunHistoryStore(config) {
   const storage = (config.runHistoryStorage || 'file').toLowerCase()
+  const storeOptions =
+    config.idempotencyTtlMs > 0 ? { idempotencyTtlMs: config.idempotencyTtlMs } : {}
   const store =
     storage === 'memory'
-      ? new InMemoryRunHistoryStore(config.runHistoryMaxRuns)
-      : new FileRunHistoryStore(config.runHistoryFile, config.runHistoryMaxRuns)
+      ? new InMemoryRunHistoryStore(config.runHistoryMaxRuns, storeOptions)
+      : new FileRunHistoryStore(config.runHistoryFile, config.runHistoryMaxRuns, storeOptions)
 
   await store.init()
 

@@ -40,12 +40,13 @@ RUN mkdir -p /app/data /app/logs && \
 
 ENV RUN_HISTORY_FILE=/app/data/run-history.json
 
-# Expose port
-EXPOSE 3000
+# Expose port (configurable via PORT env var, defaults to 3001 per src/config.js)
+EXPOSE 3001
 
-# Health check
+# Health check using the implemented /healthz endpoint
+# Uses ${PORT:-3001} to respect PORT env var overrides
 HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \
-    CMD wget --no-verbose --tries=1 --spider http://localhost:3000/health || exit 1
+    CMD wget --no-verbose --tries=1 --spider http://localhost:${PORT:-3001}/healthz || exit 1
 
 USER stellarmind
 

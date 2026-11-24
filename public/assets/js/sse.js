@@ -56,7 +56,7 @@ function addFeed(ev) {
       ic = '🔐'
       cl = 'x4'
       lb = `x402: ${ev.agent}`
-      sb = `${ev.amount} ${ev.currency} via x402${ev.verification === 'unverified' ? ' (header pending)' : ''}`
+      sb = `${ev.amount} ${ev.asset || ev.currency} via x402${ev.verification === 'unverified' ? ' (header pending)' : ''}`
       break
     case 'x402_retry':
       ic = '🔁'
@@ -68,13 +68,22 @@ function addFeed(ev) {
       ic = '✅'
       cl = 'ok'
       lb = `${ev.agent} responded`
-      sb = `${ev.paidVia ? '[' + ev.paidVia + '] ' : ''}${(ev.resultPreview || 'Output received').substring(0, 40)}...`
+      // Add provenance indicator
+      const provenanceIndicator = ev.provenance
+        ? ev.provenance.source === 'demo'
+          ? ' 🎭'
+          : ev.provenance.source === 'x402_remote'
+            ? ' 🌐'
+            : ''
+        : ''
+      sb = `${ev.paidVia ? '[' + ev.paidVia + '] ' : ''}${(ev.resultPreview || 'Output received').substring(0, 40)}...${provenanceIndicator}`
       break
     case 'payment':
       ic = '💸'
       cl = 'pay'
       lb = `${ev.from} -> ${ev.to}`
-      sb = `${ev.amount} ${ev.currency} | ${ev.method || 'stellar'}`
+      // The settled asset/amount, not the quoted price.
+      sb = `${ev.amount} ${ev.asset || ev.currency} | ${ev.method || 'stellar'}`
       break
     case 'budget_limit':
       ic = '🛑'
@@ -85,8 +94,8 @@ function addFeed(ev) {
     case 'orchestrator_complete':
       ic = '🏁'
       cl = 'ok'
-      lb = `Done - ${ev.totalSpent} USDC`
-      sb = `${ev.agentsUsed} agents | ${ev.elapsed}`
+      lb = `Done - quoted ${ev.quotedTotal || ev.totalSpent} USDC`
+      sb = `Settled: ${ev.settledSummary || 'none'} | ${ev.agentsUsed} agents | ${ev.elapsed}`
       break
     case 'error':
       ic = '⚠️'

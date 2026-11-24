@@ -5,6 +5,8 @@
 
 let isRunning = false
 let activeRun = null
+let activePlan = null // Store the current preview plan
+let lastPreviewParams = { task: null, budget: null } // Track last preview parameters
 
 function stopRunHeartbeat() {
   if (!activeRun?.heartbeatTimer) return
@@ -78,7 +80,7 @@ function trackLiveEvent(ev) {
 
     case 'x402_payment':
       appendResultLog(
-        `x402 payment settled for ${ev.agent || 'agent'} (${ev.amount || '?'} ${ev.currency || ''})`
+        `x402 payment settled for ${ev.agent || 'agent'} (${ev.amount || '?'} ${ev.asset || ev.currency || ''})`
       )
       break
 
@@ -117,7 +119,10 @@ function trackLiveEvent(ev) {
   renderLiveChips(activeRun)
 }
 
-async function runOrchestration() {
+/**
+ * Preview orchestration plan with quoted costs
+ */
+async function previewOrchestration() {
   if (isRunning) return
   isRunning = true
 
@@ -132,31 +137,124 @@ async function runOrchestration() {
   const btn = document.getElementById('btn-run')
 
   btn.disabled = true
-  btn.innerHTML = '<span class="spinner"></span>Running Agents...'
-
-  startLiveRun(task, budget)
+  btn.innerHTML = '<span class="spinner"></span>Getting Preview...'
 
   try {
-    const r = await (
-      await fetch('/api/orchestrate', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ task, budget }),
-      })
-    ).json()
+    const response = await fetch('/api/orchestrate/preview', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ task, budget }),
+    })
 
-    showResult(r)
+    if (!response.ok) {
+      const errorData = await response.json().catch(() => ({ error: 'Unknown error' }))
+      throw new Error(errorData.error || errorData.message || `HTTP ${response.status}`)
+    }
+
+    const plan = await response.json()
+
+    // Store plan and parameters for later execution
+    activePlan = plan
+    lastPreviewParams = { task, budget }
+
+    // Show the preview UI
+    showPreview(plan)
+  } catch (e) {
+    addFeed({ type: 'error', message: `Preview failed: ${e.message}` })
+    setResultTag('Error', 'red')
+    document.getElementById('result-status-line').textContent = `Preview failed: ${e.message}`
+    activePlan = null
+  } finally {
+    isRunning = false
+    btn.disabled = false
+    btn.innerHTML = 'Run Agents'
+  }
+}
+
+/**
+ * Execute a confirmed plan
+ */
+async function confirmAndExecute() {
+  if (isRunning || !activePlan) return
+  isRunning = true
+
+  const btn = document.getElementById('preview-confirm-btn')
+  const originalText = btn ? btn.innerHTML : 'Confirm & Execute'
+
+  if (btn) {
+    btn.disabled = true
+    btn.innerHTML = '<span class="spinner"></span>Executing...'
+  }
+
+  startLiveRun(lastPreviewParams.task, lastPreviewParams.budget)
+
+  try {
+    const response = await fetch('/api/orchestrate/execute', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ planId: activePlan.planId }),
+    })
+
+    if (!response.ok) {
+      const errorData = await response.json().catch(() => ({ error: 'Unknown error' }))
+
+      // Handle expired/invalid plan
+      if (response.status === 404) {
+        hidePreview()
+        activePlan = null
+        alert('This plan has expired or is no longer available. Please create a new preview.')
+        return
+      }
+
+      throw new Error(errorData.error || errorData.message || `HTTP ${response.status}`)
+    }
+
+    const result = await response.json()
+
+    // Hide preview and show results
+    hidePreview()
+    activePlan = null
+
+    showResult(result)
     loadWallets()
   } catch (e) {
     addFeed({ type: 'error', message: e.message })
     if (activeRun) activeRun.running = false
     stopRunHeartbeat()
     setResultTag('Error', 'amber')
-    document.getElementById('result-status-line').textContent = `Run failed: ${e.message}`
+    document.getElementById('result-status-line').textContent = `Execution failed: ${e.message}`
     renderLiveChips(activeRun)
   } finally {
     isRunning = false
-    btn.disabled = false
-    btn.innerHTML = 'Run Agents'
+    if (btn) {
+      btn.disabled = false
+      btn.innerHTML = originalText
+    }
   }
+}
+
+/**
+ * Cancel the preview and return to editing
+ */
+function cancelPreview() {
+  hidePreview()
+  activePlan = null
+}
+
+/**
+ * Check if task or budget has changed since last preview
+ */
+function hasPreviewParametersChanged() {
+  const currentTask = document.getElementById('task-input').value.trim()
+  const currentBudget = parseFloat(document.getElementById('budget-slider').value)
+
+  return currentTask !== lastPreviewParams.task || currentBudget !== lastPreviewParams.budget
+}
+
+/**
+ * Legacy direct execution (kept for compatibility, but now triggers preview first)
+ */
+async function runOrchestration() {
+  // For now, redirect to preview workflow
+  await previewOrchestration()
 }

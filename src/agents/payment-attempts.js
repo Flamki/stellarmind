@@ -86,8 +86,21 @@ export function createPaymentAttempt({
     runId,
     stepId,
     agentId,
+    // `amount`/`currency` are the *quoted* price. They are kept for existing
+    // consumers, and mirrored as quotedAmount/quotedAsset so a settlement can
+    // be reported in a different asset without overwriting the quote (#130).
     amount,
     currency,
+    quotedAmount: amount,
+    quotedAsset: currency,
+    // Populated only when the attempt is confirmed (settledAmount* stays null
+    // for pending/unknown/failed attempts, which never settled anything).
+    settledAmount: null,
+    settledAsset: null,
+    settledIssuer: null,
+    settledNetwork: null,
+    settledAmountExact: null,
+    settlementPolicy: null,
     method,
     outcome: 'pending',
     /** Why the attempt is not confirmed. Null while pending/confirmed. */
@@ -113,17 +126,37 @@ function withOutcome(attempt, outcome, patch = {}) {
   }
 }
 
-/** Records a definitive settlement, attaching its proof. */
+/**
+ * Records a definitive settlement, attaching its proof and the asset that was
+ * actually settled.
+ *
+ * `settlement` is the record built by `settlement.js` (asset, issuer, network,
+ * exact amount). It is optional so older call sites and probes that only know
+ * a transaction hash keep working; when it is absent the settlement fields
+ * stay null rather than being filled in from the quote, which would report a
+ * USDC settlement for an XLM transfer (#130).
+ */
 export function confirmPaymentAttempt(
   attempt,
-  { txHash = null, explorerUrl = null, proof = null } = {}
+  { txHash = null, explorerUrl = null, proof = null, settlement = null } = {}
 ) {
+  const settled = settlement && settlement.success === true ? settlement : null
   return withOutcome(attempt, 'confirmed', {
     failureReason: null,
     terminal: false,
     txHash: txHash || attempt.txHash || null,
     explorerUrl: explorerUrl || attempt.explorerUrl || null,
     proof: proof || attempt.proof || null,
+    ...(settled
+      ? {
+          settledAmount: settled.amount ?? null,
+          settledAsset: settled.asset ?? null,
+          settledIssuer: settled.issuer ?? null,
+          settledNetwork: settled.network ?? null,
+          settledAmountExact: settled.amountExact ?? null,
+          settlementPolicy: settled.policy ?? null,
+        }
+      : {}),
   })
 }
 

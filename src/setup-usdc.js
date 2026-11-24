@@ -4,21 +4,16 @@
  * 1. Adds USDC trustline to orchestrator + server wallets
  * 2. Tests the trustline setup
  */
-import {
-  Keypair,
-  Horizon,
-  TransactionBuilder,
-  Networks,
-  Operation,
-  Asset,
-} from '@stellar/stellar-sdk'
+import { Keypair, Horizon, TransactionBuilder, Operation, Asset } from '@stellar/stellar-sdk'
 import { config } from './config.js'
 
-const horizon = new Horizon.Server('https://horizon-testnet.stellar.org')
+const profile = config.networkProfile
+const horizon = new Horizon.Server(profile.horizonUrl)
 
-// Circle USDC issuer on Stellar testnet
-const USDC_ISSUER = 'GBBD47IF6LWK7P7MDEVSCWR7DPUWV3NY3DTQEVFL4NAT4AQH3ZLLFLA5'
-const USDC = new Asset('USDC', USDC_ISSUER)
+// USDC issuer is part of the resolved network profile, so the trustline always
+// matches the network the rest of the app signs and settles on.
+const USDC_ISSUER = profile.usdc.issuer
+const USDC = new Asset(profile.usdc.code, USDC_ISSUER)
 
 async function addTrustline(secretKey, label) {
   try {
@@ -27,7 +22,7 @@ async function addTrustline(secretKey, label) {
 
     // Check if trustline already exists
     const hasUSDC = account.balances.some(
-      (b) => b.asset_code === 'USDC' && b.asset_issuer === USDC_ISSUER
+      (b) => b.asset_code === profile.usdc.code && b.asset_issuer === USDC_ISSUER
     )
 
     if (hasUSDC) {
@@ -37,7 +32,7 @@ async function addTrustline(secretKey, label) {
 
     const tx = new TransactionBuilder(account, {
       fee: '100',
-      networkPassphrase: Networks.TESTNET,
+      networkPassphrase: profile.passphrase,
     })
       .addOperation(
         Operation.changeTrust({
@@ -94,12 +89,18 @@ async function main() {
     }
   }
 
-  console.log('\n💡 To get testnet USDC:')
-  console.log('   1. Go to https://faucet.circle.com')
-  console.log('   2. Select "Stellar Testnet"')
-  console.log('   3. Paste your orchestrator address:')
-  console.log(`      ${config.orchestratorAddress}`)
-  console.log("   4. Request USDC — you'll receive 10 testnet USDC\n")
+  if (profile.funding.faucetUrl) {
+    console.log(`\n💡 To get ${profile.label} USDC:`)
+    console.log(`   1. Go to ${profile.funding.faucetUrl}`)
+    console.log(`   2. Select "Stellar ${profile.label}"`)
+    console.log('   3. Paste your orchestrator address:')
+    console.log(`      ${config.orchestratorAddress}`)
+    console.log("   4. Request USDC — you'll receive testnet USDC\n")
+  } else {
+    console.log(
+      `\n💡 Fund the orchestrator wallet with ${profile.usdc.code} on ${profile.label}.\n`
+    )
+  }
 }
 
 main().catch(console.error)

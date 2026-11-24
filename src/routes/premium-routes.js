@@ -1,10 +1,42 @@
-export function registerPremiumRoutes(app, deps) {
-  const { pricingConfig, broadcast, runResearch, runSummary, runAnalysis, runCode, MODEL_LABELS } =
-    deps
+import { validatePremiumQuery } from '../requestValidation.js'
 
-  app.get('/api/premium/research', async (req, res, next) => {
+/**
+ * Registers the four premium GET handlers.
+ *
+ * This module is the sole owner of the premium routes (issue #128): the
+ * application registers them here once, behind the payment middleware, and
+ * every handler reads the normalized input produced by
+ * `validatePremiumQuery` (`req.validated`) instead of re-reading raw query
+ * parameters. That keeps the production handlers and the integration suite
+ * on the same code path, and keeps validated input, pricing, broadcast
+ * events, and public response fields identical for every route.
+ *
+ * @param {Object} app - Express application
+ * @param {Object} deps - Handler dependencies
+ * @param {Object} deps.pricingConfig - Pricing configuration (`getEndpointInfo`)
+ * @param {Function} [deps.broadcast] - SSE broadcast function
+ * @param {Function} deps.runResearch - Research service
+ * @param {Function} deps.runSummary - Summary service
+ * @param {Function} deps.runAnalysis - Analysis service
+ * @param {Function} deps.runCode - Code service
+ * @param {Object} deps.MODEL_LABELS - Model label map exposed in responses
+ * @param {Function} [deps.validate] - Request validator (defaults to validatePremiumQuery)
+ */
+export function registerPremiumRoutes(app, deps = {}) {
+  const {
+    pricingConfig,
+    broadcast = () => {},
+    runResearch,
+    runSummary,
+    runAnalysis,
+    runCode,
+    MODEL_LABELS,
+    validate = validatePremiumQuery,
+  } = deps
+
+  app.get('/api/premium/research', validate, async (req, res, next) => {
     try {
-      const topic = req.query.topic || 'AI and blockchain payments'
+      const topic = req.validated.topic
       const priceInfo = pricingConfig.getEndpointInfo('GET /api/premium/research')
       const cost = priceInfo.price.slice(1)
       broadcast({
@@ -37,9 +69,9 @@ export function registerPremiumRoutes(app, deps) {
     }
   })
 
-  app.get('/api/premium/summarize', async (req, res, next) => {
+  app.get('/api/premium/summarize', validate, async (req, res, next) => {
     try {
-      const text = req.query.text || 'Please provide text to summarize via ?text= parameter'
+      const text = req.validated.text
       const priceInfo = pricingConfig.getEndpointInfo('GET /api/premium/summarize')
       const cost = priceInfo.price.slice(1)
       broadcast({
@@ -71,9 +103,9 @@ export function registerPremiumRoutes(app, deps) {
     }
   })
 
-  app.get('/api/premium/analyze', async (req, res, next) => {
+  app.get('/api/premium/analyze', validate, async (req, res, next) => {
     try {
-      const topic = req.query.topic || 'AI agent economies'
+      const topic = req.validated.topic
       const priceInfo = pricingConfig.getEndpointInfo('GET /api/premium/analyze')
       const cost = priceInfo.price.slice(1)
       broadcast({
@@ -106,9 +138,9 @@ export function registerPremiumRoutes(app, deps) {
     }
   })
 
-  app.get('/api/premium/code', async (req, res, next) => {
+  app.get('/api/premium/code', validate, async (req, res, next) => {
     try {
-      const prompt = req.query.prompt || 'Write a hello world function'
+      const prompt = req.validated.prompt
       const priceInfo = pricingConfig.getEndpointInfo('GET /api/premium/code')
       const cost = priceInfo.price.slice(1)
       broadcast({

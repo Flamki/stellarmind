@@ -121,6 +121,8 @@ Run history persistence (for orchestration/payment audit):
 RUN_HISTORY_STORAGE=file
 RUN_HISTORY_FILE=./data/run-history.json
 RUN_HISTORY_MAX_RUNS=200
+# How long an Idempotency-Key stays bound to its run (default 24h)
+IDEMPOTENCY_TTL_MS=86400000
 ```
 
 The run-history file uses schema versioning for safe migrations:
@@ -234,6 +236,15 @@ PORT=3001
 INTERNAL_BASE_URL=https://stellarmind.example.com
 ```
 
+### Network Configuration
+
+One validated network profile drives the whole deployment. `NETWORK` selects it and
+`src/stellar/network.js` supplies the transaction passphrase, Horizon/RPC origins, explorer origin,
+and USDC issuer that every wallet and payment client uses. `stellar:testnet` is the supported
+default; `stellar:pubnet` and unknown networks fail at startup with a `NetworkConfigError`, and
+endpoint overrides (`STELLAR_RPC_URL`, `STELLAR_HORIZON_URL`, `STELLAR_EXPLORER_URL`) must match the
+selected profile. Testnet funding helpers (Friendbot) are never enabled for another profile.
+
 ## Orchestration Admission Queue & Concurrency Limits
 
 Every accepted orchestration request can perform planning, provider LLM calls, and Stellar x402
@@ -307,9 +318,14 @@ Example `/readyz` response:
 
 StellarMind persists orchestration and payment audit history.
 
-- `GET /api/runs?limit=20`
-  - returns recent runs across restarts when `RUN_HISTORY_STORAGE=file`
-  - includes task, budget/spend summary, status, and tx proof linkage (`txHash`, `explorerUrl`)
+- `GET /api/runs?limit=20&cursor=…&status=failed,interrupted&createdFrom=2026-10-01&createdTo=2026-10-31`
+  - returns lightweight run summaries (task, status, timestamps, spend totals, event count), newest
+    first, across restarts when `RUN_HISTORY_STORAGE=file`
+  - cursor-paginated: pass the response's `nextCursor` back as `cursor`; `null` means the last page
+  - optional `status` and `createdFrom` / `createdTo` filters; invalid values return `400` with
+    structured `details`
+- `GET /api/runs/:id` returns the full record (events, output, plan, tx proof linkage such as
+  `txHash` and `explorerUrl`)
 
 Storage modes:
 

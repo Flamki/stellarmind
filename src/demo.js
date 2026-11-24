@@ -8,6 +8,7 @@ import { config } from './config.js'
 import { AGENTS } from './agents/registry.js'
 import { orchestrate } from './agents/orchestrator.js'
 import { getBalance } from './stellar/wallet.js'
+import { explorerTxUrl } from './stellar/network.js'
 
 async function main() {
   console.log(`
@@ -104,12 +105,12 @@ async function main() {
 
   // Step 4: Print all TX hashes
   console.log(`\n${'═'.repeat(60)}`)
-  console.log('📜 All Stellar Testnet Transaction Hashes:')
+  console.log(`📜 All Stellar ${config.networkProfile.label} Transaction Hashes:`)
   console.log('─'.repeat(60))
   if (allTxHashes.length > 0) {
     allTxHashes.forEach((hash, i) => {
       console.log(`  ${i + 1}. ${hash}`)
-      console.log(`     https://stellar.expert/explorer/testnet/tx/${hash}`)
+      console.log(`     ${explorerTxUrl(config.networkProfile, hash)}`)
     })
   } else {
     console.log('  No real transactions (wallets may not be configured in .env)')
