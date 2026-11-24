@@ -9,6 +9,11 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
+- Per-account coordination of direct XLM payments: submissions from one payer are queued inside the
+  process so each loads a fresh sequence number, different payers proceed independently, waiting is
+  bounded (`SUBMISSION_MAX_QUEUE_DEPTH`, `SUBMISSION_MAX_WAIT_MS`, `SUBMISSION_MAX_ATTEMPTS`), and
+  failed payments release the queue with a structured `outcome`. An uncertain submission is looked
+  up by hash before any retry or later submission. Single-process only; see `docs/architecture.md`.
 - `GET /api/wallet/readiness` (`?refresh=true` to re-check): whether the orchestrator wallet can
   settle in the configured asset, with `ready` (`true`/`false`/`null`), `state`, an actionable
   `reason`, `checkedAt`, `expiresAt`, `fresh` and `ageMs`. Run and plan responses carry the same
