@@ -1,0 +1,11 @@
+```js
+function chunk(array, size) {
+  const result = []
+  for (let i = 0; i < array.length; i += size) {
+    result.push(array.slice(i, i + size))
+  }
+  return result
+}
+```
+
+For example, chunk([1, 2, 3, 4, 5], 2) returns [[1, 2], [3, 4], [5]].

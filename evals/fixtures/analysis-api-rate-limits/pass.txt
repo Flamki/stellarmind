@@ -1,0 +1,14 @@
+**Key Findings**
+- Per-key limits protect shared capacity by stopping one noisy client from degrading service for everyone.
+- Clients need clear signals, so a 429 status with a Retry-After header and visible remaining-quota headers is the expected contract.
+- Limits are easiest to defend when they are published per plan tier, with documented burst allowances.
+- Counting must be consistent across servers, which usually means a shared store or a gateway-level limiter.
+
+**Risks**
+- Overly tight limits can break legitimate batch jobs and drive integrators away.
+- A shared counter becomes a new dependency and a possible bottleneck if it is slow or unavailable.
+
+**Opportunities**
+- Tiered quotas create a natural path to paid plans.
+- Usage data per key helps spot abuse and plan capacity.
+- Clear limits reduce support load from unexplained throttling.

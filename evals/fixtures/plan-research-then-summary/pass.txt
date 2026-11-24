@@ -1,0 +1,7 @@
+{
+  "plan": "Research serverless trade-offs, then condense them into a short summary.",
+  "subtasks": [
+    { "agentId": "research-bot", "input": "Research the main pros and cons of serverless computing", "cost": "0.01" },
+    { "agentId": "summary-bot", "input": "Summarize the research findings on serverless computing", "cost": "0.01" }
+  ]
+}

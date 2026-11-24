@@ -9,6 +9,11 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
+- Versioned offline evaluation set for agent output quality (`evals/`, `docs/evaluation.md`): 12
+  curated, non-sensitive cases with concrete success properties, deliberately incomplete fixtures
+  that must fail, deterministic reports naming the model and prompt revision, and a committed
+  baseline. `npm run eval` checks it, `npm run eval:accept` accepts an intentional change, and
+  optional `npm run eval:live` is opt-in and token-capped. Needs no key, wallet or network.
 - Per-account coordination of direct XLM payments: submissions from one payer are queued inside the
   process so each loads a fresh sequence number, different payers proceed independently, waiting is
   bounded (`SUBMISSION_MAX_QUEUE_DEPTH`, `SUBMISSION_MAX_WAIT_MS`, `SUBMISSION_MAX_ATTEMPTS`), and

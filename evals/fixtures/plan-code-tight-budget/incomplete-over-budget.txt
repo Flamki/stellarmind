@@ -1,0 +1,7 @@
+{
+  "plan": "Write the validator, then analyze its design.",
+  "subtasks": [
+    { "agentId": "code-bot", "input": "Write a JavaScript function that validates email addresses", "cost": "0.03" },
+    { "agentId": "analyst-bot", "input": "Analyze the design of an email validation function", "cost": "0.05" }
+  ]
+}

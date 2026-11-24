@@ -1,0 +1,6 @@
+{
+  "plan": "Research how email validation is usually done.",
+  "subtasks": [
+    { "agentId": "research-bot", "input": "Research how email address validation is usually done", "cost": "0.01" }
+  ]
+}
