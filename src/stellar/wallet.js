@@ -1,6 +1,8 @@
-import { Keypair, Horizon, TransactionBuilder, Operation, Asset } from '@stellar/stellar-sdk'
+import { Keypair, Horizon } from '@stellar/stellar-sdk'
 import { config } from '../config.js'
 import { explorerTxUrl, getFriendbotUrl } from './network.js'
+import { createSubmissionCoordinator } from './submission-coordinator.js'
+import { createPaymentSender } from './payment-sender.js'
 
 // One validated profile drives every network fact in this module: Horizon
 // origin, transaction passphrase, explorer links, and the friend-only funding
@@ -187,45 +189,38 @@ export function getKeypair(secretKey) {
 }
 
 /**
- * Send XLM payment between two wallets (for demo agent-to-agent payments)
+ * Send XLM payment between two wallets (for demo agent-to-agent payments).
+ *
+ * Coordinated per payer account (see submission-coordinator.js), so concurrent
+ * calls for one payer queue up and each loads a fresh sequence number. Resolves
+ * `{ success, outcome, txHash, ... }`; it does not throw.
  */
-export async function sendPayment(senderSecret, recipientPublic, amount, memo = '') {
-  try {
-    const senderKeypair = Keypair.fromSecret(senderSecret)
-    const senderAccount = await server.loadAccount(senderKeypair.publicKey())
+export const submissionCoordinator = createSubmissionCoordinator({
+  maxQueueDepth: config.submission.maxQueueDepth,
+  maxWaitMs: config.submission.maxWaitMs,
+})
 
-    const txBuilder = new TransactionBuilder(senderAccount, {
-      fee: '100',
-      networkPassphrase: profile.passphrase,
-    })
-
-    txBuilder.addOperation(
-      Operation.payment({
-        destination: recipientPublic,
-        asset: Asset.native(),
-        amount: String(amount),
-      })
-    )
-
-    if (memo) {
-      txBuilder.addMemo(new (await import('@stellar/stellar-sdk')).Memo('text', memo.slice(0, 28)))
+const paymentSender = createPaymentSender({
+  loadAccount: (publicKey) => server.loadAccount(publicKey),
+  submitTransaction: (tx) => server.submitTransaction(tx),
+  lookupTransaction: async (hash) => {
+    try {
+      const record = await server.transactions().transaction(hash).call()
+      return { found: true, ledger: record.ledger_attr ?? record.ledger }
+    } catch (err) {
+      if (err?.response?.status === 404) return { found: false }
+      throw err
     }
+  },
+  coordinator: submissionCoordinator,
+  passphrase: profile.passphrase,
+  explorerUrl: (hash) => explorerTxUrl(profile, hash),
+  maxAttempts: config.submission.maxAttempts,
+  logger: console,
+})
 
-    txBuilder.setTimeout(30)
-    const tx = txBuilder.build()
-    tx.sign(senderKeypair)
-
-    const result = await server.submitTransaction(tx)
-    return {
-      success: true,
-      txHash: result.hash,
-      ledger: result.ledger,
-      explorerUrl: explorerTxUrl(profile, result.hash),
-    }
-  } catch (err) {
-    console.error('Payment failed:', err.message)
-    return { success: false, error: err.message }
-  }
+export function sendPayment(senderSecret, recipientPublic, amount, memo = '') {
+  return paymentSender.sendPayment(senderSecret, recipientPublic, amount, memo)
 }
 
 /**

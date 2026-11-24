@@ -59,6 +59,8 @@ export const config = {
     toNumberOr(process.env.ANTHROPIC_REQUEST_TIMEOUT_MS, 20000)
   ),
   anthropicMaxRetries: Math.max(0, toNumberOr(process.env.ANTHROPIC_MAX_RETRIES, 2)),
+  // Overall deadline across all attempts and retry delays (0 = no overall limit)
+  anthropicOverallTimeoutMs: Math.max(0, toNumberOr(process.env.ANTHROPIC_OVERALL_TIMEOUT_MS, 0)),
   anthropicRetryBaseDelayMs: Math.max(
     100,
     toNumberOr(process.env.ANTHROPIC_RETRY_BASE_DELAY_MS, 500)
@@ -99,6 +101,15 @@ export const config = {
   // Per-transaction operation lookups in getTransactions
   horizonOpsMaxConcurrency: Math.max(1, toNumberOr(process.env.HORIZON_OPS_MAX_CONCURRENCY, 4)),
   horizonOpsCacheSize: Math.max(0, toNumberOr(process.env.HORIZON_OPS_CACHE_SIZE, 500)),
+
+  // Direct-payment submissions from one payer account are serialised in this process.
+  // Waiting is bounded: queue depth per account, time spent waiting for a turn, and
+  // total submit attempts per payment (first try included).
+  submission: {
+    maxQueueDepth: Math.max(1, toNumberOr(process.env.SUBMISSION_MAX_QUEUE_DEPTH, 20)),
+    maxWaitMs: Math.max(0, toNumberOr(process.env.SUBMISSION_MAX_WAIT_MS, 60000)),
+    maxAttempts: Math.max(1, toNumberOr(process.env.SUBMISSION_MAX_ATTEMPTS, 2)),
+  },
 
   // Orchestrator wallet readiness (settlement asset funded?): how long an answer stays fresh
   // and the upper bound on one balance lookup.

@@ -193,6 +193,33 @@ same logical charge_, so it is only permitted for the documented terminal failur
 - The same probe can be passed to `orchestrate()` as `context.paymentProbe`, so an unresolved x402
   attempt is reconciled _before_ the fallback decision is made.
 
+### Direct-payment submission coordination (#133)
+
+Direct XLM payments (`sendPayment` in `src/stellar/wallet.js`) all come from one configured payer.
+Two payments loading that account at once would both build on the same sequence number and one would
+be rejected with `tx_bad_seq`. `src/stellar/submission-coordinator.js` therefore queues submissions
+**per source account**: each payment loads a fresh sequence only after the previous one for that
+account has finished, while different accounts never wait for each other.
+
+- **Bounded waiting.** At most `SUBMISSION_MAX_QUEUE_DEPTH` payments per account (running plus
+  waiting) and at most `SUBMISSION_MAX_WAIT_MS` waiting for a turn. Over either limit the payment
+  fails with `QUEUE_FULL` or `QUEUE_WAIT_TIMEOUT`; it is never silently dropped.
+- **Failures release the queue.** A rejected or failed payment frees the account for the next one
+  and returns a structured result: `outcome` (`confirmed`, `rejected`, `unknown`, `failed`),
+  `errorType`, `resultCodes` for Horizon rejections, `attempts`, `queueWaitMs` and `txHash`.
+- **Uncertain submissions are resolved first.** If a submit gives no definitive answer (timeout,
+  lost response), the transaction hash is looked up. Found means confirmed (`reconciled: true`);
+  past its max time and not found means it can never apply; otherwise the outcome is `unknown` and
+  the next payment for that account is refused (`PRIOR_SUBMISSION_UNRESOLVED`) until it is resolved.
+  A retry only follows a stale sequence (`tx_bad_seq`) or a submission known not to have applied,
+  and total submit attempts are bounded by `SUBMISSION_MAX_ATTEMPTS`.
+
+**Deployment boundary: single process.** The queues are in memory, so they coordinate callers inside
+one Node process only. Two processes or replicas sharing one payer account are not coordinated and
+can still collide on sequence numbers; run one instance per payer account (or add an external lock
+before scaling out). The x402 path signs and submits through the facilitator and is not changed by
+this.
+
 ### Settlement reporting: quoted vs settled (#130)
 
 A step has two different amounts and they are never conflated:
@@ -318,6 +345,9 @@ Driven by environment variables (see [`.env.example`](../.env.example) and
 | Variable                                   | Purpose                                                                 |
 | ------------------------------------------ | ----------------------------------------------------------------------- |
 | `ANTHROPIC_API_KEY`                        | Enables live Claude calls; without it, demo fallbacks are used          |
+| `ANTHROPIC_REQUEST_TIMEOUT_MS`             | Per-attempt deadline; a timed-out attempt is aborted before any retry   |
+| `ANTHROPIC_MAX_RETRIES`                    | Only retry budget (SDK retries are off): attempts = `1 + this value`    |
+| `ANTHROPIC_OVERALL_TIMEOUT_MS`             | Optional deadline across all attempts and retry delays (`0` = none)     |
 | `SERVER_STELLAR_ADDRESS` / `_SECRET`       | Receives payments; presence enables the x402 paywall                    |
 | `ORCHESTRATOR_STELLAR_ADDRESS` / `_SECRET` | Pays for agent calls (x402 + XLM fallback)                              |
 | `NETWORK`                                  | Stellar network profile (default and only supported: `stellar:testnet`) |

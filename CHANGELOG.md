@@ -9,6 +9,11 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
+- Per-account coordination of direct XLM payments: submissions from one payer are queued inside the
+  process so each loads a fresh sequence number, different payers proceed independently, waiting is
+  bounded (`SUBMISSION_MAX_QUEUE_DEPTH`, `SUBMISSION_MAX_WAIT_MS`, `SUBMISSION_MAX_ATTEMPTS`), and
+  failed payments release the queue with a structured `outcome`. An uncertain submission is looked
+  up by hash before any retry or later submission. Single-process only; see `docs/architecture.md`.
 - `GET /api/wallet/readiness` (`?refresh=true` to re-check): whether the orchestrator wallet can
   settle in the configured asset, with `ready` (`true`/`false`/`null`), `state`, an actionable
   `reason`, `checkedAt`, `expiresAt`, `fresh` and `ageMs`. Run and plan responses carry the same
@@ -21,6 +26,14 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   pagination. Cursors are bound to the filters they were issued for.
 - Structured validation errors (`details[].code`) for invalid cursors, filters and dates.
 - `interrupted` added to the documented `status` values in the OpenAPI spec.
+
+### Fixed
+
+- Model requests are now abortable: each attempt has its own deadline and receives an `AbortSignal`,
+  a timed-out attempt is aborted before the next one starts, and deadline timers and retry delays
+  are always cleared or cancelled. The SDK's own retries are disabled, so real upstream attempts per
+  request are `1 + ANTHROPIC_MAX_RETRIES`. New optional `ANTHROPIC_OVERALL_TIMEOUT_MS` bounds all
+  attempts and retry delays; request cancellation propagates to the in-flight attempt.
 
 ### Changed
 
