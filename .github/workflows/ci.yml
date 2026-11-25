@@ -72,6 +72,10 @@ jobs:
         run: npm ci
 
       - name: Run unit tests
+      - name: Validate test manifest
+        run: npm run test:validate-manifest
+
+      - name: Run offline regression tests
         run: npm test
 
       - name: API validation tests

@@ -1,0 +1,32 @@
+{
+  "offline": [
+    "src/agents/settlement-header.test.js",
+    "tests/orchestrator.budget.test.js",
+    "tests/usage-tracking.test.js",
+    "tests/response-normalization.test.js",
+    "tests/premium-endpoints.integration.test.js",
+    "tests/horizon-transaction-ops.test.js",
+    "tests/async-orchestration.test.js",
+    "tests/admission-queue.test.js",
+    "tests/admission-queue.integration.test.js",
+    "tests/plan-preview.test.js",
+    "tests/payment-attempts.test.js",
+    "tests/payment-reconciliation.test.js",
+    "tests/plan-validator.test.js",
+    "tests/pricing.integration.test.js",
+    "tests/pricing.validator.test.js",
+    "tests/run-history-recovery.test.js",
+    "tests/run-history-schema.test.js",
+    "tests/security.integration.test.js",
+    "tests/sse-heartbeat.test.js",
+    "tests/docker-run-history.test.js",
+    "tests/test-discovery.test.js"
+  ],
+  "validation": ["tests/api.validation.test.js"],
+  "optin": ["src/demo.js", "tests/load/load-test.js", "tests/smoke.test.js"],
+  "description": {
+    "offline": "Offline regression tests that run in CI without network dependencies",
+    "validation": "API validation tests run separately in CI",
+    "optin": "Opt-in tests requiring live funding, network access, or manual execution"
+  }
+}
