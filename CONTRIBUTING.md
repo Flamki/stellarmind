@@ -53,6 +53,7 @@ User → Orchestrator (Claude plans tasks)
 ```bash
 npm run demo    # Runs 3 automated tasks with budget enforcement
 npm test        # Same as demo
+npm run eval    # Offline agent quality evaluation (see docs/evaluation.md)
 ```
 
 ### Security Hygiene

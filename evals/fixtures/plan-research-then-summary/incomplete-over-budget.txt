@@ -1,0 +1,9 @@
+{
+  "plan": "Use every available agent for a thorough serverless review.",
+  "subtasks": [
+    { "agentId": "research-bot", "input": "Research serverless computing", "cost": "0.01" },
+    { "agentId": "analyst-bot", "input": "Analyze serverless computing trade-offs", "cost": "0.05" },
+    { "agentId": "code-bot", "input": "Write a serverless example function", "cost": "0.03" },
+    { "agentId": "summary-bot", "input": "Summarize the serverless review", "cost": "0.01" }
+  ]
+}

@@ -48,3 +48,6 @@ stellar_winning_demo_x402.mp4
 # MDs
 CLAUDE.md
 plan.md
+
+# Live evaluation reports (non-deterministic, may contain model output)
+evals/reports/

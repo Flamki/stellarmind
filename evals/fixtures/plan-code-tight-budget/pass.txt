@@ -1,0 +1,6 @@
+{
+  "plan": "Use the code agent to write the email validator within the small budget.",
+  "subtasks": [
+    { "agentId": "code-bot", "input": "Write a JavaScript function that validates email addresses", "cost": "0.03" }
+  ]
+}

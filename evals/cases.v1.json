@@ -1,0 +1,864 @@
+{
+  "evalSet": "stellarmind-agent-quality",
+  "version": "1.0.0",
+  "description": "Curated, non-sensitive tasks with machine-checkable success properties for the StellarMind agents. Fixture outputs are hand-written reference answers (pass) and deliberately incomplete answers (negative) used to prove the checks work offline.",
+  "cases": [
+    {
+      "id": "research-http-402",
+      "agent": "research-bot",
+      "phase": "execute",
+      "task": "How the HTTP 402 Payment Required status code can support per-request API payments",
+      "properties": [
+        { "id": "not_empty", "description": "The answer is not blank.", "check": "not_empty" },
+        {
+          "id": "four_to_five_sentences",
+          "description": "The prompt asks for 4-5 sentences.",
+          "check": "sentence_count",
+          "args": { "min": 4, "max": 5 }
+        },
+        {
+          "id": "concise",
+          "description": "Between 40 and 160 words.",
+          "check": "word_count",
+          "args": { "min": 40, "max": 160 }
+        },
+        {
+          "id": "names_the_topic",
+          "description": "Mentions the 402 status code.",
+          "check": "contains_all",
+          "args": { "terms": ["402"] }
+        },
+        {
+          "id": "explains_payment",
+          "description": "Talks about payment, not just the status code.",
+          "check": "contains_any",
+          "args": { "terms": ["payment"] }
+        },
+        {
+          "id": "has_data_point",
+          "description": "Includes at least one number (the prompt asks for data points).",
+          "check": "matches",
+          "args": { "pattern": "\\d" }
+        },
+        {
+          "id": "no_filler",
+          "description": "No refusal, placeholder or lorem text.",
+          "check": "not_contains",
+          "args": { "terms": ["as an ai", "i cannot", "i can't", "lorem ipsum", "todo", "[insert"] }
+        },
+        {
+          "id": "ends_cleanly",
+          "description": "Does not stop mid-sentence.",
+          "check": "ends_cleanly"
+        }
+      ],
+      "humanReview": [
+        "Are the stated facts about HTTP 402 and x402 accurate, with nothing invented?",
+        "Would a newcomer understand how a per-request payment flow works from this answer?"
+      ],
+      "fixtures": {
+        "pass": "pass.txt",
+        "negative": [
+          {
+            "file": "incomplete-truncated.txt",
+            "note": "Cut off at the token limit mid-sentence.",
+            "expectFail": ["four_to_five_sentences", "ends_cleanly"]
+          },
+          {
+            "file": "incomplete-off-topic.txt",
+            "note": "Fluent but about something else entirely.",
+            "expectFail": ["names_the_topic", "explains_payment", "has_data_point"]
+          }
+        ]
+      }
+    },
+    {
+      "id": "research-stellar-finality",
+      "agent": "research-bot",
+      "phase": "execute",
+      "task": "How transaction finality works on the Stellar network",
+      "properties": [
+        { "id": "not_empty", "description": "The answer is not blank.", "check": "not_empty" },
+        {
+          "id": "four_to_five_sentences",
+          "description": "The prompt asks for 4-5 sentences.",
+          "check": "sentence_count",
+          "args": { "min": 4, "max": 5 }
+        },
+        {
+          "id": "concise",
+          "description": "Between 40 and 160 words.",
+          "check": "word_count",
+          "args": { "min": 40, "max": 160 }
+        },
+        {
+          "id": "names_consensus",
+          "description": "Mentions the consensus mechanism.",
+          "check": "contains_all",
+          "args": { "terms": ["consensus"] }
+        },
+        {
+          "id": "names_ledger",
+          "description": "Mentions ledgers, the unit that closes and finalizes transactions.",
+          "check": "contains_all",
+          "args": { "terms": ["ledger"] }
+        },
+        {
+          "id": "has_data_point",
+          "description": "Includes at least one number (the prompt asks for data points).",
+          "check": "matches",
+          "args": { "pattern": "\\d" }
+        },
+        {
+          "id": "no_filler",
+          "description": "No refusal, placeholder or lorem text.",
+          "check": "not_contains",
+          "args": { "terms": ["as an ai", "i cannot", "i can't", "lorem ipsum", "todo", "[insert"] }
+        },
+        {
+          "id": "ends_cleanly",
+          "description": "Does not stop mid-sentence.",
+          "check": "ends_cleanly"
+        }
+      ],
+      "humanReview": [
+        "Are the consensus, ledger timing and fee statements accurate for the current network?",
+        "Does the answer say when a transaction is final, not only how fast it is?"
+      ],
+      "fixtures": {
+        "pass": "pass.txt",
+        "negative": [
+          {
+            "file": "incomplete-one-liner.txt",
+            "note": "A single thin sentence with no mechanism or numbers.",
+            "expectFail": [
+              "four_to_five_sentences",
+              "concise",
+              "names_consensus",
+              "names_ledger",
+              "has_data_point"
+            ]
+          },
+          {
+            "file": "incomplete-placeholder.txt",
+            "note": "Right shape, but one sentence is an unfinished TODO.",
+            "expectFail": ["no_filler"]
+          }
+        ]
+      }
+    },
+    {
+      "id": "summary-budget-memo",
+      "agent": "summary-bot",
+      "phase": "execute",
+      "task": "The facilities team reviewed three vendors for the office cleaning contract. Vendor A quoted $2,400 per month, Vendor B quoted $2,150 per month, and Vendor C quoted $2,900 per month but includes window cleaning and carpet care. After a two-week trial, the team found Vendor B missed several scheduled visits, while Vendor A completed every visit on time. The finance lead asked that the decision be made within 14 days so the new contract can start at the beginning of next quarter. The team recommends Vendor A because its price is close to the lowest quote and its reliability record is better.",
+      "properties": [
+        { "id": "not_empty", "description": "The summary is not blank.", "check": "not_empty" },
+        {
+          "id": "two_to_three_sentences",
+          "description": "The prompt asks for 2-3 sentences.",
+          "check": "sentence_count",
+          "args": { "min": 2, "max": 3 }
+        },
+        {
+          "id": "shorter_than_source",
+          "description": "At most 60% of the source length, so it is a summary and not a copy.",
+          "check": "max_word_ratio_of_input",
+          "args": { "max": 0.6 }
+        },
+        {
+          "id": "keeps_price",
+          "description": "Keeps the recommended vendor's price.",
+          "check": "contains_all",
+          "args": { "terms": ["$2,400"] }
+        },
+        {
+          "id": "keeps_deadline",
+          "description": "Keeps the 14-day decision deadline.",
+          "check": "contains_all",
+          "args": { "terms": ["14 days"] }
+        },
+        {
+          "id": "keeps_recommendation",
+          "description": "Names the recommended vendor.",
+          "check": "contains_all",
+          "args": { "terms": ["Vendor A"] }
+        },
+        {
+          "id": "no_bullets",
+          "description": "Plain sentences, not a bullet list.",
+          "check": "not_matches",
+          "args": { "pattern": "^\\s*(?:[-*•]|\\d+[.)])\\s" }
+        },
+        {
+          "id": "no_meta_commentary",
+          "description": "Does not talk about \"the text\" or \"the passage\".",
+          "check": "not_contains",
+          "args": { "terms": ["this text", "the passage", "the text"] }
+        },
+        {
+          "id": "ends_cleanly",
+          "description": "Does not stop mid-sentence.",
+          "check": "ends_cleanly"
+        }
+      ],
+      "humanReview": [
+        "Does the summary add any claim that is not in the source?",
+        "Is the emphasis right (recommendation and deadline first, trial detail second)?"
+      ],
+      "fixtures": {
+        "pass": "pass.txt",
+        "negative": [
+          {
+            "file": "incomplete-verbatim-copy.txt",
+            "note": "Pastes the source back instead of condensing it.",
+            "expectFail": ["two_to_three_sentences", "shorter_than_source"]
+          },
+          {
+            "file": "incomplete-drops-figures.txt",
+            "note": "Short and fluent but loses every figure and the recommendation.",
+            "expectFail": ["keeps_price", "keeps_deadline", "keeps_recommendation"]
+          }
+        ]
+      }
+    },
+    {
+      "id": "summary-incident-report",
+      "agent": "summary-bot",
+      "phase": "execute",
+      "task": "On Tuesday at 09:12 UTC the primary database failed over to its replica after a disk fault. The failover completed in 42 minutes because the replica was running an older schema version and had to be migrated before it could accept writes. During that period customers could read data but could not save changes. Support received 187 tickets, and no data was lost. The team has added a schema check to the deploy pipeline and will rehearse failovers every quarter. A full review is scheduled for next Monday.",
+      "properties": [
+        { "id": "not_empty", "description": "The summary is not blank.", "check": "not_empty" },
+        {
+          "id": "two_to_three_sentences",
+          "description": "The prompt asks for 2-3 sentences.",
+          "check": "sentence_count",
+          "args": { "min": 2, "max": 3 }
+        },
+        {
+          "id": "shorter_than_source",
+          "description": "At most 60% of the source length.",
+          "check": "max_word_ratio_of_input",
+          "args": { "max": 0.6 }
+        },
+        {
+          "id": "keeps_duration",
+          "description": "Keeps the 42-minute failover duration.",
+          "check": "contains_all",
+          "args": { "terms": ["42 minutes"] }
+        },
+        {
+          "id": "keeps_outcome",
+          "description": "States that no data was lost.",
+          "check": "contains_all",
+          "args": { "terms": ["no data was lost"] }
+        },
+        {
+          "id": "keeps_follow_up",
+          "description": "Mentions at least one follow-up action (schema check or failover rehearsals).",
+          "check": "contains_any",
+          "args": { "terms": ["schema check", "rehears"] }
+        },
+        {
+          "id": "no_bullets",
+          "description": "Plain sentences, not a bullet list.",
+          "check": "not_matches",
+          "args": { "pattern": "^\\s*(?:[-*•]|\\d+[.)])\\s" }
+        },
+        {
+          "id": "no_meta_commentary",
+          "description": "Does not talk about \"the text\" or \"the passage\".",
+          "check": "not_contains",
+          "args": { "terms": ["this text", "the passage", "the text"] }
+        },
+        {
+          "id": "ends_cleanly",
+          "description": "Does not stop mid-sentence.",
+          "check": "ends_cleanly"
+        }
+      ],
+      "humanReview": [
+        "Is the cause-and-effect order of the incident preserved (fault, failover, impact)?",
+        "Would an executive reading only this summary understand customer impact?"
+      ],
+      "fixtures": {
+        "pass": "pass.txt",
+        "negative": [
+          {
+            "file": "incomplete-truncated.txt",
+            "note": "One run-on sentence cut off at the token limit.",
+            "expectFail": [
+              "two_to_three_sentences",
+              "keeps_outcome",
+              "keeps_follow_up",
+              "ends_cleanly"
+            ]
+          },
+          {
+            "file": "incomplete-bulleted.txt",
+            "note": "Correct facts, but a four-item bullet list instead of 2-3 sentences.",
+            "expectFail": ["two_to_three_sentences", "no_bullets"]
+          }
+        ]
+      }
+    },
+    {
+      "id": "summary-meeting-notes",
+      "agent": "summary-bot",
+      "phase": "execute",
+      "task": "The product group met on Thursday to plan the March release. Dana proposed moving the launch from March 4 to March 18 to finish accessibility fixes, and the group approved the change. Luis will update the roadmap and tell the partner teams by Monday. The group also agreed to cut the planned dark-mode feature from this release because testing is not finished. Priya raised a concern about the support rota during the launch week, and it was assigned to the operations manager for follow-up. The next meeting is on Thursday of next week.",
+      "properties": [
+        { "id": "not_empty", "description": "The summary is not blank.", "check": "not_empty" },
+        {
+          "id": "two_to_three_sentences",
+          "description": "The prompt asks for 2-3 sentences.",
+          "check": "sentence_count",
+          "args": { "min": 2, "max": 3 }
+        },
+        {
+          "id": "shorter_than_source",
+          "description": "At most 60% of the source length.",
+          "check": "max_word_ratio_of_input",
+          "args": { "max": 0.6 }
+        },
+        {
+          "id": "keeps_new_date",
+          "description": "Keeps the approved launch date.",
+          "check": "contains_all",
+          "args": { "terms": ["March 18"] }
+        },
+        {
+          "id": "keeps_cut_feature",
+          "description": "Keeps the feature that was cut.",
+          "check": "contains_all",
+          "args": { "terms": ["dark-mode"] }
+        },
+        {
+          "id": "keeps_owner_deadline",
+          "description": "Keeps the Monday deadline for the roadmap update.",
+          "check": "contains_all",
+          "args": { "terms": ["Monday"] }
+        },
+        {
+          "id": "no_meta_commentary",
+          "description": "Does not talk about \"the text\" or \"the passage\".",
+          "check": "not_contains",
+          "args": { "terms": ["this text", "the passage", "the text"] }
+        },
+        {
+          "id": "ends_cleanly",
+          "description": "Does not stop mid-sentence.",
+          "check": "ends_cleanly"
+        }
+      ],
+      "humanReview": [
+        "Are decisions clearly separated from open follow-ups?",
+        "Is every action attributed to the right person or team?"
+      ],
+      "fixtures": {
+        "pass": "pass.txt",
+        "negative": [
+          {
+            "file": "incomplete-wrong-date.txt",
+            "note": "Well formed but reports the wrong launch date.",
+            "expectFail": ["keeps_new_date"]
+          },
+          {
+            "file": "incomplete-empty.txt",
+            "note": "The provider returned only whitespace.",
+            "expectFail": [
+              "not_empty",
+              "two_to_three_sentences",
+              "keeps_new_date",
+              "keeps_cut_feature",
+              "keeps_owner_deadline",
+              "ends_cleanly"
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": "analysis-offline-first-field-app",
+      "agent": "analyst-bot",
+      "phase": "execute",
+      "task": "Adopting an offline-first architecture for a field-data collection mobile app",
+      "properties": [
+        { "id": "not_empty", "description": "The analysis is not blank.", "check": "not_empty" },
+        {
+          "id": "has_required_sections",
+          "description": "Has Key Findings, Risks and Opportunities sections, as the prompt requires.",
+          "check": "headings",
+          "args": { "required": ["Key Findings", "Risks", "Opportunities"] }
+        },
+        {
+          "id": "findings_3_to_4",
+          "description": "3-4 bullets under Key Findings.",
+          "check": "section_bullets",
+          "args": { "heading": "Key Findings", "min": 3, "max": 4 }
+        },
+        {
+          "id": "risks_2_to_3",
+          "description": "2-3 bullets under Risks.",
+          "check": "section_bullets",
+          "args": { "heading": "Risks", "min": 2, "max": 3 }
+        },
+        {
+          "id": "opportunities_2_to_3",
+          "description": "2-3 bullets under Opportunities.",
+          "check": "section_bullets",
+          "args": { "heading": "Opportunities", "min": 2, "max": 3 }
+        },
+        {
+          "id": "substantive",
+          "description": "Between 90 and 400 words.",
+          "check": "word_count",
+          "args": { "min": 90, "max": 400 }
+        },
+        {
+          "id": "no_filler",
+          "description": "No refusal, placeholder or lorem text.",
+          "check": "not_contains",
+          "args": { "terms": ["as an ai", "i cannot", "i can't", "lorem ipsum", "todo", "[insert"] }
+        },
+        {
+          "id": "ends_cleanly",
+          "description": "Does not stop mid-sentence.",
+          "check": "ends_cleanly"
+        }
+      ],
+      "humanReview": [
+        "Are the findings specific to offline-first apps rather than generic software advice?",
+        "Are the risks real risks, and are the opportunities actionable?"
+      ],
+      "fixtures": {
+        "pass": "pass.txt",
+        "negative": [
+          {
+            "file": "incomplete-truncated.txt",
+            "note": "Stops inside the Risks section; Opportunities never appears.",
+            "expectFail": [
+              "has_required_sections",
+              "risks_2_to_3",
+              "opportunities_2_to_3",
+              "substantive",
+              "ends_cleanly"
+            ]
+          },
+          {
+            "file": "incomplete-wrong-structure.txt",
+            "note": "One unstructured paragraph with no sections or bullets.",
+            "expectFail": [
+              "has_required_sections",
+              "findings_3_to_4",
+              "risks_2_to_3",
+              "opportunities_2_to_3",
+              "substantive"
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": "analysis-api-rate-limits",
+      "agent": "analyst-bot",
+      "phase": "execute",
+      "task": "Introducing per-key rate limits on a public REST API",
+      "properties": [
+        { "id": "not_empty", "description": "The analysis is not blank.", "check": "not_empty" },
+        {
+          "id": "has_required_sections",
+          "description": "Has Key Findings, Risks and Opportunities sections, as the prompt requires.",
+          "check": "headings",
+          "args": { "required": ["Key Findings", "Risks", "Opportunities"] }
+        },
+        {
+          "id": "findings_3_to_4",
+          "description": "3-4 bullets under Key Findings.",
+          "check": "section_bullets",
+          "args": { "heading": "Key Findings", "min": 3, "max": 4 }
+        },
+        {
+          "id": "risks_2_to_3",
+          "description": "2-3 bullets under Risks.",
+          "check": "section_bullets",
+          "args": { "heading": "Risks", "min": 2, "max": 3 }
+        },
+        {
+          "id": "opportunities_2_to_3",
+          "description": "2-3 bullets under Opportunities.",
+          "check": "section_bullets",
+          "args": { "heading": "Opportunities", "min": 2, "max": 3 }
+        },
+        {
+          "id": "substantive",
+          "description": "Between 90 and 400 words.",
+          "check": "word_count",
+          "args": { "min": 90, "max": 400 }
+        },
+        {
+          "id": "no_filler",
+          "description": "No refusal, placeholder or lorem text.",
+          "check": "not_contains",
+          "args": { "terms": ["as an ai", "i cannot", "i can't", "lorem ipsum", "todo", "[insert"] }
+        },
+        {
+          "id": "ends_cleanly",
+          "description": "Does not stop mid-sentence.",
+          "check": "ends_cleanly"
+        }
+      ],
+      "humanReview": [
+        "Does the analysis cover client-facing behavior (status codes, headers), not only server protection?",
+        "Are the trade-offs balanced rather than one-sided?"
+      ],
+      "fixtures": {
+        "pass": "pass.txt",
+        "negative": [
+          {
+            "file": "incomplete-missing-section.txt",
+            "note": "Ends after Risks; the Opportunities section is missing.",
+            "expectFail": ["has_required_sections", "opportunities_2_to_3"]
+          },
+          {
+            "file": "incomplete-bullet-counts.txt",
+            "note": "All sections present but with 1 finding and 5 risks.",
+            "expectFail": ["findings_3_to_4", "risks_2_to_3"]
+          }
+        ]
+      }
+    },
+    {
+      "id": "code-chunk-array",
+      "agent": "code-bot",
+      "phase": "execute",
+      "task": "Write a JavaScript function chunk(array, size) that splits an array into arrays of length size (the last one may be shorter) and throws a RangeError when size is not a positive integer.",
+      "properties": [
+        { "id": "not_empty", "description": "The answer is not blank.", "check": "not_empty" },
+        {
+          "id": "has_concise_js_block",
+          "description": "At least one JavaScript code block of at most 25 lines.",
+          "check": "code_block",
+          "args": { "language": "js", "min": 1, "maxLines": 25 }
+        },
+        {
+          "id": "js_parses",
+          "description": "Every JavaScript block compiles (it is parsed, never run).",
+          "check": "js_syntax"
+        },
+        {
+          "id": "defines_function",
+          "description": "Defines the function that was asked for.",
+          "check": "contains_all",
+          "args": { "terms": ["function chunk"] }
+        },
+        {
+          "id": "validates_size",
+          "description": "Throws RangeError for an invalid size.",
+          "check": "contains_all",
+          "args": { "terms": ["RangeError"] }
+        },
+        {
+          "id": "no_filler",
+          "description": "No refusal, placeholder or lorem text.",
+          "check": "not_contains",
+          "args": { "terms": ["as an ai", "i cannot", "i can't", "lorem ipsum", "todo", "[insert"] }
+        },
+        {
+          "id": "ends_cleanly",
+          "description": "Does not stop mid-sentence or mid-block.",
+          "check": "ends_cleanly"
+        }
+      ],
+      "humanReview": [
+        "Does the function behave correctly for empty arrays, size larger than the array, and non-integer sizes?",
+        "Is the code idiomatic and easy to read?"
+      ],
+      "fixtures": {
+        "pass": "pass.txt",
+        "negative": [
+          {
+            "file": "incomplete-syntax-error.txt",
+            "note": "The function is missing its closing brace.",
+            "expectFail": ["js_parses"]
+          },
+          {
+            "file": "incomplete-truncated.txt",
+            "note": "Cut off inside the code block, so the fence never closes.",
+            "expectFail": ["has_concise_js_block", "js_parses", "ends_cleanly"]
+          },
+          {
+            "file": "incomplete-no-validation.txt",
+            "note": "Parses fine but ignores the RangeError requirement.",
+            "expectFail": ["validates_size"]
+          }
+        ]
+      }
+    },
+    {
+      "id": "code-fix-off-by-one",
+      "agent": "code-bot",
+      "phase": "execute",
+      "task": "Fix the bug: this function should add the numbers from 1 to n inclusive, but sumTo(3) returns 3 instead of 6.\n\n```js\nfunction sumTo(n) {\n  let total = 0\n  for (let i = 1; i < n; i++) {\n    total += i\n  }\n  return total\n}\n```",
+      "properties": [
+        { "id": "not_empty", "description": "The answer is not blank.", "check": "not_empty" },
+        {
+          "id": "has_concise_js_block",
+          "description": "At least one JavaScript code block of at most 15 lines.",
+          "check": "code_block",
+          "args": { "language": "js", "min": 1, "maxLines": 15 }
+        },
+        {
+          "id": "js_parses",
+          "description": "Every JavaScript block compiles (it is parsed, never run).",
+          "check": "js_syntax"
+        },
+        {
+          "id": "keeps_function_name",
+          "description": "Keeps the function name so callers still work.",
+          "check": "contains_all",
+          "args": { "terms": ["function sumTo"] }
+        },
+        {
+          "id": "fixes_upper_bound",
+          "description": "The loop now includes n (i <= n).",
+          "check": "matches",
+          "args": { "pattern": "i\\s*<=\\s*n" }
+        },
+        {
+          "id": "original_bug_removed",
+          "description": "The original i < n condition no longer appears.",
+          "check": "not_matches",
+          "args": { "pattern": "i\\s*<\\s*n\\b" }
+        },
+        {
+          "id": "explains_cause",
+          "description": "A brief explanation of 1-4 sentences outside the code.",
+          "check": "sentence_count",
+          "args": { "min": 1, "max": 4 }
+        },
+        {
+          "id": "ends_cleanly",
+          "description": "Does not stop mid-sentence or mid-block.",
+          "check": "ends_cleanly"
+        }
+      ],
+      "humanReview": [
+        "Is the explanation of the root cause correct and understandable?",
+        "Is the change minimal, with no unrelated rewrites?"
+      ],
+      "fixtures": {
+        "pass": "pass.txt",
+        "negative": [
+          {
+            "file": "incomplete-bug-unchanged.txt",
+            "note": "Claims a fix but returns the original code.",
+            "expectFail": ["fixes_upper_bound", "original_bug_removed"]
+          },
+          {
+            "file": "incomplete-no-explanation.txt",
+            "note": "Correct code with no explanation at all.",
+            "expectFail": ["explains_cause"]
+          }
+        ]
+      }
+    },
+    {
+      "id": "plan-research-then-summary",
+      "agent": "orchestrator",
+      "phase": "plan",
+      "task": "Research the main pros and cons of serverless computing, then give me a short summary",
+      "context": { "budget": 0.05 },
+      "properties": [
+        {
+          "id": "plan_is_valid",
+          "description": "Parses and passes the orchestrator's plan validator.",
+          "check": "plan_valid"
+        },
+        {
+          "id": "two_to_three_steps",
+          "description": "2-3 subtasks, as the planner prompt asks.",
+          "check": "plan_subtasks",
+          "args": { "min": 2, "max": 3 }
+        },
+        {
+          "id": "research_then_summary",
+          "description": "Uses research-bot first, then summary-bot.",
+          "check": "plan_agents",
+          "args": {
+            "include": ["research-bot", "summary-bot"],
+            "order": ["research-bot", "summary-bot"]
+          }
+        },
+        {
+          "id": "avoids_unneeded_analysis",
+          "description": "Does not spend on analyst-bot for a research-and-summarize task.",
+          "check": "plan_agents",
+          "args": { "exclude": ["analyst-bot"] }
+        },
+        {
+          "id": "stays_in_budget",
+          "description": "Registry cost of the chosen agents fits the 0.05 USDC budget.",
+          "check": "plan_within_budget"
+        },
+        {
+          "id": "inputs_reference_task",
+          "description": "At least one subtask input mentions the topic.",
+          "check": "plan_input_mentions",
+          "args": { "terms": ["serverless"] }
+        }
+      ],
+      "humanReview": [
+        "Is the plan description a fair one-line summary of the approach?",
+        "Would the subtask inputs give each agent enough context to do its part?"
+      ],
+      "fixtures": {
+        "pass": "pass.txt",
+        "negative": [
+          {
+            "file": "incomplete-unknown-agent.txt",
+            "note": "Routes a step to an agent that is not in the registry.",
+            "expectFail": [
+              "plan_is_valid",
+              "two_to_three_steps",
+              "research_then_summary",
+              "avoids_unneeded_analysis",
+              "stays_in_budget",
+              "inputs_reference_task"
+            ]
+          },
+          {
+            "file": "incomplete-over-budget.txt",
+            "note": "Valid shape but four agents costing 0.10 USDC against a 0.05 budget.",
+            "expectFail": ["two_to_three_steps", "avoids_unneeded_analysis", "stays_in_budget"]
+          }
+        ]
+      }
+    },
+    {
+      "id": "plan-code-tight-budget",
+      "agent": "orchestrator",
+      "phase": "plan",
+      "task": "Write a function that validates email addresses",
+      "context": { "budget": 0.03 },
+      "properties": [
+        {
+          "id": "plan_is_valid",
+          "description": "Parses and passes the orchestrator's plan validator.",
+          "check": "plan_valid"
+        },
+        {
+          "id": "one_to_two_steps",
+          "description": "1-2 subtasks; a 0.03 budget cannot afford more.",
+          "check": "plan_subtasks",
+          "args": { "min": 1, "max": 2 }
+        },
+        {
+          "id": "uses_code_agent",
+          "description": "Routes the work to code-bot.",
+          "check": "plan_agents",
+          "args": { "include": ["code-bot"] }
+        },
+        {
+          "id": "stays_in_budget",
+          "description": "Registry cost of the chosen agents fits the 0.03 USDC budget.",
+          "check": "plan_within_budget"
+        },
+        {
+          "id": "inputs_reference_task",
+          "description": "At least one subtask input mentions email.",
+          "check": "plan_input_mentions",
+          "args": { "terms": ["email"] }
+        }
+      ],
+      "humanReview": [
+        "Does the plan avoid wasting a tight budget on steps the task does not need?",
+        "Is the code agent's input specific enough to get a usable function back?"
+      ],
+      "fixtures": {
+        "pass": "pass.txt",
+        "negative": [
+          {
+            "file": "incomplete-over-budget.txt",
+            "note": "Adds an analysis step the 0.03 budget cannot pay for.",
+            "expectFail": ["stays_in_budget"]
+          },
+          {
+            "file": "incomplete-wrong-agent.txt",
+            "note": "Sends a coding task to the research agent.",
+            "expectFail": ["uses_code_agent"]
+          }
+        ]
+      }
+    },
+    {
+      "id": "plan-analysis-full-budget",
+      "agent": "orchestrator",
+      "phase": "plan",
+      "task": "Assess the risks of moving our billing to a new payment provider",
+      "context": { "budget": 0.1 },
+      "properties": [
+        {
+          "id": "plan_is_valid",
+          "description": "Parses and passes the orchestrator's plan validator.",
+          "check": "plan_valid"
+        },
+        {
+          "id": "two_to_three_steps",
+          "description": "2-3 subtasks, as the planner prompt asks.",
+          "check": "plan_subtasks",
+          "args": { "min": 2, "max": 3 }
+        },
+        {
+          "id": "uses_analysis",
+          "description": "Includes analyst-bot for the risk assessment.",
+          "check": "plan_agents",
+          "args": { "include": ["analyst-bot"] }
+        },
+        {
+          "id": "research_precedes_analysis",
+          "description": "Gathers research before the analysis step.",
+          "check": "plan_agents",
+          "args": { "order": ["research-bot", "analyst-bot"] }
+        },
+        {
+          "id": "stays_in_budget",
+          "description": "Registry cost of the chosen agents fits the 0.10 USDC budget.",
+          "check": "plan_within_budget"
+        },
+        {
+          "id": "inputs_reference_task",
+          "description": "At least one subtask input mentions billing or the payment provider.",
+          "check": "plan_input_mentions",
+          "args": { "terms": ["billing", "payment provider"] }
+        }
+      ],
+      "humanReview": [
+        "Does the order of steps make sense for a risk assessment?",
+        "Is the chosen mix a sensible use of the available budget?"
+      ],
+      "fixtures": {
+        "pass": "pass.txt",
+        "negative": [
+          {
+            "file": "incomplete-skips-analysis.txt",
+            "note": "Research and summary only; the requested assessment never happens.",
+            "expectFail": ["uses_analysis", "research_precedes_analysis"]
+          },
+          {
+            "file": "incomplete-empty-subtasks.txt",
+            "note": "Valid JSON with an empty subtasks array.",
+            "expectFail": [
+              "plan_is_valid",
+              "two_to_three_steps",
+              "uses_analysis",
+              "research_precedes_analysis",
+              "stays_in_budget",
+              "inputs_reference_task"
+            ]
+          }
+        ]
+      }
+    }
+  ]
+}

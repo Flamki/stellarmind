@@ -9,6 +9,11 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
+- Versioned offline evaluation set for agent output quality (`evals/`, `docs/evaluation.md`): 12
+  curated, non-sensitive cases with concrete success properties, deliberately incomplete fixtures
+  that must fail, deterministic reports naming the model and prompt revision, and a committed
+  baseline. `npm run eval` checks it, `npm run eval:accept` accepts an intentional change, and
+  optional `npm run eval:live` is opt-in and token-capped. Needs no key, wallet or network.
 - Per-account coordination of direct XLM payments: submissions from one payer are queued inside the
   process so each loads a fresh sequence number, different payers proceed independently, waiting is
   bounded (`SUBMISSION_MAX_QUEUE_DEPTH`, `SUBMISSION_MAX_WAIT_MS`, `SUBMISSION_MAX_ATTEMPTS`), and
@@ -37,12 +42,15 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Changed
 
+- Agent results record the model that actually responded (`provenance.model`), the provider, and a
+  prompt revision/digest (`promptRevision`, `promptDigest`). After a model fallback `model` is the
+  fallback model. Demo and remote x402 results no longer claim a live model: `model` is `null`
+  (`intendedModel` / `declaredModel` keep the label). No credentials or prompt text are stored.
 - Idempotency keys now have a defined retention window. A key stays bound to its run for
   `IDEMPOTENCY_TTL_MS` (default 24 hours) or until the run leaves the bounded run history; after
   that it can be reused. Expired mappings are dropped on lookup, load and save, and the saved
   mapping list no longer keeps the oldest entries and drops the newest. Behavior is documented in
   `docs/architecture.md` and `docs/openapi.yaml`.
-
 - Wallet readiness is no longer a one-time check at startup. It is cached for a bounded time and
   refreshed on demand, so funding or a new trustline is picked up without a restart.
 - Readiness matches the network profile's asset by code **and** issuer. A `USDC` balance from any

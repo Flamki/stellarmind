@@ -1,0 +1,7 @@
+{
+  "plan": "Gather background on provider migration risks, then run a structured risk analysis.",
+  "subtasks": [
+    { "agentId": "research-bot", "input": "Research common risks when moving billing to a new payment provider", "cost": "0.01" },
+    { "agentId": "analyst-bot", "input": "Assess the risks of moving our billing to a new payment provider", "cost": "0.05" }
+  ]
+}

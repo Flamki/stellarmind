@@ -54,3 +54,6 @@
 package-lock.json text
 yarn.lock text
 pnpm-lock.yaml text
+
+# Offline evaluation set: byte-stable on every OS
+evals/** text eol=lf
