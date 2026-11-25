@@ -9,6 +9,14 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
+- Complete transaction operations with explicit paging (#159): transactions in
+  `GET /api/wallet/transactions` now report `operationsComplete`, the true `operationCount`, a
+  `summary` (`kind`, `types`, `assets`, `direction`, `successful`) and per-operation `paging_token`
+  and `direction`. New `GET /api/wallet/transactions/:hash/operations` pages every operation of a
+  transaction (`limit` up to 100, `order`, `cursor`, `pagination.hasMore`/`nextCursor`) without
+  duplicates. The table summarises multi-operation transactions as such, marks failed ones, and
+  opens a paged detail view; memo text is now HTML-escaped and the live table reads the
+  `{ success, transactions }` response shape.
 - Versioned offline evaluation set for agent output quality (`evals/`, `docs/evaluation.md`): 12
   curated, non-sensitive cases with concrete success properties, deliberately incomplete fixtures
   that must fail, deterministic reports naming the model and prompt revision, and a committed

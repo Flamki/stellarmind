@@ -1282,6 +1282,89 @@ curl -s "http://localhost:3001/api/wallet/transactions?address=${STELLAR_PUBLIC_
 ]
 ```
 
+**Operation completeness.** Each transaction embeds at most 10 operations. Check these fields before
+treating `operations` as the whole transaction:
+
+| Field                      | Meaning                                                                                                                          |
+| -------------------------- | -------------------------------------------------------------------------------------------------------------------------------- |
+| `operationCount`           | Total operations in the transaction (from Horizon's transaction record)                                                          |
+| `operationsComplete`       | `true` when `operations` holds all of them; `false` means more exist or the lookup failed                                        |
+| `operationsError`          | Present when the operation lookup failed (distinct from a transaction with none)                                                 |
+| `summary.kind`             | `none`, `single`, `multiple` or `unknown`                                                                                        |
+| `summary.types` / `assets` | Distinct operation types and asset codes among the included operations                                                           |
+| `summary.direction`        | `incoming`, `outgoing`, `self`, `other` or `mixed` relative to `address`; `null` when unknown or not every operation is included |
+| `summary.successful`       | Whether the transaction succeeded; a failed transaction moved no funds                                                           |
+
+Each operation also has `paging_token` and `direction` (relative to the queried address, `null` when
+the operation has no sender and receiver).
+
+### `GET /api/wallet/transactions/:hash/operations`
+
+All operations of one transaction, paged with explicit continuation metadata. Use it when
+`operationsComplete` is `false`, or to open a transaction detail view.
+
+**Query Parameters:**
+
+| Parameter | Type   | Default | Description                                                                   |
+| --------- | ------ | ------- | ----------------------------------------------------------------------------- |
+| `limit`   | int    | 20      | Operations per page (max 100)                                                 |
+| `order`   | string | `asc`   | `asc` or `desc` (`direction` is accepted as an alias)                         |
+| `cursor`  | string | —       | `pagination.nextCursor` from the previous page                                |
+| `address` | string | (auto)  | Account `direction` is computed against; defaults to the orchestrator address |
+
+**Request:**
+
+```bash
+curl -s "http://localhost:3001/api/wallet/transactions/${TX_HASH}/operations?limit=20" | jq
+```
+
+**Response `200 OK`:**
+
+```json
+{
+  "success": true,
+  "transaction": {
+    "hash": "abc123def4567890abc123def4567890abc123def4567890abc123def4567890",
+    "ledger": 1234567,
+    "createdAt": "2026-07-30T11:59:59Z",
+    "memo": null,
+    "memo_type": "none",
+    "feeCharged": "2500",
+    "operationCount": 25,
+    "successful": true,
+    "explorerUrl": "https://stellar.expert/explorer/testnet/tx/abc123def4567890abc123def4567890abc123def4567890abc123def4567890"
+  },
+  "operations": [
+    {
+      "id": "1234567890123456789",
+      "paging_token": "1234567890123456789",
+      "type": "payment",
+      "amount": "1.0000000",
+      "asset_code": "XLM",
+      "from": "$SENDER_STELLAR_PUBLIC_KEY",
+      "to": "$RECIPIENT_STELLAR_PUBLIC_KEY",
+      "direction": "outgoing"
+    }
+  ],
+  "pagination": {
+    "limit": 20,
+    "order": "asc",
+    "cursor": null,
+    "hasMore": true,
+    "nextCursor": "1234567890123456789"
+  },
+  "count": 20,
+  "correlationId": "req_abc123"
+}
+```
+
+Paging: repeat the request with `cursor=<pagination.nextCursor>` until `hasMore` is `false`
+(`nextCursor` is then `null`). Cursors are exclusive, so no operation is returned twice, and the
+last page is never an empty extra page.
+
+**Errors:** `400` for an invalid hash, `limit`, `order` or `cursor`; `404` with
+`errorType: "TRANSACTION_NOT_FOUND"`; `503` with `retryable: true` when Horizon is unavailable.
+
 ---
 
 ## API Key Configuration

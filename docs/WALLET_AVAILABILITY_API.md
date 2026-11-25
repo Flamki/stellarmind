@@ -117,6 +117,14 @@ Returns transaction history for a specific wallet address.
 | `order` or `direction` | string  | `desc`               | Sort order: `asc` or `desc`    |
 | `cursor` or `page`     | string  | null                 | Paging cursor for pagination   |
 
+Each transaction embeds at most 10 operations. `operationsComplete` is `false` when more exist (or
+the lookup failed, see `operationsError`), `operationCount` is the true total, and `summary`
+describes the transaction (`kind`, `types`, `assets`, `direction`, `successful`) without implying
+the first operation is the whole transaction. Page through all operations with
+`GET /api/wallet/transactions/:hash/operations` (`limit` up to 100, `order`, `cursor`; the response
+carries `pagination.hasMore` and `pagination.nextCursor`). See
+[API_EXAMPLES.md](./API_EXAMPLES.md#get-apiwallettransactionshashoperations).
+
 #### Success Response (200 OK)
 
 ```json

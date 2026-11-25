@@ -3,6 +3,7 @@ import { config } from '../config.js'
 import { explorerTxUrl, getFriendbotUrl } from './network.js'
 import { createSubmissionCoordinator } from './submission-coordinator.js'
 import { createPaymentSender } from './payment-sender.js'
+import { LIST_OPERATIONS_LIMIT, summarizeOperations, withDirection } from './transaction-summary.js'
 
 // One validated profile drives every network fact in this module: Horizon
 // origin, transaction passphrase, explorer links, and the friend-only funding
@@ -81,6 +82,33 @@ function cacheStore(key, operations) {
   }
 }
 
+/** Normalise one Horizon operation record to the shape the API returns. */
+function mapOperation(op) {
+  const assetCode =
+    op.asset_type === 'native'
+      ? 'XLM'
+      : op.asset_code || op.selling_asset_code || op.buying_asset_code || null
+
+  const amount =
+    op.amount ||
+    op.starting_balance ||
+    op.send_amount ||
+    op.dest_amount ||
+    op.buy_amount ||
+    op.source_amount ||
+    null
+
+  return {
+    id: op.id,
+    paging_token: op.paging_token || op.id,
+    type: op.type,
+    amount,
+    asset_code: assetCode,
+    from: op.from || op.source_account || null,
+    to: op.to || op.account || op.destination || null,
+  }
+}
+
 /**
  * Operations for a single transaction, cached after the first successful lookup.
  *
@@ -102,33 +130,10 @@ export async function fetchTransactionOperations(hash, horizonServer = server) {
       .operations()
       .forTransaction(hash)
       .order('asc')
-      .limit(10)
+      .limit(LIST_OPERATIONS_LIMIT)
       .call()
 
-    const operations = opsResp.records.map((op) => {
-      const assetCode =
-        op.asset_type === 'native'
-          ? 'XLM'
-          : op.asset_code || op.selling_asset_code || op.buying_asset_code || null
-
-      const amount =
-        op.amount ||
-        op.starting_balance ||
-        op.send_amount ||
-        op.dest_amount ||
-        op.buy_amount ||
-        op.source_amount ||
-        null
-
-      return {
-        id: op.id,
-        type: op.type,
-        amount,
-        asset_code: assetCode,
-        from: op.from || op.source_account || null,
-        to: op.to || op.account || op.destination || null,
-      }
-    })
+    const operations = opsResp.records.map(mapOperation)
 
     cacheStore(key, operations)
     return { operations, error: null }
@@ -246,9 +251,15 @@ export async function fundWithFriendbot(publicKey) {
  * - error: error details (only present when success is false)
  * - errorType: categorized error type for client handling
  */
-export async function getTransactions(publicKey, limit = 10, cursor = null, order = 'desc') {
+export async function getTransactions(
+  publicKey,
+  limit = 10,
+  cursor = null,
+  order = 'desc',
+  horizonServer = server
+) {
   try {
-    let query = server.transactions().forAccount(publicKey).order(order).limit(limit)
+    let query = horizonServer.transactions().forAccount(publicKey).order(order).limit(limit)
 
     if (cursor) {
       query = query.cursor(cursor)
@@ -260,11 +271,22 @@ export async function getTransactions(publicKey, limit = 10, cursor = null, orde
       txs.records,
       config.horizonOpsMaxConcurrency,
       async (tx) => {
-        const { operations, error } = await fetchTransactionOperations(tx.hash)
+        const { operations: fetched, error } = await fetchTransactionOperations(
+          tx.hash,
+          horizonServer
+        )
 
         if (error) {
           console.warn(`Failed to fetch operations for tx ${tx.hash}:`, error)
         }
+
+        const operations = withDirection(fetched, publicKey)
+        const summary = summarizeOperations({
+          operations,
+          operationCount: tx.operation_count,
+          successful: tx.successful,
+          error,
+        })
 
         return {
           hash: tx.hash,
@@ -279,6 +301,10 @@ export async function getTransactions(publicKey, limit = 10, cursor = null, orde
           operation_count: tx.operation_count,
           successful: tx.successful,
           operations,
+          // `operations` holds at most LIST_OPERATIONS_LIMIT entries. When it is
+          // not complete, GET /api/wallet/transactions/:hash/operations pages the rest.
+          operationsComplete: summary.operationsComplete,
+          summary,
           // Distinguishes "this transaction has no operations" from "the lookup
           // failed" — both used to arrive as an empty array.
           ...(error ? { operationsError: error } : {}),
@@ -310,5 +336,80 @@ export async function getTransactions(publicKey, limit = 10, cursor = null, orde
       errorType,
       timestamp: new Date().toISOString(),
     }
+  }
+}
+
+/** Largest page the operations route serves; one extra record is read to detect a next page. */
+export const MAX_OPERATIONS_PAGE_SIZE = 100
+export const DEFAULT_OPERATIONS_PAGE_SIZE = 20
+
+/**
+ * One page of a transaction's operations, with explicit continuation metadata.
+ *
+ * Horizon cursors are exclusive, so feeding `pagination.nextCursor` back in
+ * never repeats a record. One record beyond `limit` is requested to learn
+ * whether another page exists, so the last page is never an empty extra one.
+ *
+ * Returns `{ success: true, transaction, operations, pagination }` or
+ * `{ success: false, error, errorType, timestamp }`.
+ */
+export async function getTransactionOperations(
+  hash,
+  { limit = DEFAULT_OPERATIONS_PAGE_SIZE, cursor = null, order = 'asc', account = null } = {},
+  horizonServer = server
+) {
+  try {
+    const pageSize = Math.max(1, Math.min(MAX_OPERATIONS_PAGE_SIZE, limit))
+
+    let query = horizonServer
+      .operations()
+      .forTransaction(hash)
+      .order(order)
+      .limit(pageSize + 1)
+    if (cursor) query = query.cursor(cursor)
+
+    const [page, tx] = await Promise.all([
+      query.call(),
+      horizonServer.transactions().transaction(hash).call(),
+    ])
+
+    const hasMore = page.records.length > pageSize
+    const operations = withDirection(page.records.slice(0, pageSize).map(mapOperation), account)
+
+    return {
+      success: true,
+      transaction: {
+        hash: tx.hash || hash,
+        ledger: tx.ledger_attr ?? tx.ledger,
+        createdAt: tx.created_at,
+        memo: tx.memo || null,
+        memo_type: tx.memo_type || null,
+        feeCharged: tx.fee_charged,
+        operationCount: tx.operation_count,
+        successful: tx.successful,
+        explorerUrl: explorerTxUrl(profile, hash),
+      },
+      operations,
+      pagination: {
+        limit: pageSize,
+        order,
+        cursor: cursor || null,
+        hasMore,
+        nextCursor: hasMore ? operations[operations.length - 1].paging_token : null,
+      },
+    }
+  } catch (err) {
+    console.error(`Failed to fetch operations for tx ${hash}:`, err.message)
+
+    let errorType = 'UPSTREAM_ERROR'
+    if (err.response?.status === 404 || err.name === 'NotFoundError') {
+      errorType = 'TRANSACTION_NOT_FOUND'
+    } else if (err.message?.includes('timeout') || err.code === 'ETIMEDOUT') {
+      errorType = 'TIMEOUT'
+    } else if (err.message?.includes('ENOTFOUND') || err.message?.includes('ECONNREFUSED')) {
+      errorType = 'NETWORK_ERROR'
+    }
+
+    return { success: false, error: err.message, errorType, timestamp: new Date().toISOString() }
   }
 }

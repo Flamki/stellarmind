@@ -562,6 +562,73 @@ function validateWalletTransactions(req, _res, next) {
   next()
 }
 
+function validateTransactionOperations(req, _res, next) {
+  const details = []
+  const hash = String(req.params.hash || '')
+  if (!/^[0-9a-fA-F]{64}$/.test(hash)) {
+    details.push({
+      field: 'hash',
+      reason: 'Must be a 64-character hexadecimal transaction hash',
+      received: hash,
+    })
+  }
+
+  let limit = 20
+  if (req.query.limit !== undefined) {
+    const parsed = Number.parseInt(req.query.limit, 10)
+    if (!Number.isInteger(parsed) || String(parsed) !== String(req.query.limit) || parsed < 1) {
+      details.push({
+        field: 'limit',
+        reason: 'Must be a positive integer',
+        received: req.query.limit,
+      })
+    } else {
+      limit = Math.min(100, parsed)
+    }
+  }
+
+  let order = 'asc'
+  const orderParam = req.query.order ?? req.query.direction
+  if (orderParam !== undefined) {
+    const normalized = String(orderParam).toLowerCase()
+    if (normalized !== 'asc' && normalized !== 'desc') {
+      details.push({ field: 'order', reason: 'Must be "asc" or "desc"', received: orderParam })
+    } else {
+      order = normalized
+    }
+  }
+
+  const cursor = req.query.cursor ?? null
+  if (cursor !== null && (typeof cursor !== 'string' || cursor.length > 128)) {
+    details.push({
+      field: 'cursor',
+      reason: 'Must be a string of at most 128 characters',
+      received: typeof cursor === 'string' ? `${cursor.slice(0, 16)}...` : typeof cursor,
+    })
+  }
+
+  let address = null
+  if (req.query.address !== undefined) {
+    const result = assertStringField('address', req.query.address, {
+      required: true,
+      minLength: 1,
+      maxLength: 64,
+    })
+    if (result.valid) address = result.value
+    else details.push(result.error)
+  }
+
+  if (details.length) {
+    return next(validationError('Invalid transaction operations query', details))
+  }
+
+  req.validated = {
+    ...(req.validated || {}),
+    transactionOperations: { hash: hash.toLowerCase(), limit, order, cursor, address },
+  }
+  next()
+}
+
 function validateConfigApiKey(req, _res, next) {
   const result = assertApiKey(req.body.apiKey)
   if (!result.valid) {
@@ -656,5 +723,6 @@ export {
   validateOrchestrateExecute,
   validateListRuns,
   validateWalletTransactions,
+  validateTransactionOperations,
   validateConfigApiKey,
 }
