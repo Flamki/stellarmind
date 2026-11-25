@@ -1,0 +1,11 @@
+The loop was not adding every number, so I corrected the bounds. The function now returns the right total.
+
+```js
+function sumTo(n) {
+  let total = 0
+  for (let i = 1; i < n; i++) {
+    total += i
+  }
+  return total
+}
+```
