@@ -67,10 +67,10 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
-      # `npm test` already runs tests/orchestrator.budget.test.js, so the
-      # separate `npm run test:budget` step that used to live here executed the
-      # same file twice inside one job.
-      - name: Run unit tests
+      - name: Validate test manifest
+        run: npm run test:validate-manifest
+
+      - name: Run offline regression tests
         run: npm test
 
       - name: API validation tests
