@@ -2055,6 +2055,7 @@
       </div>
     </div>
 
+    <script src="/assets/js/tx-render.js"></script>
     <script>
       let evCnt = 0,
         isRunning = false
@@ -2391,8 +2392,19 @@
 
         try {
           const url =
-            `/api/wallet/transactions?limit=${txLimit}` + (txCursor ? `&cursor=${txCursor}` : '')
-          const txs = await (await fetch(url)).json()
+            `/api/wallet/transactions?limit=${txLimit}` +
+            (txCursor ? `&cursor=${encodeURIComponent(txCursor)}` : '')
+          const data = await (await fetch(url)).json()
+          if (!data.success) {
+            if (!isLoadMore) {
+              document.getElementById('tx-body').innerHTML =
+                `<tr><td colspan="5" style="text-align:center;padding:32px;color:var(--red);">${TxRender.escapeHtml(data.message || 'Failed to load transactions.')}</td></tr>`
+              document.getElementById('tx-cnt').textContent = '0'
+              document.getElementById('tx-total').textContent = '0 Transactions'
+            }
+            return
+          }
+          const txs = data.transactions || []
 
           if (!isLoadMore) {
             document.getElementById('tx-cnt').textContent = txs.length
@@ -2405,39 +2417,11 @@
             document.getElementById('tx-body').innerHTML = ''
           }
 
-          const rowsHtml = txs
-            .map((tx) => {
-              const ops = tx.operations || []
-              const op = ops[0] || {}
-              let amt = '—'
-              if (op.amount) {
-                const num = Number.parseFloat(op.amount)
-                amt = Number.isFinite(num)
-                  ? `${num.toFixed(2)} ${op.asset_code || 'XLM'}`
-                  : `${op.amount} ${op.asset_code || 'XLM'}`
-              } else if (op.type === 'invoke_host_function') {
-                amt = 'contract call'
-              }
-
-              const hash = tx.hash || tx.id || ''
-              const url = `https://stellar.expert/explorer/testnet/tx/${hash}`
-              const timeRaw = tx.created_at || tx.createdAt || null
-              const time = timeRaw ? new Date(timeRaw).toLocaleString() : '—'
-              const memoValue = tx.memo_type === 'none' ? 'none' : tx.memo || '—'
-              const opType = op.type ? op.type.replaceAll('_', ' ') : '—'
-              return `<tr>
-            <td><a href="${url}" target="_blank" class="tx-hash">${hash.slice(0, 10)}...${hash.slice(-6)}</a></td>
-            <td>${opType}</td>
-            <td><span class="tx-amount">${amt}</span></td>
-            <td><span class="tx-memo">${memoValue}</span></td>
-            <td><span class="tx-time">${time}</span></td>
-          </tr>`
-            })
-            .join('')
+          const rowsHtml = txs.map((tx) => TxRender.renderTxRow(tx)).join('')
 
           if (isLoadMore) {
             document.getElementById('tx-body').insertAdjacentHTML('beforeend', rowsHtml)
-            const currentTotal = document.getElementById('tx-body').children.length
+            const currentTotal = document.querySelectorAll('#tx-body > tr[data-tx]').length
             document.getElementById('tx-cnt').textContent = currentTotal
             document.getElementById('tx-total').textContent = `${currentTotal} Transactions`
           } else {
@@ -2458,6 +2442,11 @@
           console.error(err)
         }
       }
+
+      document.getElementById('tx-body').addEventListener('click', (event) => {
+        const btn = event.target.closest('.tx-details-btn')
+        if (btn) TxRender.toggleDetails(btn.dataset.hash)
+      })
 
       async function loadMoreTransactions() {
         const btn = document.getElementById('btn-load-more')

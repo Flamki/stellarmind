@@ -119,37 +119,14 @@ async function loadTxPage() {
       return
     }
 
-    document.getElementById('tx-body').innerHTML = txs
-      .map((tx) => {
-        const ops = tx.operations || []
-        const op = ops[0] || {}
-        let amt = '—'
-
-        if (op.amount) {
-          const num = Number.parseFloat(op.amount)
-          amt = Number.isFinite(num)
-            ? `${num.toFixed(2)} ${op.asset_code || 'XLM'}`
-            : `${op.amount} ${op.asset_code || 'XLM'}`
-        } else if (op.type === 'invoke_host_function') {
-          amt = 'contract call'
-        }
-
-        const hash = tx.hash || tx.id || ''
-        const url = `https://stellar.expert/explorer/testnet/tx/${hash}`
-        const timeRaw = tx.created_at || tx.createdAt || null
-        const time = timeRaw ? new Date(timeRaw).toLocaleString() : '—'
-        const memoValue = tx.memo_type === 'none' ? 'none' : tx.memo || '—'
-        const opType = op.type ? op.type.replaceAll('_', ' ') : '—'
-
-        return `<tr>
-          <td><a href="${url}" target="_blank" class="tx-hash">${hash.slice(0, 10)}...${hash.slice(-6)}</a></td>
-          <td>${opType}</td>
-          <td><span class="tx-amount">${amt}</span></td>
-          <td><span class="tx-memo">${memoValue}</span></td>
-          <td><span class="tx-time">${time}</span></td>
-        </tr>`
-      })
-      .join('')
+    // Rows come from TxRender (tx-render.js): multi-operation transactions are
+    // summarised as such and expand into a paged operation list.
+    const txBody = document.getElementById('tx-body')
+    txBody.innerHTML = txs.map((tx) => TxRender.renderTxRow(tx)).join('')
+    txBody.onclick = (event) => {
+      const btn = event.target.closest('.tx-details-btn')
+      if (btn) TxRender.toggleDetails(btn.dataset.hash)
+    }
   } catch (err) {
     console.error('Failed to load transactions:', err)
     document.getElementById('tx-body').innerHTML = `

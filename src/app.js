@@ -4,7 +4,7 @@ import { fileURLToPath } from 'node:url'
 import path from 'node:path'
 
 import { AGENTS, discoverAgents, getAgentById } from './agents/registry.js'
-import { validateWalletTransactions } from './requestValidation.js'
+import { validateWalletTransactions, validateTransactionOperations } from './requestValidation.js'
 import {
   runResearch,
   runSummary,
@@ -15,7 +15,7 @@ import {
 } from './agents/services.js'
 import { orchestrate, getX402WalletReadiness } from './agents/orchestrator.js'
 import { OrchestrationAdmissionQueue } from './agents/orchestration-queue.js'
-import { getBalance, getTransactions } from './stellar/wallet.js'
+import { getBalance, getTransactions, getTransactionOperations } from './stellar/wallet.js'
 import { requestId, requestLogger, errorHandler } from './middleware/errorHandler.js'
 import { apikeyLimiter } from './middleware/rateLimiter.js'
 import { logger } from './logger.js'
@@ -324,6 +324,42 @@ export function createApp(dependencies = {}) {
     }
   })
 
+  app.get(
+    '/api/wallet/transactions/:hash/operations',
+    validateTransactionOperations,
+    async (req, res, next) => {
+      try {
+        const { hash, limit, order, cursor, address } = req.validated.transactionOperations
+        const account = address || config.orchestratorAddress || config.serverAddress || null
+        const result = await getTransactionOperations(hash, { limit, order, cursor, account })
+
+        if (result.success) {
+          res.json({
+            success: true,
+            transaction: result.transaction,
+            operations: result.operations,
+            pagination: result.pagination,
+            count: result.operations.length,
+            correlationId: req.requestId,
+          })
+        } else {
+          const statusCode = result.errorType === 'TRANSACTION_NOT_FOUND' ? 404 : 503
+          res.status(statusCode).json({
+            success: false,
+            error: result.error,
+            errorType: result.errorType,
+            message: getTransactionErrorMessage(result.errorType),
+            timestamp: result.timestamp,
+            correlationId: req.requestId,
+            retryable: result.errorType !== 'TRANSACTION_NOT_FOUND',
+          })
+        }
+      } catch (err) {
+        next(err)
+      }
+    }
+  )
+
   app.get('/api/wallet/transactions', validateWalletTransactions, async (req, res, next) => {
     try {
       const address = req.validated?.address || config.orchestratorAddress || config.serverAddress
@@ -404,6 +440,7 @@ export function createApp(dependencies = {}) {
   function getTransactionErrorMessage(errorType) {
     const messages = {
       ACCOUNT_NOT_FOUND: 'Account not found on the Stellar network. It may not be funded yet.',
+      TRANSACTION_NOT_FOUND: 'Transaction not found on the configured Stellar network.',
       TIMEOUT: 'Request timed out while fetching transactions. Please try again.',
       NETWORK_ERROR:
         'Network error connecting to Horizon. Please check your connection and try again.',
