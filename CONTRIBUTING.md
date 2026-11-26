@@ -151,6 +151,37 @@ volta install node@20.19.0
 npm install
 ```
 
+### Windows Development
+
+StellarMind supports Windows development. The CI pipeline runs tests on both Linux and Windows to
+ensure cross-platform compatibility.
+
+**Key considerations for Windows contributors:**
+
+- **Line endings**: Git will handle CRLF ↔ LF conversion automatically via `.gitattributes`
+- **Path handling**: All file paths use `path.join()` and work on both platforms
+- **Child processes**: Tests properly clean up spawned processes on Windows
+- **Temporary directories**: Tests use `os.tmpdir()` which works across platforms
+
+**Running tests on Windows:**
+
+```powershell
+# All tests (includes Windows compatibility checks)
+npm test
+
+# Smoke test with startup/shutdown
+npm run smoke
+
+# Individual test suites
+npm run test:validation
+```
+
+**Troubleshooting on Windows:**
+
+- If tests timeout, check Windows Defender isn't blocking Node.js network access
+- For path-with-spaces issues, the tests explicitly validate this scenario
+- PowerShell and Command Prompt both work; use whichever you prefer
+
 ### 1. Claim an issue
 
 Before writing any code, comment on the issue you want to work on:
